@@ -280,7 +280,10 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
 
   async function openSession(id: string): Promise<void> {
     const sessionId = SessionId(id)
-    if (activeAgent.id === sessionId) return
+    if (activeAgent.id === sessionId) {
+      for (const event of activeAgent.session.events) emit(event)
+      return
+    }
     const existing = ctx.agents.get(sessionId)
     if (existing !== undefined) {
       const previous = activeHandle
