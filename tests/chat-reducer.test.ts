@@ -1,0 +1,155 @@
+import { describe, expect, it } from 'vitest'
+import { CallId, createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
+import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { initialTurnState, reduceChatEvent } from '../src/chat/reducer.ts'
+import type { Message } from '../src/state/messages.ts'
+
+function userEvent(text: string): SessionEvent {
+  return {
+    type: 'user/message',
+    seq: 1,
+    time: 0,
+    data: createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }),
+  }
+}
+
+function reasoning(text: string): SessionEvent {
+  return { type: 'assistant/chunk', seq: 1, time: 0, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text } } }
+}
+
+function textDelta(text: string): SessionEvent {
+  return { type: 'assistant/chunk', seq: 1, time: 0, data: { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text } } }
+}
+
+function toolCall(callId: string): SessionEvent {
+  return { type: 'tool/call', seq: 1, time: 0, data: { turn: 1, step: 1, callId: CallId(callId), name: 'bash', arguments: '{}' } }
+}
+
+function toolResult(callId: string, output: string): SessionEvent {
+  return {
+    type: 'tool/result',
+    seq: 1,
+    time: 0,
+    data: {
+      turn: 1,
+      step: 1,
+      message: createToolResultMessage({
+        callId: CallId(callId),
+        content: [{ type: 'text', text: output }],
+        isError: false,
+      }),
+    },
+  }
+}
+
+function turnEnd(): SessionEvent {
+  return { type: 'turn/end', seq: 1, time: 0, data: { turn: 1, reason: { kind: 'completed' } } }
+}
+
+function apply(initial: Message[], events: SessionEvent[]) {
+  let messages = initial
+  let turn = initialTurnState()
+  for (const event of events) {
+    const next = reduceChatEvent(messages, event, turn)
+    messages = next.messages
+    turn = next.turn
+  }
+  return { messages, turn }
+}
+
+describe('chat event reducer', () => {
+  it('appends a user bubble for user/message', () => {
+    const { messages } = apply([], [userEvent('hello')])
+    expect(messages).toHaveLength(1)
+    expect(messages[0]).toMatchObject({ kind: 'bubble', role: 'user', content: 'hello' })
+  })
+
+  it('creates and appends the Thinking block from reasoning deltas', () => {
+    let state = apply([], [reasoning('step 1'), reasoning(' step 2')])
+    expect(state.messages).toHaveLength(1)
+    expect(state.messages[0]).toMatchObject({ kind: 'collapsible', label: 'Thinking', running: true, body: 'step 1 step 2' })
+    state = reduceChatEvent(state.messages, turnEnd(), state.turn)
+    expect(state.messages[0]).toMatchObject({ running: false, collapsed: false })
+  })
+
+  it('streams assistant text into one bubble', () => {
+    const { messages } = apply([], [textDelta('Hello '), textDelta('world')])
+    expect(messages).toHaveLength(1)
+    expect(messages[0]).toMatchObject({ kind: 'bubble', role: 'assistant', content: 'Hello world' })
+  })
+
+  it('tracks tool call and result as a collapsible pair', () => {
+    let state = apply([], [toolCall('c1')])
+    expect(state.messages[0]).toMatchObject({ kind: 'collapsible', label: 'bash', running: true, collapsed: false })
+    state = reduceChatEvent(state.messages, toolResult('c1', 'out'), state.turn)
+    expect(state.messages[0]).toMatchObject({ kind: 'collapsible', label: 'bash', running: false, collapsed: false, body: 'out' })
+  })
+
+  it('drops an empty Thinking block at turn end', () => {
+    const { messages, turn } = apply([], [textDelta('no thinking')])
+    const next = reduceChatEvent(messages, turnEnd(), turn)
+    expect(next.messages).toHaveLength(1)
+    expect(next.messages[0]).toMatchObject({ kind: 'bubble', content: 'no thinking' })
+  })
+
+  it('reassembles a full turn in order', () => {
+    const { messages } = apply([], [userEvent('q'), reasoning('r'), toolCall('c1'), toolResult('c1', 'o'), textDelta('A'), textDelta('B'), turnEnd()])
+    expect(messages).toHaveLength(4)
+    expect(messages[0]).toMatchObject({ role: 'user', content: 'q' })
+    expect(messages[1]).toMatchObject({ label: 'Thinking', running: false, collapsed: false })
+    expect(messages[2]).toMatchObject({ label: 'bash', running: false, collapsed: false, body: 'o' })
+    expect(messages[3]).toMatchObject({ role: 'assistant', content: 'AB' })
+  })
+
+  it('marks a failed tool result as an error body', () => {
+    let state = apply([], [toolCall('c1')])
+    const failed: SessionEvent = {
+      type: 'tool/result',
+      seq: 1,
+      time: 0,
+      data: {
+        turn: 1,
+        step: 1,
+        error: { name: 'boom', code: 'E_FAIL' },
+        message: createToolResultMessage({
+          callId: CallId('c1'),
+          content: [{ type: 'text', text: 'stderr' }],
+          isError: true,
+        }),
+      },
+    }
+    state = reduceChatEvent(state.messages, failed, state.turn)
+    expect(state.messages[0]).toMatchObject({ body: 'error: boom\nstderr' })
+  })
+
+  it('ignores injected context messages that are not user-typed', () => {
+    const injected: SessionEvent = {
+      type: 'user/message',
+      seq: 1,
+      time: 0,
+      data: {
+        role: 'user',
+        id: createUserMessage({ content: [{ type: 'text', text: 'x' }], source: { kind: 'user' } }).id,
+        content: [{ type: 'text', text: 'Current runtime context...' }],
+        source: { kind: 'plugin', plugin: '@deepseek-ai/dsh-system-prompt' },
+      },
+    }
+    const { messages } = apply([], [userEvent('hi'), injected])
+    expect(messages).toHaveLength(1)
+    expect(messages[0]).toMatchObject({ role: 'user', content: 'hi' })
+  })
+
+  it('renders a failed turn as an error bubble', () => {
+    const failed: SessionEvent = {
+      type: 'turn/end',
+      seq: 1,
+      time: 0,
+      data: {
+        turn: 1,
+        reason: { kind: 'error', error: { message: 'no API key', code: 'E_KEY' } },
+      },
+    }
+    const { messages } = apply([], [userEvent('hi'), failed])
+    expect(messages[1]).toMatchObject({ kind: 'bubble', role: 'error', content: 'error: no API key' })
+  })
+})
