@@ -1,7 +1,14 @@
 import stringWidth from 'string-width'
 
+const widthCache = new Map<string, number>()
+
 export function textWidth(text: string): number {
-  return stringWidth(text)
+  const cached = widthCache.get(text)
+  if (cached !== undefined) return cached
+  const width = stringWidth(text)
+  if (widthCache.size >= 5000) widthCache.clear()
+  widthCache.set(text, width)
+  return width
 }
 
 export function charWidth(ch: string): number {

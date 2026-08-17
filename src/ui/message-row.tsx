@@ -56,6 +56,7 @@ export const MessageRow = memo(
       a.role === b.role &&
       a.muted === b.muted &&
       a.background === b.background &&
+      a.backgroundWidth === b.backgroundWidth &&
       a.colStart === b.colStart &&
       a.selectable === b.selectable &&
       a.clickable === b.clickable &&

@@ -14,20 +14,21 @@ interface MessageLineProps {
 
 export function MessageLine({ text, row, colStart, color }: MessageLineProps) {
   const rect = useContext(SelectionContext)
+  if (rect === null || row < rect.top || row > rect.bottom) {
+    return <Text color={color}>{text}</Text>
+  }
   const lineWidth = textWidth(text)
   let before = text
   let selected = ''
   let after = ''
-  if (rect && row >= rect.top && row <= rect.bottom) {
-    const left = Math.max(colStart, rect.left)
-    const right = Math.min(colStart + lineWidth, rect.right)
-    if (left < right) {
-      const startIndex = colToCharIndex(text, left - colStart)
-      const endIndex = colToCharIndex(text, right - colStart)
-      before = text.slice(0, startIndex)
-      selected = text.slice(startIndex, endIndex)
-      after = text.slice(endIndex)
-    }
+  const left = Math.max(colStart, rect.left)
+  const right = Math.min(colStart + lineWidth, rect.right)
+  if (left < right) {
+    const startIndex = colToCharIndex(text, left - colStart)
+    const endIndex = colToCharIndex(text, right - colStart)
+    before = text.slice(0, startIndex)
+    selected = text.slice(startIndex, endIndex)
+    after = text.slice(endIndex)
   }
   return (
     <Text color={color}>

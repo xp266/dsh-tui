@@ -13,8 +13,10 @@ import { dragRect } from './layout.ts'
 import { InputBar, INPUT_BAR_HEIGHT } from './input-bar.tsx'
 import { MessageList } from './message-list.tsx'
 import { ModelsDialog } from './models-dialog.tsx'
+import { SessionsDialog } from './sessions-dialog.tsx'
 import type { DialogHandle } from './dialog.tsx'
-import { textWidth } from '../utils/text.ts'
+import { padToWidth, textWidth, truncate } from '../utils/text.ts'
+import type { CommandHintState } from './commands.ts'
 
 const FORCE_EXIT_DELAY_MS = 6000
 const WHEEL_SCROLL_LINES = 3
@@ -43,12 +45,17 @@ export function App({ bridge }: AppProps) {
   const [selection, setSelection] = useState<SelectionRect | null>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [sessionsOpen, setSessionsOpen] = useState(false)
   const [modelName, setModelName] = useState('glm 4.7')
+  const [stickToBottom, setStickToBottom] = useState(true)
+  const [hintState, setHintState] = useState<CommandHintState | null>(null)
   const exiting = useRef(false)
   const anchorRef = useRef<SelectionPoint | null>(null)
   const dialogOpenRef = useRef(false)
+  const stickToBottomRef = useRef(true)
   const dialogRef = useRef<DialogHandle | null>(null)
-  dialogOpenRef.current = dialogOpen
+  dialogOpenRef.current = dialogOpen || sessionsOpen
+  stickToBottomRef.current = stickToBottom
   const chatStateRef = useRef<{ messages: Message[]; turn: ReturnType<typeof initialTurnState> }>({
     messages: [],
     turn: initialTurnState(),
@@ -68,10 +75,17 @@ export function App({ bridge }: AppProps) {
     const clamped = Math.max(0, Math.min(maxScrollRef.current, next))
     setScrollTop(clamped)
     scrollTopRef.current = clamped
+    const atBottom = clamped >= maxScrollRef.current
+    setStickToBottom(atBottom)
+    stickToBottomRef.current = atBottom
   }, [])
   useEffect(() => {
-    setScrollTop(current => (current >= maxScroll ? maxScroll : current))
-    scrollTopRef.current = Math.min(scrollTopRef.current, maxScroll)
+    if (stickToBottomRef.current) {
+      applyScroll(Infinity)
+    } else {
+      setScrollTop(current => Math.min(current, maxScroll))
+      scrollTopRef.current = Math.min(scrollTopRef.current, maxScroll)
+    }
   }, [maxScroll])
   useEffect(() => {
     if (!bridge) return
@@ -90,7 +104,7 @@ export function App({ bridge }: AppProps) {
         state = reduceChatEvent(state.messages, event, state.turn)
       }
       chatStateRef.current = state
-      setMessages(state.messages)
+      setMessages([...state.messages])
     }, FRAME_MS)
     return () => clearInterval(timer)
   }, [])
@@ -99,11 +113,28 @@ export function App({ bridge }: AppProps) {
     setModelName(bridge.modelName())
   }, [bridge])
   useEffect(() => {
-    if (scrollTopRef.current >= maxScrollRef.current - 1) applyScroll(Infinity)
+    if (stickToBottomRef.current) applyScroll(Infinity)
   }, [messages])
   const handleSend = (text: string) => {
     if (text === '/models') {
       if (bridge) setDialogOpen(true)
+      return
+    }
+    if (text === '/sessions') {
+      if (bridge) setSessionsOpen(true)
+      return
+    }
+    if (text === '/new') {
+      if (!bridge) return
+      setMessages([])
+      setSelection(null)
+      anchorRef.current = null
+      chatStateRef.current = { messages: [], turn: initialTurnState() }
+      pendingEventsRef.current = []
+      applyScroll(Infinity)
+      try {
+        void Promise.resolve(bridge.newSession()).catch(() => {})
+      } catch {}
       return
     }
     bridge?.send(text)
@@ -185,9 +216,30 @@ export function App({ bridge }: AppProps) {
         selection={selection}
         scrollTop={scrollTop}
         onScroll={applyScroll}
-        interactive={!dialogOpen}
+        interactive={!dialogOpen && !sessionsOpen}
       />
-      <InputBar width={columns} modelName={modelName} onSend={handleSend} interactive={!dialogOpen} />
+      <InputBar width={columns} modelName={modelName} onSend={handleSend} interactive={!dialogOpen && !sessionsOpen} onHintChange={setHintState} />
+      {hintState !== null && !dialogOpen && !sessionsOpen && (
+        <Box
+          position="absolute"
+          top={Math.max(0, rows - INPUT_BAR_HEIGHT - 1 - hintState.commands.length)}
+          left={2}
+          width={Math.max(1, columns - 4)}
+          flexDirection="column"
+        >
+          {hintState.commands.map((command, index) => {
+            const selected = index === hintState.selectedIndex
+            const blockWidth = Math.max(1, columns - 4)
+            const line = '  ' + padToWidth(command.command, 20) + command.description
+            const filled = padToWidth(truncate(line, blockWidth), blockWidth)
+            return (
+              <Box key={command.command} width={blockWidth} backgroundColor={selected ? undefined : colors.dialogBackground}>
+                <Text inverse={selected}>{filled}</Text>
+              </Box>
+            )
+          })}
+        </Box>
+      )}
       <Box marginLeft={4}>
         <Text color={colors.cwdText}>{cwdLabel()}</Text>
       </Box>
@@ -197,6 +249,23 @@ export function App({ bridge }: AppProps) {
           api={bridge}
           onClose={() => setDialogOpen(false)}
           onModelSelected={(_provider, model) => setModelName(model)}
+        />
+      )}
+      {sessionsOpen && bridge !== undefined && (
+        <SessionsDialog
+          ref={dialogRef}
+          api={bridge}
+          onClose={() => setSessionsOpen(false)}
+          onBeforeSessionSelected={() => {
+            setMessages([])
+            setSelection(null)
+            anchorRef.current = null
+            chatStateRef.current = { messages: [], turn: initialTurnState() }
+            pendingEventsRef.current = []
+          }}
+          onSessionSelected={() => {
+            applyScroll(Infinity)
+          }}
         />
       )}
     </Box>

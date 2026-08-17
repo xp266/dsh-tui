@@ -1,7 +1,7 @@
 import { Box, useInput } from 'ink'
 import { useEffect, useMemo, useState } from 'react'
 import type { Message } from '../state/messages.ts'
-import { rowCount, rowInfoAt } from './layout.ts'
+import { buildRowIndex } from './layout.ts'
 import { MessageRow } from './message-row.tsx'
 import { SelectionContext } from './text-line.tsx'
 import type { SelectionRect } from './layout.ts'
@@ -18,7 +18,8 @@ interface MessageListProps {
 
 export function MessageList({ messages, height, width, selection, scrollTop, onScroll, interactive = true }: MessageListProps) {
   const [spinnerFrame, setSpinnerFrame] = useState(0)
-  const total = useMemo(() => rowCount(messages, width), [messages, width])
+  const index = useMemo(() => buildRowIndex(messages, width), [messages, width])
+  const total = index.total
   const halfPage = Math.max(1, Math.ceil(height / 2))
   useEffect(() => {
     if (!interactive) return
@@ -36,7 +37,7 @@ export function MessageList({ messages, height, width, selection, scrollTop, onS
   const rows = []
   const endRow = Math.min(scrollTop + height, total)
   for (let row = scrollTop; row < endRow; row++) {
-    const info = rowInfoAt(messages, width, row)
+    const info = index.rowAt(row)
     if (info) rows.push(<MessageRow key={row} info={info} row={row} spinnerFrame={spinnerFrame} />)
   }
   return (

@@ -1,0 +1,78 @@
+import { Text } from 'ink'
+import { forwardRef, useEffect, useState } from 'react'
+import type { SessionSummary } from '../chat/bridge.ts'
+import { colors } from '../theme.ts'
+import { Dialog } from './dialog.tsx'
+import type { DialogHandle, DialogRow } from './dialog.tsx'
+import type { Ref } from 'react'
+
+export interface SessionsDialogProps {
+  api: {
+    listSessions(): Promise<SessionSummary[]>
+    openSession(id: string): Promise<void>
+  }
+  onClose: () => void
+  onBeforeSessionSelected?: () => void
+  onSessionSelected: (session: SessionSummary) => void
+}
+
+const DIALOG_WIDTH = 70
+const DIALOG_MAX_HEIGHT = 18
+
+export const SessionsDialog = forwardRef<DialogHandle, SessionsDialogProps>(function SessionsDialog(
+  { api, onClose, onBeforeSessionSelected, onSessionSelected },
+  ref,
+) {
+  const [sessions, setSessions] = useState<SessionSummary[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const loadSessions = async () => {
+    try {
+      setSessions(await api.listSessions())
+      setError(null)
+    } catch (cause) {
+      setError(String(cause))
+    }
+  }
+  useEffect(() => {
+    void loadSessions()
+  }, [api])
+  const selectSession = async (session: SessionSummary) => {
+    try {
+      onBeforeSessionSelected?.()
+      await api.openSession(session.id)
+      onSessionSelected(session)
+      onClose()
+    } catch (cause) {
+      setError(String(cause))
+    }
+  }
+  const sorted = [...sessions].sort((a, b) => {
+    const dir = (a.directory ?? '').localeCompare(b.directory ?? '')
+    if (dir !== 0) return dir
+    return b.createdAt - a.createdAt
+  })
+  const rows: DialogRow[] = sorted.map(session => ({
+    items: [
+      {
+        type: 'button',
+        label: session.name || session.id,
+        right: session.directory,
+        onPress: () => void selectSession(session),
+      },
+    ],
+  }))
+  const footer = error === null ? undefined : <Text color={colors.errorText}>{error}</Text>
+  return (
+    <Dialog
+      ref={ref as Ref<DialogHandle>}
+      width={DIALOG_WIDTH}
+      maxHeight={DIALOG_MAX_HEIGHT}
+      title="sessions"
+      rows={rows}
+      footer={footer}
+      onClose={onClose}
+      search
+      searchRight
+    />
+  )
+})

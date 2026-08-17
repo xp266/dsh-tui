@@ -38,7 +38,9 @@ export function moveFocus(rows: DialogRow[], focus: DialogFocus, key: 'up' | 'do
 }
 
 export function rowHeight(row: DialogRow): number {
-  return row.items.some(item => item.type === 'input' || item.type === 'select') ? 3 : 1
+  if (row.items.some(item => item.type === 'input' || item.type === 'select')) return 3
+  if (row.items.some(item => item.type === 'search')) return 2
+  return 1
 }
 
 export function rowTopOffset(rows: DialogRow[], rowIndex: number): number {
@@ -63,6 +65,7 @@ export interface DialogProps {
   footer?: ReactNode
   onClose: () => void
   search?: boolean
+  searchRight?: boolean
 }
 
 export interface DialogHandle {
@@ -70,7 +73,7 @@ export interface DialogHandle {
 }
 
 export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
-  { width, maxHeight, title, rows, footer, onClose, search = false },
+  { width, maxHeight, title, rows, footer, onClose, search = false, searchRight = false },
   ref,
 ) {
   const { stdout } = useStdout()
@@ -91,7 +94,10 @@ export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
     search && query !== ''
       ? rows.filter(row =>
           row.items.some(
-            item => (item.type === 'button' || item.type === 'checkbox') && item.label.toLowerCase().includes(query),
+            item =>
+              (item.type === 'button' || item.type === 'checkbox') &&
+              (item.label.toLowerCase().includes(query) ||
+                (searchRight && item.type === 'button' && item.right !== undefined && item.right.toLowerCase().includes(query))),
           ),
         )
       : rows
@@ -322,8 +328,13 @@ function renderItem(item: DialogItem, focused: boolean, contentWidth: number): R
       const isEmpty = item.value === ''
       const text = isEmpty ? 'Search' : item.value
       return (
-        <Box width={contentWidth} backgroundColor={colors.userBubbleBackground}>
-          <Text color={isEmpty ? colors.toolBodyText : undefined}>{truncate(text, contentWidth)}</Text>
+        <Box flexDirection="column">
+          <Box width={contentWidth} backgroundColor={colors.userBubbleBackground}>
+            <Text color={isEmpty ? colors.toolBodyText : undefined}>{truncate(text, contentWidth)}</Text>
+          </Box>
+          <Box height={1}>
+            <Text> </Text>
+          </Box>
         </Box>
       )
     }

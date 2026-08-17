@@ -10,6 +10,9 @@ function fakeBridge(): ChatBridge {
     modelName: () => 'glm-4.7-flash',
     send: vi.fn(),
     subscribe: () => () => {},
+    listSessions: vi.fn(async () => []),
+    openSession: vi.fn(async () => {}),
+    newSession: vi.fn(async () => {}),
     listModels: vi.fn(async () => []),
     selectModel: vi.fn(async () => {}),
     addDeepSeekKey: vi.fn(async () => {}),
@@ -81,6 +84,8 @@ describe('App layout', () => {
     const { lastFrame, stdin } = render(<App bridge={bridge} />)
     await new Promise(resolve => setTimeout(resolve, 20))
     stdin.write('/models')
+    await new Promise(resolve => setTimeout(resolve, 20))
+    stdin.write('\r')
     await new Promise(resolve => setTimeout(resolve, 20))
     stdin.write('\r')
     await new Promise(resolve => setTimeout(resolve, 50))

@@ -27,10 +27,8 @@ export function reduceChatEvent(
   switch (event.type) {
     case 'user/message': {
       if (event.data.source.kind !== 'user') return { messages, turn }
-      return {
-        messages: [...messages, { kind: 'bubble', id: nextId('user'), role: 'user', content: textFromBlocks(event.data.content) }],
-        turn,
-      }
+      messages.push({ kind: 'bubble', id: nextId('user'), role: 'user', content: textFromBlocks(event.data.content) })
+      return { messages, turn }
     }
     case 'assistant/chunk': {
       const chunk = event.data.chunk
@@ -40,59 +38,49 @@ export function reduceChatEvent(
     }
     case 'tool/call': {
       const id = nextId('tool')
-      const toolIds = new Map(turn.toolIds)
-      toolIds.set(event.data.callId, id)
-      return {
-        messages: [...messages, { kind: 'collapsible', id, label: event.data.name, body: '', running: true, collapsed: false }],
-        turn: { ...turn, toolIds },
-      }
+      turn.toolIds.set(event.data.callId, id)
+      messages.push({ kind: 'collapsible', id, label: event.data.name, body: '', running: true, collapsed: false })
+      return { messages, turn }
     }
     case 'tool/result': {
       const callId = event.data.message.content[0]?.toolCallId
       if (callId === undefined) return { messages, turn }
       const id = turn.toolIds.get(callId)
       if (id === undefined) return { messages, turn }
-      const existing = messages.find(m => m.id === id)
+      const index = messages.findIndex(m => m.id === id)
+      if (index < 0) return { messages, turn }
+      const existing = messages[index]
       if (existing === undefined || existing.kind !== 'collapsible') return { messages, turn }
       const error = event.data.error
       const text = textFromBlocks(event.data.message.content)
-      const toolIds = new Map(turn.toolIds)
-      toolIds.delete(callId)
-      return {
-        messages: messages.map(m =>
-          m.id === id
-            ? {
-                kind: 'collapsible',
-                id,
-                label: existing.label,
-                body: error === undefined ? text : `error: ${error.name ?? error.code}${text ? `\n${text}` : ''}`,
-                running: false,
-                collapsed: false,
-              }
-            : m,
-        ),
-        turn: { ...turn, toolIds },
+      turn.toolIds.delete(callId)
+      messages[index] = {
+        kind: 'collapsible',
+        id,
+        label: existing.label,
+        body: error === undefined ? text : `error: ${error.name ?? error.code}${text ? `\n${text}` : ''}`,
+        running: false,
+        collapsed: false,
       }
+      return { messages, turn }
     }
     case 'turn/end': {
-      let next = messages
       if (turn.thinkingId !== null) {
-        const thinking = next.find(m => m.id === turn.thinkingId)
-        if (thinking !== undefined && thinking.kind === 'collapsible' && thinking.body === '') {
-          next = next.filter(m => m.id !== turn.thinkingId)
-        } else {
-          next = next.map(m =>
-            m.id === turn.thinkingId && m.kind === 'collapsible'
-              ? { ...m, running: false, collapsed: false }
-              : m,
-          )
+        const thinkingIndex = messages.findIndex(m => m.id === turn.thinkingId)
+        if (thinkingIndex >= 0) {
+          const thinking = messages[thinkingIndex]
+          if (thinking !== undefined && thinking.kind === 'collapsible' && thinking.body === '') {
+            messages.splice(thinkingIndex, 1)
+          } else if (thinking !== undefined && thinking.kind === 'collapsible') {
+            messages[thinkingIndex] = { ...thinking, running: false, collapsed: false }
+          }
         }
       }
       const reason = event.data.reason
       if (reason.kind === 'error') {
-        next = [...next, { kind: 'bubble', id: nextId('error'), role: 'error', content: `error: ${reason.error.message}` }]
+        messages.push({ kind: 'bubble', id: nextId('error'), role: 'error', content: `error: ${reason.error.message}` })
       }
-      return { messages: next, turn: initialTurnState() }
+      return { messages, turn: initialTurnState() }
     }
     default:
       return { messages, turn }
@@ -102,29 +90,41 @@ export function reduceChatEvent(
 function appendThinking(messages: Message[], turn: TurnState, text: string): { messages: Message[]; turn: TurnState } {
   if (turn.thinkingId === null) {
     const id = nextId('think')
-    return {
-      messages: [...messages, { kind: 'collapsible', id, label: 'Thinking', body: text, running: true, collapsed: false }],
-      turn: { ...turn, thinkingId: id },
-    }
+    messages.push({ kind: 'collapsible', id, label: 'Thinking', body: text, running: true, collapsed: false })
+    turn.thinkingId = id
+    return { messages, turn }
   }
-  return {
-    messages: messages.map(m => (m.id === turn.thinkingId && m.kind === 'collapsible' ? { ...m, body: m.body + text } : m)),
-    turn,
+  const last = messages[messages.length - 1]
+  if (last !== undefined && last.kind === 'collapsible' && last.id === turn.thinkingId) {
+    last.body += text
+    return { messages, turn }
   }
+  const index = messages.findIndex(m => m.id === turn.thinkingId)
+  if (index >= 0 && messages[index]?.kind === 'collapsible') {
+    const target = messages[index]
+    if (target !== undefined) target.body += text
+  }
+  return { messages, turn }
 }
 
 function appendAssistant(messages: Message[], turn: TurnState, text: string): { messages: Message[]; turn: TurnState } {
   if (turn.assistantId === null) {
     const id = nextId('ai')
-    return {
-      messages: [...messages, { kind: 'bubble', id, role: 'assistant', content: text }],
-      turn: { ...turn, assistantId: id },
-    }
+    messages.push({ kind: 'bubble', id, role: 'assistant', content: text })
+    turn.assistantId = id
+    return { messages, turn }
   }
-  return {
-    messages: messages.map(m => (m.id === turn.assistantId && m.kind === 'bubble' ? { ...m, content: m.content + text } : m)),
-    turn,
+  const last = messages[messages.length - 1]
+  if (last !== undefined && last.kind === 'bubble' && last.id === turn.assistantId) {
+    last.content += text
+    return { messages, turn }
   }
+  const index = messages.findIndex(m => m.id === turn.assistantId)
+  if (index >= 0 && messages[index]?.kind === 'bubble') {
+    const target = messages[index]
+    if (target !== undefined) target.content += text
+  }
+  return { messages, turn }
 }
 
 function textFromBlocks(blocks: ContentBlock[]): string {

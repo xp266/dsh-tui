@@ -1,3 +1,15 @@
 - insert:
+    - id: storage
+      name: '@deepseek-ai/dsh-storage'
+    - id: storage-json
+      name: '@deepseek-ai/dsh-storage-json'
+      config:
+        root: !!js dshHomePath('storages')
+    - id: storage-domain
+      name: '@deepseek-ai/dsh-storage-domain'
+      config:
+        backend: json
+    - id: workspace
+      name: '@deepseek-ai/dsh-workspace'
     - id: tui
       name: dsh-tui

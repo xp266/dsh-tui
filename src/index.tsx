@@ -5,7 +5,7 @@ import { createChatBridge } from './chat/bridge.ts'
 
 export const name = 'dsh-tui'
 
-export const inject = ['agentLoop', 'llm', 'settings', 'credentials', 'agentDefaultModel']
+export const inject = ['agentLoop', 'agents', 'sessions', 'workspaceRegistry', 'llm', 'settings', 'credentials', 'agentDefaultModel']
 
 export function apply(ctx: Context) {
   ctx.effect(() => {

@@ -1,8 +1,10 @@
 import { Box, Text, useCursor, useInput, useStdout } from 'ink'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { colors } from '../theme.ts'
 import { isMouseResidue } from '../terminal/mouse.ts'
-import { colToCharIndex, lineBreaks, locToPoint, textWidth, wrapLines } from '../utils/text.ts'
+import { colToCharIndex, lineBreaks, locToPoint, padToWidth, textWidth, truncate, wrapLines } from '../utils/text.ts'
+import { filterCommands } from './commands.ts'
+import type { CommandHintState } from './commands.ts'
 
 export const INPUT_BAR_HEIGHT = 5
 
@@ -14,17 +16,24 @@ interface InputBarProps {
   modelName: string
   onSend: (text: string) => void
   interactive?: boolean
+  onHintChange?: (hint: CommandHintState | null) => void
 }
 
-export function InputBar({ width, modelName, onSend, interactive = true }: InputBarProps) {
+export function InputBar({ width, modelName, onSend, interactive = true, onHintChange }: InputBarProps) {
   const { stdout } = useStdout()
   const { setCursorPosition } = useCursor()
   const [value, setValue] = useState('')
   const [cursor, setCursor] = useState(0)
+  const [hintOpen, setHintOpen] = useState(false)
+  const [commandIndex, setCommandIndex] = useState(0)
   const valueRef = useRef('')
   const cursorRef = useRef(0)
+  const hintOpenRef = useRef(false)
+  const commandIndexRef = useRef(0)
   valueRef.current = value
   cursorRef.current = cursor
+  hintOpenRef.current = hintOpen
+  commandIndexRef.current = commandIndex
   const totalRows = stdout?.rows ?? 24
   const contentWidth = width - INPUT_WIDTH_OFFSET
   const blockWidth = contentWidth + 4
@@ -36,10 +45,52 @@ export function InputBar({ width, modelName, onSend, interactive = true }: Input
       process.stdout.write('\x1b[0 q')
     }
   }, [])
+  const commands = useMemo(() => filterCommands(value), [value])
+  const hintCommands = useMemo(() => commands.slice(0, 5), [commands])
+  const showHint = interactive && hintOpen && commands.length > 0
+  const renderInlineHint = onHintChange === undefined && showHint
+  useEffect(() => {
+    onHintChange?.(showHint ? { commands: hintCommands, selectedIndex: commandIndex } : null)
+  }, [onHintChange, showHint, hintCommands, commandIndex])
   useInput((input, key) => {
     if (!interactive) return
     const v = valueRef.current
     const c = cursorRef.current
+    const commands = filterCommands(v)
+    const showHint = hintOpenRef.current && commands.length > 0
+    if (key.return && !key.shift && showHint) {
+      const command = commands[Math.min(commandIndexRef.current, commands.length - 1)]?.command
+      if (command !== undefined) {
+        valueRef.current = command
+        cursorRef.current = command.length
+        setValue(command)
+        setCursor(command.length)
+        setHintOpen(false)
+        hintOpenRef.current = false
+        setCommandIndex(0)
+        commandIndexRef.current = 0
+        return
+      }
+    }
+    if (key.escape && showHint) {
+      setHintOpen(false)
+      hintOpenRef.current = false
+      setCommandIndex(0)
+      commandIndexRef.current = 0
+      return
+    }
+    if (key.upArrow && showHint) {
+      const next = (commandIndexRef.current - 1 + commands.length) % commands.length
+      commandIndexRef.current = next
+      setCommandIndex(next)
+      return
+    }
+    if (key.downArrow && showHint) {
+      const next = (commandIndexRef.current + 1) % commands.length
+      commandIndexRef.current = next
+      setCommandIndex(next)
+      return
+    }
     if (key.return && !key.shift) {
       const text = v.trim()
       if (text) onSend(text)
@@ -47,6 +98,10 @@ export function InputBar({ width, modelName, onSend, interactive = true }: Input
       cursorRef.current = 0
       setValue('')
       setCursor(0)
+      setHintOpen(false)
+      hintOpenRef.current = false
+      setCommandIndex(0)
+      commandIndexRef.current = 0
       return
     }
     if (key.return) {
@@ -63,12 +118,22 @@ export function InputBar({ width, modelName, onSend, interactive = true }: Input
       cursorRef.current = c - 1
       setValue(next)
       setCursor(c - 1)
+      const open = next.startsWith('/')
+      setHintOpen(open)
+      hintOpenRef.current = open
+      setCommandIndex(0)
+      commandIndexRef.current = 0
       return
     }
     if (key.delete && c < v.length) {
       const next = v.slice(0, c) + v.slice(c + 1)
       valueRef.current = next
       setValue(next)
+      const open = next.startsWith('/')
+      setHintOpen(open)
+      hintOpenRef.current = open
+      setCommandIndex(0)
+      commandIndexRef.current = 0
       return
     }
     if (key.leftArrow && c > 0) {
@@ -109,6 +174,13 @@ export function InputBar({ width, modelName, onSend, interactive = true }: Input
       cursorRef.current = c + input.length
       setValue(next)
       setCursor(c + input.length)
+      const open = next.startsWith('/')
+      setHintOpen(open)
+      hintOpenRef.current = open
+      if (open) {
+        setCommandIndex(0)
+        commandIndexRef.current = 0
+      }
       return
     }
   })
@@ -128,6 +200,20 @@ export function InputBar({ width, modelName, onSend, interactive = true }: Input
   }
   return (
     <Box flexDirection="column">
+      {renderInlineHint && (
+        <Box marginLeft={2} width={blockWidth} flexDirection="column">
+          {hintCommands.map((command, index) => {
+            const selected = index === commandIndex
+            const line = '  ' + padToWidth(command.command, 20) + command.description
+            const filled = padToWidth(truncate(line, blockWidth), blockWidth)
+            return (
+              <Box key={command.command} width={blockWidth} backgroundColor={selected ? undefined : colors.dialogBackground}>
+                <Text inverse={selected}>{filled}</Text>
+              </Box>
+            )
+          })}
+        </Box>
+      )}
       <EdgeBlock width={blockWidth} />
       <Box
         height={CONTENT_ROWS + 1}
