@@ -25,12 +25,16 @@ export const SessionsDialog = forwardRef<DialogHandle, SessionsDialogProps>(func
 ) {
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
   const loadSessions = async () => {
+    setLoading(true)
     try {
       setSessions(await api.listSessions())
       setError(null)
     } catch (cause) {
       setError(String(cause))
+    } finally {
+      setLoading(false)
     }
   }
   useEffect(() => {
@@ -61,7 +65,11 @@ export const SessionsDialog = forwardRef<DialogHandle, SessionsDialogProps>(func
       },
     ],
   }))
-  const footer = error === null ? undefined : <Text color={colors.errorText}>{error}</Text>
+  const footer = loading
+    ? <Text color={colors.toolBodyText}>loading…</Text>
+    : error === null
+      ? undefined
+      : <Text color={colors.errorText}>{error}</Text>
   return (
     <Dialog
       ref={ref as Ref<DialogHandle>}
