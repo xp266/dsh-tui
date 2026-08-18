@@ -1,5 +1,7 @@
 import type { Message } from '../state/messages.ts'
 import { colToCharIndex, textWidth, wrapLines } from '../utils/text.ts'
+import { selectedRange } from './selection.tsx'
+import type { LineSelection } from './selection.tsx'
 
 export const BUBBLE_WIDTH_OFFSET = 8
 
@@ -167,47 +169,30 @@ export function headerSymbol(running: boolean, collapsed: boolean): string {
   return collapsed ? '-' : '↓'
 }
 
-export interface SelectionRect {
-  top: number
-  bottom: number
-  left: number
-  right: number
-}
-
-export interface SelectionPoint {
-  row: number
-  x: number
-}
-
-export function dragRect(anchor: SelectionPoint, row: number, x: number): SelectionRect {
-  return {
-    top: Math.min(anchor.row, row),
-    bottom: Math.max(anchor.row, row),
-    left: Math.min(anchor.x, x),
-    right: Math.max(anchor.x, x + 1),
-  }
-}
-
-export function selectionText(messages: Message[], width: number, rect: SelectionRect): string {
+export function selectionText(messages: Message[], width: number, selection: LineSelection): string {
   const index = buildRowIndex(messages, width)
   const total = index.total
-  const top = Math.max(0, Math.min(rect.top, total - 1))
-  const bottom = Math.max(0, Math.min(rect.bottom, total - 1))
+  const top = Math.max(0, Math.min(selection.anchorRow, selection.focusRow))
+  const bottom = Math.min(Math.max(selection.anchorRow, selection.focusRow), total - 1)
   const lines: string[] = []
   for (let row = top; row <= bottom; row++) {
     const info = index.rowAt(row)
-    if (info && info.selectable) {
-      const lineWidth = textWidth(info.text)
-      const left = Math.max(rect.left, info.colStart)
-      const right = Math.min(rect.right, info.colStart + lineWidth)
-      if (left < right) {
-        const startIndex = colToCharIndex(info.text, left - info.colStart)
-        const endIndex = colToCharIndex(info.text, right - info.colStart)
-        lines.push(info.text.slice(startIndex, endIndex))
-        continue
-      }
+    if (info === null) continue
+    const line = info.kind === 'header'
+      ? `  ${headerSymbol(info.running, info.collapsed)} ${info.label}`
+      : info.text
+    const range = selectedRange(selection, row)
+    if (range === null) continue
+    const lineWidth = textWidth(line)
+    const left = Math.max(range.start, info.colStart)
+    const right = Math.min(range.end, info.colStart + lineWidth)
+    if (left < right) {
+      const startIndex = colToCharIndex(line, left - info.colStart)
+      const endIndex = colToCharIndex(line, right - info.colStart)
+      lines.push(line.slice(startIndex, endIndex))
+      continue
     }
     lines.push('')
   }
-  return lines.join('\n').replace(/\s+$/, '')
+  return lines.join('\n').replace(/[ \t]+$/gm, '').replace(/\n+$/, '')
 }

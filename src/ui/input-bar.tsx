@@ -5,6 +5,7 @@ import { isMouseResidue } from '../terminal/mouse.ts'
 import { colToCharIndex, lineBreaks, locToPoint, padToWidth, textWidth, truncate, wrapLines } from '../utils/text.ts'
 import { filterCommands } from './commands.ts'
 import type { CommandHintState } from './commands.ts'
+import { HighlightedText } from './selection.tsx'
 
 export const INPUT_BAR_HEIGHT = 5
 
@@ -206,9 +207,10 @@ export function InputBar({ width, modelName, onSend, interactive = true, onHintC
             const selected = index === commandIndex
             const line = '  ' + padToWidth(command.command, 20) + command.description
             const filled = padToWidth(truncate(line, blockWidth), blockWidth)
+            const hintY = totalRows - INPUT_BAR_HEIGHT - 1 - hintCommands.length + index
             return (
               <Box key={command.command} width={blockWidth} backgroundColor={selected ? undefined : colors.dialogBackground}>
-                <Text inverse={selected}>{filled}</Text>
+                <HighlightedText y={hintY} col={0} text={filled} inverse={selected} />
               </Box>
             )
           })}
@@ -226,10 +228,10 @@ export function InputBar({ width, modelName, onSend, interactive = true, onHintC
       >
         {visibleLines.map((line, row) => (
           <Box key={row}>
-            <Text>{line || ' '}</Text>
+            <HighlightedText y={totalRows - INPUT_BAR_HEIGHT + row} col={4} text={line || ' '} />
           </Box>
         ))}
-        <Text color={colors.modelText}>{modelName}</Text>
+        <HighlightedText y={totalRows - INPUT_BAR_HEIGHT + CONTENT_ROWS} col={4} text={modelName} color={colors.modelText} />
       </Box>
       <EdgeBlock width={blockWidth} bottom />
     </Box>

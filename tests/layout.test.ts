@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Message } from '../src/state/messages.ts'
-import { dragRect, rowCount, rowInfoAt, selectionText } from '../src/ui/layout.ts'
+import { rowCount, rowInfoAt, selectionText } from '../src/ui/layout.ts'
+import type { LineSelection } from '../src/ui/selection.tsx'
 
 const WIDTH = 80
 
@@ -46,45 +47,40 @@ describe('selection text extraction', () => {
     { kind: 'bubble', id: 'b', role: 'user', content: '222    22222' },
   ]
 
-  it('extracts only the right column when the rectangle stays right of the gap', () => {
-    expect(selectionText(twoColumn, WIDTH, { top: 1, bottom: 5, left: 11, right: 16 })).toBe('11111\n\n\n\n22222')
+  function msgSel(anchorRow: number, anchorCol: number, focusRow: number, focusCol: number): LineSelection {
+    return { anchorRow, anchorCol, focusRow, focusCol, anchorInMessage: true, focusInMessage: true }
+  }
+
+  it('extracts full middle rows between the anchor rows', () => {
+    expect(selectionText(twoColumn, WIDTH, msgSel(1, 4, 5, 16))).toBe('111    11111\n\n\n\n222    22222')
   })
 
-  it('extracts only the left column when the rectangle stays left of the gap', () => {
-    expect(selectionText(twoColumn, WIDTH, { top: 1, bottom: 5, left: 4, right: 7 })).toBe('111\n\n\n\n222')
+  it('slices the focus row by column range', () => {
+    expect(selectionText(twoColumn, WIDTH, msgSel(1, 4, 5, 7))).toBe('111    11111\n\n\n\n222')
   })
 
   it('does not include background rows in the result text', () => {
-    expect(selectionText(twoColumn, WIDTH, { top: 0, bottom: 4, left: 4, right: 16 })).toBe('\n111    11111')
+    expect(selectionText(twoColumn, WIDTH, msgSel(0, 4, 4, 16))).toBe('\n111    11111')
   })
 
-  it('works against a mixed fixture list without throwing', () => {
+  it('extracts a single-line column range', () => {
+    expect(selectionText(twoColumn, WIDTH, msgSel(1, 4, 1, 9))).toBe('111')
+  })
+
+  it('extracts the full anchored content regardless of scroll position', () => {
     const messages: Message[] = [
-      { kind: 'bubble', id: 'a', role: 'user', content: '111    11111' },
-      { kind: 'collapsible', id: 'b', label: 'Bash', body: 'ls -1\noutput empty', running: false, collapsed: true },
-      { kind: 'bubble', id: 'c', role: 'assistant', content: '222    22222' },
+      { kind: 'bubble', id: 'a', role: 'user', content: 'user line' },
+      { kind: 'bubble', id: 'b', role: 'assistant', content: 'assistant line' },
+      { kind: 'bubble', id: 'c', role: 'user', content: 'third line' },
     ]
-    const text = selectionText(messages, WIDTH, { top: 0, bottom: rowCount(messages, WIDTH) - 1, left: 4, right: 60 })
-    expect(text.length).toBeGreaterThan(10)
-  })
-})
-
-describe('drag rectangle', () => {
-  const anchor = { row: 5, x: 10 }
-
-  it('expands when dragging down and right', () => {
-    expect(dragRect(anchor, 8, 20)).toEqual({ top: 5, bottom: 8, left: 10, right: 21 })
+    const selection = msgSel(1, 4, 9, 14)
+    expect(selectionText(messages, WIDTH, selection)).toBe('user line\n\n\n\nassistant line\n\n\n\nthird line')
   })
 
-  it('shrinks back toward the anchor when dragging up', () => {
-    expect(dragRect(anchor, 7, 15)).toEqual({ top: 5, bottom: 7, left: 10, right: 16 })
-  })
-
-  it('crosses the anchor and selects in the opposite direction', () => {
-    expect(dragRect(anchor, 2, 4)).toEqual({ top: 2, bottom: 5, left: 4, right: 10 })
-  })
-
-  it('collapses to the anchor cell when returning to it', () => {
-    expect(dragRect(anchor, 5, 10)).toEqual({ top: 5, bottom: 5, left: 10, right: 11 })
+  it('includes header rows in the extraction', () => {
+    const messages: Message[] = [
+      { kind: 'collapsible', id: 'b', label: 'Bash', body: 'ls', running: false, collapsed: false },
+    ]
+    expect(selectionText(messages, WIDTH, msgSel(0, 2, 2, 5))).toBe('  ↓ Bash\n\nl')
   })
 })

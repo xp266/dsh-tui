@@ -4,20 +4,22 @@ import { colors } from '../theme.ts'
 import { headerSymbol, SPINNER_FRAMES } from './layout.ts'
 import type { RowInfo } from './layout.ts'
 import { MessageLine } from './text-line.tsx'
+import { HighlightedText } from './selection.tsx'
 
 interface MessageRowProps {
   info: RowInfo
   row: number
+  screenRow: number
   spinnerFrame: number
 }
 
 export const MessageRow = memo(
-  function MessageRow({ info, row, spinnerFrame }: MessageRowProps) {
+  function MessageRow({ info, row, screenRow, spinnerFrame }: MessageRowProps) {
   switch (info.kind) {
     case 'pad':
       return (
         <Box marginLeft={2} width={info.backgroundWidth} backgroundColor={backgroundFor(info.role)}>
-          <Text> </Text>
+          <HighlightedText y={screenRow} col={2} text={' '.repeat(info.backgroundWidth)} />
         </Box>
       )
     case 'text':
@@ -31,7 +33,7 @@ export const MessageRow = memo(
         >
           <MessageLine
             text={info.text || ' '}
-            row={row}
+            row={screenRow}
             colStart={4}
             color={info.role === 'error' ? colors.errorText : info.muted ? colors.toolBodyText : undefined}
           />
@@ -39,7 +41,7 @@ export const MessageRow = memo(
       )
     case 'header': {
       const symbol = info.running ? SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length] : headerSymbol(info.running, info.collapsed)
-      return <Text color={colors.toolLabel}>{`  ${symbol} ${info.label}`}</Text>
+      return <HighlightedText y={screenRow} col={0} text={`  ${symbol} ${info.label}`} color={colors.toolLabel} />
     }
     case 'blank':
       return <Text> </Text>
@@ -47,6 +49,7 @@ export const MessageRow = memo(
   },
   (prev, next) => {
     if (prev.row !== next.row) return false
+    if (prev.screenRow !== next.screenRow) return false
     const a = prev.info
     const b = next.info
     return (

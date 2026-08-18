@@ -8,14 +8,17 @@ import { writeOsc52 } from '../terminal/clipboard.ts'
 import { initialTurnState, reduceChatEvent } from '../chat/reducer.ts'
 import type { ChatBridge } from '../chat/bridge.ts'
 import { rowCount, rowInfoAt, selectionText } from './layout.ts'
-import type { SelectionPoint, SelectionRect } from './layout.ts'
-import { dragRect } from './layout.ts'
+import type { ScreenCapture } from '../terminal/screen.ts'
+import { SelectionContext } from './selection.tsx'
+import { HighlightedText } from './selection.tsx'
+import { toScreenSelection } from './selection.tsx'
+import type { LineSelection } from './selection.tsx'
 import { InputBar, INPUT_BAR_HEIGHT } from './input-bar.tsx'
 import { MessageList } from './message-list.tsx'
 import { ModelsDialog } from './models-dialog.tsx'
 import { SessionsDialog } from './sessions-dialog.tsx'
 import type { DialogHandle } from './dialog.tsx'
-import { padToWidth, textWidth, truncate } from '../utils/text.ts'
+import { padToWidth, truncate } from '../utils/text.ts'
 import type { CommandHintState } from './commands.ts'
 
 const FORCE_EXIT_DELAY_MS = 6000
@@ -24,9 +27,10 @@ const FRAME_MS = 33
 
 interface AppProps {
   bridge?: ChatBridge
+  screen?: ScreenCapture
 }
 
-export function App({ bridge }: AppProps) {
+export function App({ bridge, screen }: AppProps) {
   const { stdout } = useStdout()
   const [columns, setColumns] = useState(stdout?.columns ?? 80)
   const [rows, setRows] = useState(stdout?.rows ?? 24)
@@ -42,7 +46,7 @@ export function App({ bridge }: AppProps) {
     }
   }, [stdout])
   const [messages, setMessages] = useState<Message[]>([])
-  const [selection, setSelection] = useState<SelectionRect | null>(null)
+  const [selection, setSelection] = useState<LineSelection | null>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [sessionsOpen, setSessionsOpen] = useState(false)
@@ -50,12 +54,20 @@ export function App({ bridge }: AppProps) {
   const [stickToBottom, setStickToBottom] = useState(true)
   const [hintState, setHintState] = useState<CommandHintState | null>(null)
   const exiting = useRef(false)
-  const anchorRef = useRef<SelectionPoint | null>(null)
+  const screenRef = useRef<ScreenCapture | undefined>(screen)
+  const clickCandidateRef = useRef<{ messageId: string; y: number; x: number; moved: boolean } | null>(null)
+  const dialogClickCandidateRef = useRef<{ x: number; y: number } | null>(null)
+  const messageHeightRef = useRef(1)
   const dialogOpenRef = useRef(false)
   const stickToBottomRef = useRef(true)
+  const hintStateRef = useRef<CommandHintState | null>(null)
+  const rowsRef = useRef(rows)
   const dialogRef = useRef<DialogHandle | null>(null)
+  screenRef.current = screen
   dialogOpenRef.current = dialogOpen || sessionsOpen
   stickToBottomRef.current = stickToBottom
+  hintStateRef.current = hintState
+  rowsRef.current = rows
   const chatStateRef = useRef<{ messages: Message[]; turn: ReturnType<typeof initialTurnState> }>({
     messages: [],
     turn: initialTurnState(),
@@ -71,6 +83,19 @@ export function App({ bridge }: AppProps) {
   const total = useMemo(() => rowCount(messages, columns), [messages, columns])
   const maxScroll = Math.max(0, total - messageHeight)
   maxScrollRef.current = maxScroll
+  messageHeightRef.current = messageHeight
+  const screenSelection = useMemo(
+    () => toScreenSelection(selection, scrollTop, messageHeight),
+    [selection, scrollTop, messageHeight],
+  )
+  const messageAreaSelection = useMemo(
+    () => (selection !== null && selection.anchorInMessage && selection.focusInMessage ? screenSelection : null),
+    [selection, screenSelection],
+  )
+  const chromeSelection = useMemo(
+    () => (selection !== null && !selection.anchorInMessage ? screenSelection : null),
+    [selection, screenSelection],
+  )
   const applyScroll = useCallback((next: number) => {
     const clamped = Math.max(0, Math.min(maxScrollRef.current, next))
     setScrollTop(clamped)
@@ -128,7 +153,6 @@ export function App({ bridge }: AppProps) {
       if (!bridge) return
       setMessages([])
       setSelection(null)
-      anchorRef.current = null
       chatStateRef.current = { messages: [], turn: initialTurnState() }
       pendingEventsRef.current = []
       applyScroll(Infinity)
@@ -148,33 +172,74 @@ export function App({ bridge }: AppProps) {
     ))
   }
   useEffect(() => {
-    const controller = createMouseController(event => {
-      if (dialogOpenRef.current) {
-        dialogRef.current?.clickAt(event.y, event.x)
-        return
+    const inMessageArea = (screenRow: number): boolean => {
+      if (screenRow >= messageHeightRef.current) return false
+      if (dialogOpenRef.current) return false
+      const hint = hintStateRef.current
+      if (hint !== null) {
+        const hintTop = rowsRef.current - INPUT_BAR_HEIGHT - 1 - hint.commands.length
+        if (screenRow >= hintTop) return false
       }
+      return true
+    }
+    const toContentRow = (screenRow: number) =>
+      inMessageArea(screenRow) ? screenRow + scrollTopRef.current : screenRow
+    const controller = createMouseController(event => {
       switch (event.type) {
         case 'down': {
           if (event.button !== 0) return
-          anchorRef.current = null
+          clickCandidateRef.current = null
+          dialogClickCandidateRef.current = null
           setSelection(null)
-          const contentRow = event.y + scrollTopRef.current
+          const contentRow = toContentRow(event.y)
           const hit = rowInfoAt(messagesRef.current, widthRef.current, contentRow)
-          if (!hit) return
-          if (hit.clickable) {
-            handleToggle(hit.messageId)
+          const anchorable = screenRef.current?.rowHasText(event.y) ?? false
+          const anchorInMessage = inMessageArea(event.y)
+          if (dialogOpenRef.current) {
+            dialogClickCandidateRef.current = { x: event.x, y: event.y }
+            if (anchorable) {
+              setSelection({ anchorRow: event.y, anchorCol: event.x, focusRow: event.y, focusCol: event.x, anchorInMessage: false, focusInMessage: false })
+            }
             return
           }
-          if (hit.selectable && event.x >= hit.colStart && event.x < hit.colStart + textWidth(hit.text)) {
-            anchorRef.current = { row: contentRow, x: event.x }
-            setSelection({ top: contentRow, bottom: contentRow, left: event.x, right: event.x + 1 })
+          if (hit?.clickable) {
+            clickCandidateRef.current = { messageId: hit.messageId, y: event.y, x: event.x, moved: false }
+            return
+          }
+          if (anchorable) {
+            setSelection({ anchorRow: contentRow, anchorCol: event.x, focusRow: contentRow, focusCol: event.x, anchorInMessage, focusInMessage: anchorInMessage })
           }
           return
         }
         case 'drag': {
-          const anchor = anchorRef.current
-          if (anchor) {
-            setSelection(dragRect(anchor, event.y + scrollTopRef.current, event.x))
+          const candidate = clickCandidateRef.current
+          if (candidate !== null) {
+            candidate.moved = true
+            clickCandidateRef.current = null
+            const anchorRow = toContentRow(candidate.y)
+            setSelection({ anchorRow, anchorCol: candidate.x, focusRow: toContentRow(event.y), focusCol: event.x, anchorInMessage: inMessageArea(candidate.y), focusInMessage: inMessageArea(event.y) })
+            return
+          }
+          const dialogCandidate = dialogClickCandidateRef.current
+          if (dialogCandidate !== null) {
+            dialogClickCandidateRef.current = null
+            setSelection({ anchorRow: dialogCandidate.y, anchorCol: dialogCandidate.x, focusRow: event.y, focusCol: event.x, anchorInMessage: false, focusInMessage: false })
+            return
+          }
+          setSelection(current => (current === null ? current : { ...current, focusRow: toContentRow(event.y), focusCol: event.x, focusInMessage: inMessageArea(event.y) }))
+          return
+        }
+        case 'up': {
+          const candidate = clickCandidateRef.current
+          if (candidate !== null && !candidate.moved) {
+            handleToggle(candidate.messageId)
+          }
+          clickCandidateRef.current = null
+          const dialogCandidate = dialogClickCandidateRef.current
+          if (dialogCandidate !== null) {
+            dialogClickCandidateRef.current = null
+            dialogRef.current?.clickAt(dialogCandidate.y, dialogCandidate.x)
+            setSelection(null)
           }
           return
         }
@@ -191,13 +256,15 @@ export function App({ bridge }: AppProps) {
     return () => controller.disable()
   }, [])
   useInput((input, key) => {
-    if (dialogOpenRef.current) return
+    if (dialogOpenRef.current && !selection) return
     if (key.ctrl && input === 'c') {
       if (selection) {
-        const text = selectionText(messagesRef.current, widthRef.current, selection)
+        const text = selection.anchorInMessage && selection.focusInMessage
+          ? selectionText(messagesRef.current, widthRef.current, selection)
+          : (screenRef.current?.extractSelection(screenSelection ?? selection) ?? '')
+        console.error('DBG copy:', JSON.stringify({ selection, text: text.slice(0, 60), len: text.length }))
         if (text) writeOsc52(text)
         setSelection(null)
-        anchorRef.current = null
         return
       }
       if (!exiting.current) {
@@ -208,67 +275,74 @@ export function App({ bridge }: AppProps) {
     }
   })
   return (
-    <Box flexDirection="column" width={columns} height={rows}>
-      <MessageList
-        messages={messages}
-        height={messageHeight}
-        width={columns}
-        selection={selection}
-        scrollTop={scrollTop}
-        onScroll={applyScroll}
-        interactive={!dialogOpen && !sessionsOpen}
-      />
-      <InputBar width={columns} modelName={modelName} onSend={handleSend} interactive={!dialogOpen && !sessionsOpen} onHintChange={setHintState} />
-      {hintState !== null && !dialogOpen && !sessionsOpen && (
-        <Box
-          position="absolute"
-          top={Math.max(0, rows - INPUT_BAR_HEIGHT - 1 - hintState.commands.length)}
-          left={2}
-          width={Math.max(1, columns - 4)}
-          flexDirection="column"
-        >
-          {hintState.commands.map((command, index) => {
-            const selected = index === hintState.selectedIndex
-            const blockWidth = Math.max(1, columns - 4)
-            const line = '  ' + padToWidth(command.command, 20) + command.description
-            const filled = padToWidth(truncate(line, blockWidth), blockWidth)
-            return (
-              <Box key={command.command} width={blockWidth} backgroundColor={selected ? undefined : colors.dialogBackground}>
-                <Text inverse={selected}>{filled}</Text>
-              </Box>
-            )
-          })}
-        </Box>
-      )}
-      <Box marginLeft={4}>
-        <Text color={colors.cwdText}>{cwdLabel()}</Text>
-      </Box>
-      {dialogOpen && bridge !== undefined && (
-        <ModelsDialog
-          ref={dialogRef}
-          api={bridge}
-          onClose={() => setDialogOpen(false)}
-          onModelSelected={(_provider, model) => setModelName(model)}
+    <SelectionContext.Provider value={messageAreaSelection}>
+      <Box flexDirection="column" width={columns} height={rows}>
+        <MessageList
+          messages={messages}
+          height={messageHeight}
+          width={columns}
+          scrollTop={scrollTop}
+          onScroll={applyScroll}
+          interactive={!dialogOpen && !sessionsOpen}
         />
+        <SelectionContext.Provider value={chromeSelection}>
+          <InputBar width={columns} modelName={modelName} onSend={handleSend} interactive={!dialogOpen && !sessionsOpen} onHintChange={setHintState} />
+          {hintState !== null && !dialogOpen && !sessionsOpen && (
+            <Box
+              position="absolute"
+              top={Math.max(0, rows - INPUT_BAR_HEIGHT - 1 - hintState.commands.length)}
+              left={2}
+              width={Math.max(1, columns - 4)}
+              flexDirection="column"
+            >
+              {hintState.commands.map((command, index) => {
+                const selected = index === hintState.selectedIndex
+                const blockWidth = Math.max(1, columns - 4)
+                const line = '  ' + padToWidth(command.command, 20) + command.description
+                const filled = padToWidth(truncate(line, blockWidth), blockWidth)
+                const hintY = Math.max(0, rows - INPUT_BAR_HEIGHT - 1 - hintState.commands.length) + index
+                return (
+                  <Box key={command.command} width={blockWidth} backgroundColor={selected ? undefined : colors.dialogBackground}>
+                    <HighlightedText y={hintY} col={0} text={filled} />
+                  </Box>
+                )
+              })}
+            </Box>
+          )}
+          <Box marginLeft={4}>
+            <HighlightedText y={rows - 1} col={4} text={cwdLabel()} color={colors.cwdText} />
+          </Box>
+        </SelectionContext.Provider>
+      {dialogOpen && bridge !== undefined && (
+        <SelectionContext.Provider value={chromeSelection}>
+          <ModelsDialog
+            ref={dialogRef}
+            api={bridge}
+            onClose={() => setDialogOpen(false)}
+            onModelSelected={(_provider, model) => setModelName(model)}
+          />
+        </SelectionContext.Provider>
       )}
       {sessionsOpen && bridge !== undefined && (
-        <SessionsDialog
-          ref={dialogRef}
-          api={bridge}
-          onClose={() => setSessionsOpen(false)}
-          onBeforeSessionSelected={() => {
-            setMessages([])
-            setSelection(null)
-            anchorRef.current = null
-            chatStateRef.current = { messages: [], turn: initialTurnState() }
-            pendingEventsRef.current = []
-          }}
-          onSessionSelected={() => {
-            applyScroll(Infinity)
-          }}
-        />
+        <SelectionContext.Provider value={chromeSelection}>
+          <SessionsDialog
+            ref={dialogRef}
+            api={bridge}
+            onClose={() => setSessionsOpen(false)}
+            onBeforeSessionSelected={() => {
+              setMessages([])
+              setSelection(null)
+              chatStateRef.current = { messages: [], turn: initialTurnState() }
+              pendingEventsRef.current = []
+            }}
+            onSessionSelected={() => {
+              applyScroll(Infinity)
+            }}
+          />
+        </SelectionContext.Provider>
       )}
-    </Box>
+      </Box>
+    </SelectionContext.Provider>
   )
 }
 
