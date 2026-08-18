@@ -8,19 +8,94 @@ export interface SessionSummary {
   id: string
   name: string
   directory: string
-  createdAt: number
+  ungrouped: boolean
+  updatedAt: number
 }
 
-interface SessionRecordLike {
-  header: { id: string; createdAt: number; cwd?: string; origin?: 'subagent' }
-  live: boolean
-  persisted: boolean
+/**
+ * Session picker data, mirroring the Host's `listVisibleSessionSummaries`:
+ * all live sessions plus persisted cold sessions with a cwd, newest-first,
+ * without any workspace filtering (the picker labels ungrouped sessions).
+ */
+export async function computeSessionList(ctx: Context, currentId?: string): Promise<SessionSummary[]> {
+  const workspacePaths = collectWorkspacePaths(ctx)
+  const archived = collectArchivedIds(ctx)
+  const summaries: SessionSummary[] = []
+  const attached = new Set<string>()
+  const titleService = ctx.get('sessionTitle') as
+    | { get?(session: { id: string; events: readonly SessionEvent[] }): { title?: string } | undefined }
+    | undefined
+  for (const session of ctx.sessions.list()) {
+    const id = String(session.id)
+    attached.add(id)
+    if (archived.has(id)) continue
+    if (isBlank(session.events) && id !== currentId) continue
+    const title = titleService?.get?.(session)?.title ?? firstUserText(session.events)
+    summaries.push(toSummary(id, title, session.header.cwd, session.header.createdAt, lastPromptAt(session.events), workspacePaths))
+  }
+  const persistence = ctx.get('sessionPersistence') as PersistenceLike | undefined
+  if (persistence !== undefined && typeof persistence.list === 'function') {
+    const cold = (await persistence.list()).filter(header => !attached.has(header.id) && header.cwd !== undefined)
+    await mergeColdSummaries(ctx, persistence, cold, archived, workspacePaths, summaries)
+  }
+  return summaries.sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+function toSummary(
+  id: string,
+  title: string | undefined,
+  cwd: string | undefined,
+  createdAt: number,
+  updatedAt: number,
+  workspacePaths: ReadonlySet<string>,
+): SessionSummary {
+  return {
+    id,
+    name: title ?? fallbackName(id, cwd),
+    directory: cwd ?? '',
+    ungrouped: cwd === undefined || !workspacePaths.has(cwd),
+    updatedAt: Math.max(createdAt, updatedAt),
+  }
+}
+
+function collectWorkspacePaths(ctx: Context): Set<string> {
+  const workspace = ctx.get('workspaceRegistry') as { list?(): Array<{ path: string }> } | undefined
+  try {
+    const paths = new Set(workspace?.list?.().map(entry => entry.path) ?? [])
+    return paths.size > 0 ? paths : new Set([process.cwd()])
+  } catch {
+    return new Set([process.cwd()])
+  }
+}
+
+function collectArchivedIds(ctx: Context): Set<string> {
+  const workspace = ctx.get('workspaceRegistry') as { archivedSessionIds?: readonly unknown[] } | undefined
+  try {
+    return new Set((workspace?.archivedSessionIds ?? []).map(String))
+  } catch {
+    return new Set()
+  }
+}
+
+function isBlank(events: readonly SessionEvent[]): boolean {
+  return !events.some(event => event.type === 'turn/start')
+}
+
+function lastPromptAt(events: readonly SessionEvent[]): number {
+  let last = 0
+  for (const event of events) {
+    if (event.type === 'user/message' && event.data.source.kind === 'user') last = event.time
+  }
+  return last
+}
+
+interface PersistenceLike {
+  list(signal?: AbortSignal): Promise<Array<{ id: string; cwd?: string; createdAt: number }>>
+  locate?(header: { cwd?: string; id: string }): { path: string } | undefined
+  readFrom?(id: string, offset: number, signal?: AbortSignal): Promise<{ events: SessionEvent[] }>
 }
 
 interface SessionQueryLike {
-  listSessions(signal?: AbortSignal): Promise<SessionRecordLike[]>
-  filterSessions?(filters: readonly { kind: 'cwd'; values: readonly (string | null)[] }[], signal?: AbortSignal): Promise<SessionRecordLike[]>
-  readSession?(id: string): Promise<{ session: { cwd?: string }; events: SessionEvent[] }>
   readTitleSnapshots?(ids: readonly SessionId[]): Promise<Array<{
     sessionId: SessionId
     status: 'fulfilled' | 'rejected'
@@ -36,10 +111,7 @@ interface SessionMetaCacheEntry {
 const sessionMetaCache = new Map<string, SessionMetaCacheEntry>()
 const BLANK_PROBE_MAX_BYTES = 1024
 
-async function isSmallLog(
-  ctx: Context,
-  header: { cwd?: string; id: string },
-): Promise<boolean> {
+async function isSmallLog(ctx: Context, header: { cwd?: string; id: string }): Promise<boolean> {
   const persistence = ctx.get('sessionPersistence') as { locate?(header: { cwd?: string; id: string }): { path: string } | undefined } | undefined
   try {
     const location = persistence?.locate?.(header)
@@ -51,126 +123,64 @@ async function isSmallLog(
   }
 }
 
-export async function computeSessionList(ctx: Context): Promise<SessionSummary[]> {
-  const query = ctx.get('sessionQuery') as SessionQueryLike | undefined
-  const workspace = ctx.get('workspaceRegistry') as {
-    archivedSessionIds: readonly string[]
-    list?(): Array<{ path: string }>
-  } | undefined
-  const sessionTitleService = ctx.get('sessionTitle') as { get?(session: { id: string; events: readonly SessionEvent[] }): { title?: string } | undefined } | undefined
-  let archived = new Set<string>()
-  try {
-    archived = new Set(workspace?.archivedSessionIds ?? [])
-  } catch {
-    archived = new Set()
-  }
-  let workspacePaths = new Set<string>()
-  try {
-    workspacePaths = new Set(workspace?.list?.().map(entry => entry.path) ?? [])
-  } catch {
-    workspacePaths = new Set()
-  }
-  if (workspacePaths.size === 0) workspacePaths = new Set([process.cwd()])
-  if (query === undefined || typeof query.listSessions !== 'function') {
-    return ctx.sessions
-      .list()
-      .filter(session => {
-        if (archived.has(String(session.id))) return false
-        if (session.header.origin === 'subagent') return false
-        if (session.header.cwd === undefined || !workspacePaths.has(session.header.cwd)) return false
-        const blank = !session.events.some(event => event.type === 'turn/start')
-        return !blank
-      })
-      .map(session => ({
-        id: String(session.id),
-        name: titleFromEvents(session.events) ?? firstUserText(session.events) ?? fallbackName(String(session.id), session.header.cwd),
-        directory: session.header.cwd ?? '',
-        createdAt: session.header.createdAt,
-      }))
-      .sort(compareSessions)
-  }
-  const allRecords = typeof query.filterSessions === 'function'
-    ? await query.filterSessions([{ kind: 'cwd', values: [...workspacePaths] }])
-    : await query.listSessions()
-  const titleBySession = new Map<string, string>()
-  const smallRecords: SessionRecordLike[] = []
-  const largeRecords: SessionRecordLike[] = []
-  const kept: SessionRecordLike[] = []
-  for (const record of allRecords) {
-    if (archived.has(record.header.id)) continue
-    if (record.header.origin === 'subagent') continue
-    if (record.header.cwd === undefined || !workspacePaths.has(record.header.cwd)) continue
-    const live = ctx.sessions.get(SessionId(record.header.id))
-    if (live !== undefined) {
-      const blank = !live.events.some(event => event.type === 'turn/start')
-      if (blank) continue
-      const title = sessionTitleService?.get?.(live)?.title ?? titleFromEvents(live.events)
-      if (title !== undefined && title !== '') titleBySession.set(record.header.id, title)
-      kept.push(record)
-      continue
-    }
-    const cached = sessionMetaCache.get(record.header.id)
+async function mergeColdSummaries(
+  ctx: Context,
+  persistence: PersistenceLike,
+  cold: Array<{ id: string; cwd?: string; createdAt: number }>,
+  archived: ReadonlySet<string>,
+  workspacePaths: ReadonlySet<string>,
+  summaries: SessionSummary[],
+): Promise<void> {
+  const small: Array<{ id: string; cwd?: string; createdAt: number }> = []
+  const large: Array<{ id: string; cwd?: string; createdAt: number }> = []
+  for (const header of cold) {
+    if (archived.has(header.id)) continue
+    const cached = sessionMetaCache.get(header.id)
     if (cached !== undefined && cached.blank !== undefined) {
-      if (cached.blank) continue
-      if (cached.title !== undefined && cached.title !== '') titleBySession.set(record.header.id, cached.title)
-      kept.push(record)
+      if (!cached.blank) {
+        summaries.push(toSummary(header.id, cached.title, header.cwd, header.createdAt, header.createdAt, workspacePaths))
+      }
       continue
     }
-    if (cached !== undefined && cached.title !== undefined && cached.title !== '') {
-      if (!(await isSmallLog(ctx, record.header))) {
-        titleBySession.set(record.header.id, cached.title)
-        kept.push(record)
-        continue
-      }
-    }
-    if (await isSmallLog(ctx, record.header)) smallRecords.push(record)
-    else largeRecords.push(record)
+    if (await isSmallLog(ctx, header)) small.push(header)
+    else large.push(header)
   }
-  for (const record of smallRecords) {
+  for (const header of small) {
     let blank = false
     let title: string | undefined
-    if (query.readSession !== undefined) {
+    let promptAt = 0
+    if (typeof persistence.readFrom === 'function') {
       try {
-        const snapshot = await query.readSession(String(record.header.id))
-        blank = !snapshot.events.some(event => event.type === 'turn/start')
-        title = titleFromEvents(snapshot.events)
+        const { events } = await persistence.readFrom(String(header.id), 0)
+        blank = isBlank(events)
+        title = titleFromEvents(events) ?? firstUserText(events)
+        promptAt = lastPromptAt(events)
       } catch {
         blank = false
       }
     }
-    sessionMetaCache.set(record.header.id, { title, blank })
+    sessionMetaCache.set(header.id, { title, blank })
     if (blank) continue
-    if (title !== undefined && title !== '') titleBySession.set(record.header.id, title)
-    kept.push(record)
+    summaries.push(toSummary(header.id, title, header.cwd, header.createdAt, promptAt, workspacePaths))
   }
-  if (query.readTitleSnapshots !== undefined && largeRecords.length > 0) {
-    const results = await query.readTitleSnapshots(largeRecords.map(record => SessionId(record.header.id)))
-    for (let i = 0; i < largeRecords.length; i++) {
-      const record = largeRecords[i]!
-      const result = results[i]
-      const snapshot = result?.status === 'fulfilled' ? result.value?.title : undefined
-      const title = snapshot !== undefined && snapshot.title !== undefined && snapshot.title !== ''
-        ? snapshot.title
-        : undefined
-      sessionMetaCache.set(record.header.id, { title, blank: undefined })
-      if (title !== undefined) titleBySession.set(record.header.id, title)
-      kept.push(record)
+  if (large.length === 0) return
+  const query = ctx.get('sessionQuery') as SessionQueryLike | undefined
+  if (query?.readTitleSnapshots === undefined) {
+    for (const header of large) {
+      summaries.push(toSummary(header.id, undefined, header.cwd, header.createdAt, header.createdAt, workspacePaths))
     }
+    return
   }
-  return kept
-    .map(record => ({
-      id: record.header.id,
-      name: titleBySession.get(record.header.id) ?? fallbackName(record.header.id, record.header.cwd),
-      directory: record.header.cwd ?? '',
-      createdAt: record.header.createdAt,
-    }))
-    .sort(compareSessions)
-}
-
-export function compareSessions(a: SessionSummary, b: SessionSummary): number {
-  const dir = (a.directory ?? '').localeCompare(b.directory ?? '')
-  if (dir !== 0) return dir
-  return b.createdAt - a.createdAt
+  const results = await query.readTitleSnapshots(large.map(header => SessionId(header.id)))
+  for (let i = 0; i < large.length; i++) {
+    const header = large[i]!
+    const result = results[i]
+    const title = result?.status === 'fulfilled' && result.value?.title?.title !== undefined && result.value.title.title !== ''
+      ? result.value.title.title
+      : undefined
+    sessionMetaCache.set(header.id, { title, blank: undefined })
+    summaries.push(toSummary(header.id, title, header.cwd, header.createdAt, header.createdAt, workspacePaths))
+  }
 }
 
 function fallbackName(id: string, directory?: string): string {

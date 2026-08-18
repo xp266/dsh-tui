@@ -150,10 +150,6 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   }
 
   async function listSessions(): Promise<SessionSummary[]> {
-    if (sessionListCache !== undefined) {
-      void refreshSessionList()
-      return sessionListCache
-    }
     await refreshSessionList(true)
     return sessionListCache ?? []
   }
@@ -162,7 +158,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     const now = Date.now()
     if (!force && sessionListRefreshAt > now - SESSION_LIST_REFRESH_MIN_MS) return
     if (sessionListRefresh !== undefined) return sessionListRefresh
-    sessionListRefresh = computeSessionList(ctx)
+    sessionListRefresh = computeSessionList(ctx, String(activeAgent.id))
       .then(records => {
         sessionListCache = records
         sessionListRefreshAt = Date.now()

@@ -55,7 +55,7 @@ export const SessionsDialog = forwardRef<DialogHandle, SessionsDialogProps>(func
       {
         type: 'button',
         label: session.name || session.id,
-        right: session.directory,
+        right: session.ungrouped ? 'Ungrouped' : session.directory,
         onPress: () => void selectSession(session),
       },
     ],

@@ -125,8 +125,8 @@ export function App({ bridge, screen }: AppProps) {
                 const filled = padToWidth(truncate(line, blockWidth), blockWidth)
                 const hintY = Math.max(0, rows - INPUT_BAR_HEIGHT - 1 - hintState.commands.length) + index
                 return (
-                  <Box key={command.command} width={blockWidth} backgroundColor={selected ? undefined : colors.dialogBackground}>
-                    <HighlightedText y={hintY} col={0} text={filled} />
+                  <Box key={command.command} width={blockWidth} backgroundColor={colors.dialogBackground}>
+                    <HighlightedText y={hintY} col={0} text={filled} inverse={selected} />
                   </Box>
                 )
               })}

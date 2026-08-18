@@ -85,6 +85,13 @@ export function hitRowIndex(y: number, top: number, titleLines: number, rows: Di
   return null
 }
 
+function arrowFromRaw(input: string): 'up' | 'down' | 'left' | 'right' | null {
+  const match = /^(?:\[|O)(?:1;)?\d*(?::\d+)?([ABCD])$/.exec(input)
+  if (match === null) return null
+  const letter = match[1]!
+  return letter === 'A' ? 'up' : letter === 'B' ? 'down' : letter === 'C' ? 'right' : 'left'
+}
+
 export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
   { width, maxHeight, title, rows, footer, onClose, search = false, searchRight = false },
   ref,
@@ -93,7 +100,7 @@ export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
   const { setCursorPosition } = useCursor()
   const columns = stdout?.columns ?? 80
   const totalRows = stdout?.rows ?? 24
-  const [focus, setFocus] = useState<DialogFocus>({ row: 0, col: 0 })
+  const [focus, setFocus] = useState<DialogFocus>({ row: search ? 1 : 0, col: 0 })
   const [scrollTop, setScrollTop] = useState(0)
   const [cursor, setCursor] = useState(0)
   const [searchValue, setSearchValue] = useState('')
@@ -115,9 +122,17 @@ export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
         )
       : rows
   const displayRows = search ? [searchRow, ...filteredRows] : rows
+  const focusMinRow = search ? 1 : 0
+  const focusMaxRow = Math.max(focusMinRow, displayRows.length - 1)
+  const focusMinRowRef = useRef(focusMinRow)
+  const focusMaxRowRef = useRef(focusMaxRow)
   useEffect(() => {
-    setFocus(current => (current.row > displayRows.length - 1 ? { row: Math.max(0, displayRows.length - 1), col: 0 } : current))
-  }, [displayRows])
+    setFocus(current =>
+      current.row < focusMinRow ? { row: focusMinRow, col: 0 }
+        : current.row > focusMaxRow ? { row: focusMaxRow, col: 0 }
+          : current,
+    )
+  }, [displayRows, focusMinRow, focusMaxRow])
   const titleLines = title === undefined ? 0 : 2
   const footerLines = footer === undefined ? 0 : 1
   const windowWidth = Math.min(width + 2, columns)
@@ -132,14 +147,18 @@ export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
   const scrollTopRef = useRef(scrollTop)
   const cursorRef = useRef(cursor)
   const valueRef = useRef('')
+  const searchValueRef = useRef(searchValue)
   const contentHeightRef = useRef(contentHeight)
   rowsRef.current = displayRows
   focusRef.current = focus
   scrollTopRef.current = scrollTop
   cursorRef.current = cursor
+  searchValueRef.current = searchValue
   contentHeightRef.current = contentHeight
+  focusMinRowRef.current = focusMinRow
+  focusMaxRowRef.current = focusMaxRow
   const safeFocus: DialogFocus = {
-    row: Math.min(focus.row, Math.max(0, displayRows.length - 1)),
+    row: Math.min(Math.max(focus.row, focusMinRow), focusMaxRow),
     col: Math.min(focus.col, Math.max(0, (displayRows[focus.row]?.items.length ?? 1) - 1)),
   }
   const current = displayRows[safeFocus.row]?.items[safeFocus.col]
@@ -148,7 +167,11 @@ export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
     const item = displayRows[safeFocus.row]?.items[safeFocus.col]
     setCursor(item?.type === 'input' || item?.type === 'search' ? item.value.length : 0)
   }, [current?.type, safeFocus.row, safeFocus.col, displayRows.length])
-  if (current?.type === 'input' || current?.type === 'select' || current?.type === 'search') {
+  if (search) {
+    const x = left + 1 + textWidth(searchValue)
+    const y = top + 2 + titleLines
+    setCursorPosition({ x, y })
+  } else if (current?.type === 'input' || current?.type === 'select' || current?.type === 'search') {
     const rowOffset = rowTopOffset(displayRows, safeFocus.row)
     const valueLine = current.type === 'search' ? rowOffset : rowOffset + 1
     const y = top + 2 + titleLines + valueLine - scrollTop
@@ -174,37 +197,43 @@ export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
     const liveContentHeight = contentHeightRef.current
     const liveNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
       const next = moveFocus(liveRows, liveFocus, direction)
-      setFocus(next)
-      setScrollTop(adjustScroll(liveRows, next, liveScroll, liveContentHeight))
+      const clamped = { ...next, row: Math.min(Math.max(next.row, focusMinRowRef.current), focusMaxRowRef.current) }
+      setFocus(clamped)
+      setScrollTop(adjustScroll(liveRows, clamped, liveScroll, liveContentHeight))
     }
     const liveCurrent = liveRows[liveFocus.row]?.items[liveFocus.col]
+    const rawArrow = arrowFromRaw(input)
+    const isUp = key.upArrow || rawArrow === 'up'
+    const isDown = key.downArrow || rawArrow === 'down'
+    const isLeft = key.leftArrow || rawArrow === 'left'
+    const isRight = key.rightArrow || rawArrow === 'right'
     if (key.escape || (key.ctrl && input === 'c')) {
       onClose()
       return
     }
-    if ((key.leftArrow || key.rightArrow) && liveCurrent?.type === 'select' && liveCurrent.options.length > 1) {
+    if ((isLeft || isRight) && liveCurrent?.type === 'select' && liveCurrent.options.length > 1) {
       const index = Math.max(0, liveCurrent.options.indexOf(liveCurrent.value))
       const length = liveCurrent.options.length
-      const chosen = key.rightArrow
+      const chosen = isRight
         ? liveCurrent.options[(index + 1) % length]
         : liveCurrent.options[(index - 1 + length) % length]
       if (chosen !== undefined) liveCurrent.onChange(chosen)
       return
     }
-    if ((key.leftArrow || key.rightArrow) && (liveCurrent?.type === 'input' || liveCurrent?.type === 'search')) {
+    if ((isLeft || isRight) && (liveCurrent?.type === 'input' || liveCurrent?.type === 'search')) {
       const c = cursorRef.current
-      if (key.leftArrow && c > 0) {
+      if (isLeft && c > 0) {
         cursorRef.current = c - 1
         setCursor(c - 1)
       }
-      if (key.rightArrow && c < liveCurrent.value.length) {
+      if (isRight && c < liveCurrent.value.length) {
         cursorRef.current = c + 1
         setCursor(c + 1)
       }
       return
     }
-    if (key.upArrow || key.downArrow) {
-      liveNavigate(key.upArrow ? 'up' : 'down')
+    if (isUp || isDown) {
+      liveNavigate(isUp ? 'up' : 'down')
       return
     }
     if (key.return) {
@@ -233,6 +262,17 @@ export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
     if (input === ' ' && liveCurrent?.type === 'checkbox') {
       liveCurrent.onToggle()
       return
+    }
+    if (search && liveCurrent?.type !== 'input' && liveCurrent?.type !== 'select') {
+      const v = searchValueRef.current
+      if ((key.backspace || key.delete) && v.length > 0) {
+        handleSearch(v.slice(0, -1))
+        return
+      }
+      if (input && !key.ctrl && !key.meta && !isMouseResidue(input)) {
+        handleSearch(v + input)
+        return
+      }
     }
     if (liveCurrent?.type === 'input' || liveCurrent?.type === 'search') {
       const c = cursorRef.current
@@ -265,7 +305,7 @@ export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
       if (y < top || y >= top + windowHeight || x < left || x >= left + windowWidth) return
       const rowIndex = hitRowIndex(y, top, titleLines, displayRows)
       if (rowIndex === null) return
-      const next = { row: rowIndex, col: 0 }
+      const next = { row: Math.min(Math.max(rowIndex, focusMinRow), focusMaxRow), col: 0 }
       setFocus(next)
       setScrollTop(adjustScroll(displayRows, next, scrollTop, contentHeight))
     },

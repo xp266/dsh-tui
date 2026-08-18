@@ -18,12 +18,12 @@ export function MessageList({ messages, height, width, scrollTop, onScroll, inte
   const index = useMemo(() => buildRowIndex(messages, width), [messages, width])
   const total = index.total
   const halfPage = Math.max(1, Math.ceil(height / 2))
+  const hasRunning = messages.some(m => m.kind === 'collapsible' && m.running)
   useEffect(() => {
-    if (!interactive) return
-    if (!messages.some(m => m.kind === 'collapsible' && m.running)) return
+    if (!interactive || !hasRunning) return
     const timer = setInterval(() => setSpinnerFrame(f => (f + 1) % 10), 100)
     return () => clearInterval(timer)
-  }, [messages, interactive])
+  }, [interactive, hasRunning])
   useInput((input, key) => {
     if (!interactive) return
     if (key.pageUp) onScroll(scrollTop - height + 2)
