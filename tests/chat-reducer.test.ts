@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CallId, createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { initialTurnState, reduceChatEvent } from '../src/chat/store.ts'
+import type { ChatToolPresenter } from '../src/chat/bridge.ts'
 import type { Message } from '../src/model/message.ts'
 
 function userEvent(text: string): SessionEvent {
@@ -13,12 +14,12 @@ function userEvent(text: string): SessionEvent {
   }
 }
 
-function reasoning(text: string): SessionEvent {
-  return { type: 'assistant/chunk', seq: 1, time: 0, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text } } }
+function reasoning(text: string, step = 1): SessionEvent {
+  return { type: 'assistant/chunk', seq: 1, time: 0, data: { turn: 1, step, chunk: { type: 'reasoning-delta', index: 0, text } } }
 }
 
-function textDelta(text: string): SessionEvent {
-  return { type: 'assistant/chunk', seq: 1, time: 0, data: { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text } } }
+function textDelta(text: string, step = 1): SessionEvent {
+  return { type: 'assistant/chunk', seq: 1, time: 0, data: { turn: 1, step, chunk: { type: 'text-delta', index: 0, text } } }
 }
 
 function toolCall(callId: string): SessionEvent {
@@ -55,6 +56,22 @@ function apply(initial: Message[], events: SessionEvent[]) {
     turn = next.turn
   }
   return { messages, turn }
+}
+
+function fakePresenter(): ChatToolPresenter {
+  return {
+    call: (_name, _callId, argumentsRaw) => {
+      try {
+        return (JSON.parse(argumentsRaw) as { command?: string }).command
+      } catch {
+        return undefined
+      }
+    },
+    result: (_callId, result) => ({
+      output: result.content.map(block => block.type === 'text' ? block.text : '').join(''),
+    }),
+    argsJson: _callId => undefined,
+  }
 }
 
 describe('chat event reducer', () => {
@@ -151,5 +168,88 @@ describe('chat event reducer', () => {
     }
     const { messages } = apply([], [userEvent('hi'), failed])
     expect(messages[1]).toMatchObject({ kind: 'bubble', role: 'error', content: 'error: no API key' })
+  })
+
+  it('shows the command while running and command plus output after the result', () => {
+    let messages: Message[] = []
+    let turn = initialTurnState()
+    const bashCall: SessionEvent = {
+      type: 'tool/call',
+      seq: 1,
+      time: 0,
+      data: { turn: 1, step: 1, callId: CallId('c1'), name: 'bash', arguments: '{"command":"ls -a"}' },
+    }
+    const next = reduceChatEvent(messages, bashCall, turn, fakePresenter())
+    messages = next.messages
+    turn = next.turn
+    expect(messages[0]).toMatchObject({ kind: 'collapsible', label: 'bash', running: true, body: 'ls -a' })
+    const done = reduceChatEvent(messages, toolResult('c1', 'xx.xx'), turn, fakePresenter())
+    expect(done.messages[0]).toMatchObject({ running: false, body: 'ls -a\n\nxx.xx' })
+  })
+
+  it('keeps only the command line when the result content is empty', () => {
+    let messages: Message[] = []
+    let turn = initialTurnState()
+    const call: SessionEvent = {
+      type: 'tool/call',
+      seq: 1,
+      time: 0,
+      data: { turn: 1, step: 1, callId: CallId('c1'), name: 'bash', arguments: '{"command":"ls -a"}' },
+    }
+    const presenter: ChatToolPresenter = {
+      ...fakePresenter(),
+      result: () => ({ output: '' }),
+      argsJson: () => '{"command":"ls -a"}',
+    }
+    const called = reduceChatEvent(messages, call, turn, presenter)
+    const done = reduceChatEvent(called.messages, toolResult('c1', ''), called.turn, presenter)
+    expect(done.messages[0]).toMatchObject({ running: false, body: 'ls -a' })
+  })
+
+  it('falls back to the argument JSON when neither command nor output exists', () => {
+    let messages: Message[] = []
+    let turn = initialTurnState()
+    const call: SessionEvent = {
+      type: 'tool/call',
+      seq: 1,
+      time: 0,
+      data: { turn: 1, step: 1, callId: CallId('c1'), name: 'todo_write', arguments: '{"todos":[]}' },
+    }
+    const presenter: ChatToolPresenter = {
+      call: () => undefined,
+      result: () => ({ output: '' }),
+      argsJson: () => '{\n  "todos": []\n}',
+    }
+    const called = reduceChatEvent(messages, call, turn, presenter)
+    const done = reduceChatEvent(called.messages, toolResult('c1', ''), called.turn, presenter)
+    expect(done.messages[0]).toMatchObject({ running: false, body: '{\n  "todos": []\n}' })
+  })
+
+  it('renders one Thinking row per step', () => {
+    const { messages } = apply([], [reasoning('r1', 1), reasoning('r2', 2)])
+    expect(messages).toHaveLength(2)
+    expect(messages[0]).toMatchObject({ kind: 'collapsible', label: 'Thinking', running: true, body: 'r1' })
+    expect(messages[1]).toMatchObject({ kind: 'collapsible', label: 'Thinking', running: true, body: 'r2' })
+  })
+
+  it('renders one assistant bubble per step', () => {
+    const { messages } = apply([], [textDelta('A', 1), textDelta('B', 2)])
+    expect(messages).toHaveLength(2)
+    expect(messages[0]).toMatchObject({ kind: 'bubble', role: 'assistant', content: 'A' })
+    expect(messages[1]).toMatchObject({ kind: 'bubble', role: 'assistant', content: 'B' })
+  })
+
+  it('finalizes every Thinking row at turn end', () => {
+    let state = apply([], [reasoning('r1', 1), reasoning('r2', 2)])
+    const next = reduceChatEvent(state.messages, turnEnd(), state.turn)
+    expect(next.messages).toHaveLength(2)
+    expect(next.messages[0]).toMatchObject({ running: false, collapsed: false })
+    expect(next.messages[1]).toMatchObject({ running: false, collapsed: false })
+  })
+
+  it('marks an interrupted tool call at turn end', () => {
+    let state = apply([], [toolCall('c1')])
+    const next = reduceChatEvent(state.messages, turnEnd(), state.turn)
+    expect(next.messages[0]).toMatchObject({ running: false, body: '(no result)' })
   })
 })

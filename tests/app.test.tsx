@@ -30,6 +30,7 @@ function fakeBridge(): ChatBridge {
     permissionMode: () => 'workspace-write',
     cyclePermission: vi.fn(),
     tokenStats: () => ({ input: 0, output: 0, hitPercent: 0, contextPercent: 0 }),
+    toolPresenter: { call: () => undefined, result: () => undefined, argsJson: () => undefined },
   }
 }
 

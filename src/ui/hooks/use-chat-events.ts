@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import type { ChatBridge } from '../../chat/bridge.ts'
+import type { ChatBridge, ChatToolPresenter } from '../../chat/bridge.ts'
 import { initialTurnState, reduceChatEvent } from '../../chat/store.ts'
 import type { Message } from '../../model/message.ts'
 
@@ -22,8 +22,12 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
     turn: initialTurnState(),
   })
   const pendingEventsRef = useRef<SessionEvent[]>([])
+  const presenterRef = useRef<ChatToolPresenter | undefined>(undefined)
   const dialogOpenRef = useRef(false)
   dialogOpenRef.current = dialogOpen
+  useEffect(() => {
+    presenterRef.current = bridge?.toolPresenter
+  }, [bridge])
   useEffect(() => {
     if (!bridge) return
     return bridge.subscribe(event => {
@@ -38,7 +42,7 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
       pendingEventsRef.current = []
       let state = chatStateRef.current
       for (const event of events) {
-        state = reduceChatEvent(state.messages, event, state.turn)
+        state = reduceChatEvent(state.messages, event, state.turn, presenterRef.current)
       }
       chatStateRef.current = state
       setMessages([...state.messages])

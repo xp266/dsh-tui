@@ -7,4 +7,5 @@ export default defineConfig({
   dts: true,
   clean: true,
   outDir: 'lib',
+  external: [/^@deepseek-ai\//],
 })

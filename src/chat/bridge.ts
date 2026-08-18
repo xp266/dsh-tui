@@ -8,11 +8,12 @@ import type {} from '@deepseek-ai/dsh-agent-presets'
 import { resolveSessionPreset } from '@deepseek-ai/dsh-agent-presets'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentHandle, AgentOptions, ModelSelection, ModelSelectionRef } from '@deepseek-ai/dsh-agent'
-import type { LlmDiscoveredModel, LlmRuntime } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, LlmDiscoveredModel, LlmRuntime } from '@deepseek-ai/dsh-llm'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { textFromBlocks } from './blocks.ts'
 import {
   addDeepSeekKey,
   fetchCustomModels,
@@ -40,6 +41,45 @@ export interface TokenStats {
   contextPercent: number
 }
 
+export interface ToolResultPresentation {
+  output?: string
+  exitCode?: number
+  signal?: string
+}
+
+export interface ToolResultLike {
+  content: readonly ContentBlock[]
+  isError: boolean
+  meta?: unknown
+}
+
+export interface ChatToolPresenter {
+  call(name: string, callId: string, argumentsRaw: string): string | undefined
+  result(callId: string, result: ToolResultLike): ToolResultPresentation | undefined
+  argsJson(callId: string): string | undefined
+}
+
+interface CallViewLike {
+  card: string
+  title?: string
+  rawInput?: unknown
+}
+
+interface ResultViewLike {
+  card: string
+  output?: string
+  exitCode?: number
+  signal?: string
+  content?: readonly ContentBlock[]
+}
+
+interface ToolsLike {
+  get?(name: string, scope?: unknown): {
+    presentCall?(args: unknown): CallViewLike | undefined
+    presentResult?(args: unknown, result: ToolResultLike): ResultViewLike | undefined
+  } | undefined
+}
+
 export interface ChatBridge {
   modelName(): string
   send(text: string): void
@@ -64,6 +104,7 @@ export interface ChatBridge {
   permissionMode(): string
   cyclePermission(): void
   tokenStats(): TokenStats
+  toolPresenter: ChatToolPresenter
 }
 
 interface ResolvedModel {
@@ -279,6 +320,53 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     return ctx.get('permissionPresets') as PermissionPresetsLike | undefined
   }
 
+  const tools = ctx.get('tools') as ToolsLike | undefined
+  const toolCalls = new Map<string, { name: string; args: unknown }>()
+  const toolPresenter: ChatToolPresenter = {
+    call(name, callId, argumentsRaw) {
+      let args: unknown
+      try {
+        args = JSON.parse(argumentsRaw)
+      } catch {
+        return undefined
+      }
+      toolCalls.set(callId, { name, args })
+      const view = tools?.get?.(name, activeAgent)?.presentCall?.(args)
+      if (view === undefined) return undefined
+      if (view.card === 'terminal') return view.title
+      if (view.title !== undefined) return view.title
+      const raw = view.rawInput
+      if (raw === undefined) return undefined
+      return typeof raw === 'string' ? raw : JSON.stringify(raw)
+    },
+    result(callId, result) {
+      const call = toolCalls.get(callId)
+      if (call === undefined) return undefined
+      const view = tools?.get?.(call.name, activeAgent)?.presentResult?.(call.args, result)
+      if (view === undefined) return undefined
+      if (view.card === 'terminal') {
+        return {
+          output: view.output,
+          ...view.exitCode === undefined ? {} : { exitCode: view.exitCode },
+          ...view.signal === undefined ? {} : { signal: view.signal },
+        }
+      }
+      if (view.card === 'generic' && view.content !== undefined) {
+        return { output: textFromBlocks(view.content) }
+      }
+      return undefined
+    },
+    argsJson(callId) {
+      const call = toolCalls.get(callId)
+      if (call === undefined) return undefined
+      try {
+        return JSON.stringify(call.args, null, 2)
+      } catch {
+        return undefined
+      }
+    },
+  }
+
   async function selectModel(provider: string, name: string): Promise<void> {
     const resolved = await llm.resolveCallConfig({ provider, model: name })
     selectionFor(activeAgent).current = {
@@ -431,6 +519,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       service.set(activeAgent.session, next)
     },
     tokenStats,
+    toolPresenter,
   }
 }
 
