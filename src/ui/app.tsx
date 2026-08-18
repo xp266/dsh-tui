@@ -15,6 +15,7 @@ import { InputBar, INPUT_BAR_HEIGHT } from './input/input-bar.tsx'
 import { MessageList } from './message/message-list.tsx'
 import { ModelsDialog } from './dialog/models-dialog.tsx'
 import { SessionsDialog } from './dialog/sessions-dialog.tsx'
+import { PresetsDialog } from './dialog/presets-dialog.tsx'
 import type { DialogHandle } from './dialog/dialog.tsx'
 import { padToWidth, truncate } from '../utils/text.ts'
 import type { CommandHintState } from './input/commands.ts'
@@ -30,6 +31,7 @@ export function App({ bridge, screen }: AppProps) {
   const { columns, rows } = useTerminalSize()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [sessionsOpen, setSessionsOpen] = useState(false)
+  const [presetsOpen, setPresetsOpen] = useState(false)
   const [hintState, setHintState] = useState<CommandHintState | null>(null)
   const { messages, modelName, setModelName, updateMessages, resetChat } = useChatEvents(bridge, dialogOpen)
   const messageHeight = Math.max(1, rows - INPUT_BAR_HEIGHT - 1)
@@ -50,7 +52,7 @@ export function App({ bridge, screen }: AppProps) {
     rows,
     scrollTop,
     messageHeight,
-    dialogOpen: dialogOpen || sessionsOpen,
+    dialogOpen: dialogOpen || sessionsOpen || presetsOpen,
     hint: hintState,
     screen,
     onScroll: applyScroll,
@@ -60,6 +62,10 @@ export function App({ bridge, screen }: AppProps) {
   const handleSend = (text: string) => {
     if (text === '/models') {
       if (bridge) setDialogOpen(true)
+      return
+    }
+    if (text === '/preset') {
+      if (bridge) setPresetsOpen(true)
       return
     }
     if (text === '/sessions') {
@@ -80,7 +86,7 @@ export function App({ bridge, screen }: AppProps) {
     applyScroll(Infinity)
   }
   useInput((input, key) => {
-    if ((dialogOpen || sessionsOpen) && !selection) return
+    if ((dialogOpen || sessionsOpen || presetsOpen) && !selection) return
     if (key.ctrl && input === 'c') {
       if (selection) {
         const text = selection.inMessage
@@ -106,11 +112,19 @@ export function App({ bridge, screen }: AppProps) {
           width={columns}
           scrollTop={scrollTop}
           onScroll={applyScroll}
-          interactive={!dialogOpen && !sessionsOpen}
+          interactive={!dialogOpen && !sessionsOpen && !presetsOpen}
         />
         <SelectionContext.Provider value={chromeSelection}>
-          <InputBar width={columns} modelName={modelName} onSend={handleSend} interactive={!dialogOpen && !sessionsOpen} onHintChange={setHintState} />
-          {hintState !== null && !dialogOpen && !sessionsOpen && (
+          <InputBar
+            width={columns}
+            modelName={modelName}
+            permissionMode={bridge?.permissionMode() ?? 'workspace-write'}
+            onCyclePermission={() => bridge?.cyclePermission()}
+            onSend={handleSend}
+            interactive={!dialogOpen && !sessionsOpen && !presetsOpen}
+            onHintChange={setHintState}
+          />
+          {hintState !== null && !dialogOpen && !sessionsOpen && !presetsOpen && (
             <Box
               position="absolute"
               top={Math.max(0, rows - INPUT_BAR_HEIGHT - 1 - hintState.commands.length)}
@@ -133,7 +147,7 @@ export function App({ bridge, screen }: AppProps) {
             </Box>
           )}
           <Box marginLeft={4}>
-            <HighlightedText y={rows - 1} col={4} text={cwdLabel()} color={colors.cwdText} />
+            <HighlightedText y={rows - 1} col={4} text={cwdLabel(bridge)} color={colors.cwdText} />
           </Box>
         </SelectionContext.Provider>
       {dialogOpen && bridge !== undefined && (
@@ -162,13 +176,22 @@ export function App({ bridge, screen }: AppProps) {
           />
         </SelectionContext.Provider>
       )}
+      {presetsOpen && bridge !== undefined && (
+        <SelectionContext.Provider value={chromeSelection}>
+          <PresetsDialog
+            ref={dialogRef}
+            api={bridge}
+            onClose={() => setPresetsOpen(false)}
+          />
+        </SelectionContext.Provider>
+      )}
       </Box>
     </SelectionContext.Provider>
   )
 }
 
-function cwdLabel(): string {
+function cwdLabel(bridge: ChatBridge | undefined): string {
   const home = process.env.HOME ?? ''
-  const cwd = process.cwd()
+  const cwd = bridge?.cwd() ?? process.cwd()
   return cwd.startsWith(home) ? `~${cwd.slice(home.length)}` : cwd
 }

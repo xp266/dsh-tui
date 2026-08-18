@@ -17,6 +17,12 @@ function fakeBridge(): ChatBridge {
     addDeepSeekKey: vi.fn(async () => {}),
     fetchCustomModels: vi.fn(async () => []),
     saveCustomProvider: vi.fn(async () => {}),
+    cwd: () => process.cwd(),
+    listPresets: vi.fn(async () => []),
+    currentPreset: () => 'standard',
+    selectPreset: vi.fn(async () => {}),
+    permissionMode: () => 'workspace-write',
+    cyclePermission: vi.fn(),
   }
 }
 

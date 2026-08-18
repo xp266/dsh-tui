@@ -15,6 +15,7 @@ export function useComposer(
   onSend: (text: string) => void,
   interactive: boolean,
   contentWidth: number,
+  onCycleMode?: () => void,
 ): ComposerState {
   const [value, setValue] = useState('')
   const [cursor, setCursor] = useState(0)
@@ -53,6 +54,10 @@ export function useComposer(
       hintOpenRef.current = false
       setCommandIndex(0)
       commandIndexRef.current = 0
+      return
+    }
+    if (key.tab) {
+      onCycleMode?.()
       return
     }
     if (key.upArrow && showHint) {

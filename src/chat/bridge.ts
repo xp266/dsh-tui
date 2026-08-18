@@ -4,9 +4,11 @@ import type {} from '@deepseek-ai/dsh-agent-loop'
 import type {} from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
+import type {} from '@deepseek-ai/dsh-agent-presets'
+import { resolveSessionPreset } from '@deepseek-ai/dsh-agent-presets'
 import type { AgentHandle, AgentOptions } from '@deepseek-ai/dsh-agent'
 import type { LlmDiscoveredModel, LlmRuntime } from '@deepseek-ai/dsh-llm'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import {
@@ -19,6 +21,15 @@ import {
 import type { ConfiguredModel, CustomProviderForm } from './models.ts'
 import { computeSessionList } from './session-list.ts'
 import type { SessionSummary } from './session-list.ts'
+import { isBlankSession, presetDisplayName } from './presets.ts'
+import type { PresetSummary } from './presets.ts'
+
+export const PERMISSION_PRESETS = ['workspace-write', 'danger-full-access', 'read-only'] as const
+
+interface PermissionPresetsLike {
+  current(events: readonly SessionEvent[]): string
+  set(session: Session, name: string): void
+}
 
 export interface ChatBridge {
   modelName(): string
@@ -32,6 +43,12 @@ export interface ChatBridge {
   addDeepSeekKey(apiKey: string): Promise<void>
   fetchCustomModels(form: CustomProviderForm): Promise<LlmDiscoveredModel[]>
   saveCustomProvider(form: CustomProviderForm, models: LlmDiscoveredModel[]): Promise<void>
+  cwd(): string
+  listPresets(): Promise<PresetSummary[]>
+  currentPreset(): string
+  selectPreset(id: string): Promise<void>
+  permissionMode(): string
+  cyclePermission(): void
 }
 
 interface ResolvedModel {
@@ -48,7 +65,10 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   const model = await resolveModel(ctx)
   const modelOptions: AgentOptions = model.provider === undefined ? {} : { provider: model.provider, model: model.model }
   const handlers = new Set<(event: SessionEvent) => void>()
-  let activeHandle: AgentHandle | undefined = await createAgent(process.cwd())
+  const presets = ctx.get('agentPresets')
+  let currentCwd = process.cwd()
+  void registerWorkspace(ctx, currentCwd)
+  let activeHandle: AgentHandle | undefined = await createAgent(currentCwd)
   let activeAgent = activeHandle.agent
   const llm = ctx.llm
   let sessionListCache: SessionSummary[] | undefined
@@ -66,12 +86,18 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     emit(event)
   })
 
-  async function createAgent(cwd: string): Promise<AgentHandle> {
+  async function createAgent(cwd: string, presetId?: string): Promise<AgentHandle> {
+    const resolved = presetId ?? (await presets?.resolve())?.id
+    const meta = { cwd, ...(resolved === undefined ? {} : { agentPreset: resolved }) }
+    const setup = async (agentCtx: Context) => {
+      await presets?.mount(agentCtx, resolved)
+    }
     if (typeof ctx.agentLoop.createAgent === 'function') {
       return ctx.agentLoop.createAgent(ctx, {
         sessionId: SessionId(`tui-${Date.now()}-${++sessionCounter}`),
-        meta: { cwd },
+        meta,
         agentOptions: modelOptions,
+        setup,
       })
     }
     const agent = ctx.agentLoop.create(
@@ -79,6 +105,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       modelOptions,
       { cwd },
     )
+    await presets?.mount(agent.ctx, resolved)
     return {
       agent,
       dispose: async () => {
@@ -92,9 +119,14 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     const query = ctx.get('sessionQuery') as {
       readSession?(id: string): Promise<{ session: { cwd?: string }; events: SessionEvent[] }>
     } | undefined
+    const setup = async (agentCtx: Context) => {
+      const session = agentCtx.agent?.session
+      const resolved = session === undefined ? undefined : resolveSessionPreset(session)
+      await presets?.mount(agentCtx, resolved)
+    }
     if (typeof ctx.agentLoop.resume === 'function') {
       try {
-        return await ctx.agentLoop.resume(ctx, { resumeSessionId: SessionId(id), agentOptions: modelOptions })
+        return await ctx.agentLoop.resume(ctx, { resumeSessionId: SessionId(id), agentOptions: modelOptions, setup })
       } catch (error) {
         if (query?.readSession === undefined) throw error
         const snapshot = await query.readSession(String(id))
@@ -103,6 +135,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
           seed: snapshot.events,
           meta: { cwd: snapshot.session.cwd },
           agentOptions: modelOptions,
+          setup,
         })
       }
     }
@@ -113,6 +146,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
         seed: snapshot.events,
         meta: { cwd: snapshot.session.cwd },
         agentOptions: modelOptions,
+        setup,
       })
     }
     throw new Error('cannot resume session: session persistence is not configured')
@@ -130,6 +164,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       activeHandle = undefined
       activeAgent = existing
       if (previous !== undefined) await previous.dispose()
+      syncCwd()
       for (const event of activeAgent.session.events) emit(event)
       return
     }
@@ -138,15 +173,42 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     activeHandle = handle
     activeAgent = handle.agent
     if (previous !== undefined) await previous.dispose()
+    syncCwd()
     for (const event of activeAgent.session.events) emit(event)
   }
 
+  function syncCwd(): void {
+    const cwd = activeAgent.session.header.cwd
+    if (cwd !== undefined) currentCwd = cwd
+    void registerWorkspace(ctx, currentCwd)
+  }
+
   async function newSession(): Promise<void> {
-    const handle = await createAgent(process.cwd())
+    const handle = await createAgent(currentCwd)
     const previous = activeHandle
     activeHandle = handle
     activeAgent = handle.agent
     if (previous !== undefined) await previous.dispose()
+  }
+
+  function currentPreset(): string {
+    const resolved = resolveSessionPreset(activeAgent.session)
+    return resolved ?? presets?.defaultId ?? 'standard'
+  }
+
+  async function selectPreset(id: string): Promise<void> {
+    if (presets === undefined) throw new Error('agent presets are not configured')
+    if (currentPreset() === id) return
+    const session = activeAgent.session
+    if (!isBlankSession(session.events)) {
+      throw new Error('the preset is fixed once the session has started; use /new to start a new session')
+    }
+    const preset = await presets.recompose(activeAgent.ctx, id)
+    session.append('agent-preset/selected', { agentPreset: preset.id })
+  }
+
+  function permission(): PermissionPresetsLike | undefined {
+    return ctx.get('permissionPresets') as PermissionPresetsLike | undefined
   }
 
   async function listSessions(): Promise<SessionSummary[]> {
@@ -191,7 +253,30 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     addDeepSeekKey: key => addDeepSeekKey(ctx.credentials, key),
     fetchCustomModels: form => fetchCustomModels(llm, form),
     saveCustomProvider: (form, models) => saveCustomProvider(ctx.settings, ctx.credentials, form, models),
+    cwd: () => currentCwd,
+    listPresets: async () => {
+      if (presets === undefined) return []
+      return (await presets.list()).map(preset => ({ id: preset.id, name: presetDisplayName(preset) }))
+    },
+    currentPreset,
+    selectPreset,
+    permissionMode: () => permission()?.current(activeAgent.session.events) ?? PERMISSION_PRESETS[0],
+    cyclePermission: () => {
+      const service = permission()
+      if (service === undefined) return
+      const current = service.current(activeAgent.session.events)
+      const index = (PERMISSION_PRESETS as readonly string[]).indexOf(current)
+      const next = PERMISSION_PRESETS[(index + 1) % PERMISSION_PRESETS.length]
+      service.set(activeAgent.session, next)
+    },
   }
+}
+
+async function registerWorkspace(ctx: Context, path: string): Promise<void> {
+  const workspace = ctx.get('workspaceRegistry') as { create?(path: string): Promise<unknown> } | undefined
+  try {
+    await workspace?.create?.(path)
+  } catch {}
 }
 
 async function resolveModel(ctx: Context): Promise<ResolvedModel> {

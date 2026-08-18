@@ -18,6 +18,12 @@ function fakeBridge(): ChatBridge {
     addDeepSeekKey: vi.fn(async () => {}),
     fetchCustomModels: vi.fn(async () => []),
     saveCustomProvider: vi.fn(async () => {}),
+    cwd: () => process.cwd(),
+    listPresets: vi.fn(async () => []),
+    currentPreset: () => 'standard',
+    selectPreset: vi.fn(async () => {}),
+    permissionMode: () => 'workspace-write',
+    cyclePermission: vi.fn(),
   }
 }
 
@@ -94,5 +100,89 @@ describe('App layout', () => {
     expect(frame).toContain('+Add Deepseek')
     expect(frame).toContain('+Add Custom Model')
     expect(frame).toContain('glm-4.7-flash')
+  })
+
+  it('opens the preset window with the four built-in presets and a current marker', async () => {
+    const bridge = fakeBridge()
+    bridge.listPresets = vi.fn(async () => [
+      { id: 'standard', name: 'Standard mode' },
+      { id: 'code', name: 'Code mode' },
+      { id: 'minimal', name: 'Minimal mode' },
+      { id: 'cordis', name: 'Creator mode' },
+    ])
+    bridge.currentPreset = () => 'standard'
+    const { lastFrame, stdin } = render(<App bridge={bridge} />)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    stdin.write('/preset')
+    await new Promise(resolve => setTimeout(resolve, 20))
+    stdin.write('\r')
+    await new Promise(resolve => setTimeout(resolve, 20))
+    stdin.write('\r')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('preset')
+    expect(frame).toContain('Standard mode')
+    expect(frame).toContain('Code mode')
+    expect(frame).toContain('Minimal mode')
+    expect(frame).toContain('Creator mode')
+    expect(frame).toContain('current')
+  })
+
+  it('shows an error when selecting a preset on a started session', async () => {
+    const bridge = fakeBridge()
+    bridge.listPresets = vi.fn(async () => [
+      { id: 'standard', name: 'Standard mode' },
+      { id: 'code', name: 'Code mode' },
+      { id: 'minimal', name: 'Minimal mode' },
+      { id: 'cordis', name: 'Creator mode' },
+    ])
+    bridge.selectPreset = vi.fn(async () => {
+      throw new Error('the preset is fixed once the session has started; use /new to start a new session')
+    })
+    const { lastFrame, stdin } = render(<App bridge={bridge} />)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    stdin.write('/preset')
+    await new Promise(resolve => setTimeout(resolve, 20))
+    stdin.write('\r')
+    await new Promise(resolve => setTimeout(resolve, 20))
+    stdin.write('\r')
+    await new Promise(resolve => setTimeout(resolve, 20))
+    stdin.write('\u001b[B')
+    await new Promise(resolve => setTimeout(resolve, 20))
+    stdin.write('\r')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('the preset is fixed once the session has started')
+  })
+
+  it('cycles the permission mode with Tab', async () => {
+    let mode = 'workspace-write'
+    let handler: ((event: SessionEvent) => void) | undefined
+    const bridge = fakeBridge()
+    bridge.permissionMode = () => mode
+    bridge.subscribe = cb => {
+      handler = cb
+      return () => {}
+    }
+    bridge.cyclePermission = () => {
+      mode = 'danger-full-access'
+      handler?.({ type: 'permission/preset', seq: 1, time: 0, data: { preset: 'danger-full-access' } } as unknown as SessionEvent)
+    }
+    const { lastFrame, stdin } = render(<App bridge={bridge} />)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(lastFrame() ?? '').toContain('Workspace Write')
+    stdin.write('\t')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('Full access')
+    expect(frame).not.toContain('Workspace Write')
+  })
+
+  it('shows the working directory from the bridge', async () => {
+    const bridge = fakeBridge()
+    bridge.cwd = () => '/home/user/py'
+    const { lastFrame } = render(<App bridge={bridge} />)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(lastFrame() ?? '').toContain('/home/user/py')
   })
 })

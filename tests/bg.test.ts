@@ -15,7 +15,13 @@ function bgSpans(frame: string): number[] {
 
 describe('input bar background', () => {
   it('emits blockWidth columns on every row', () => {
-    const { lastFrame } = render(React.createElement(InputBar, { width: 100, modelName: 'glm-4.7-flash', onSend: () => {} }))
+    const { lastFrame } = render(React.createElement(InputBar, {
+      width: 100,
+      modelName: 'glm-4.7-flash',
+      permissionMode: 'workspace-write',
+      onCyclePermission: () => {},
+      onSend: () => {},
+    }))
     const frame = lastFrame()
     expect(frame).toBeDefined()
     const spans = bgSpans(frame ?? '')
