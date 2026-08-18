@@ -1,7 +1,7 @@
 import { Text } from 'ink'
 import { forwardRef, useEffect, useState } from 'react'
-import type { SessionSummary } from '../chat/bridge.ts'
-import { colors } from '../theme.ts'
+import type { SessionSummary } from '../../chat/session-list.ts'
+import { colors } from '../../theme.ts'
 import { Dialog } from './dialog.tsx'
 import type { DialogHandle, DialogRow } from './dialog.tsx'
 import type { Ref } from 'react'
@@ -50,12 +50,7 @@ export const SessionsDialog = forwardRef<DialogHandle, SessionsDialogProps>(func
       setError(String(cause))
     }
   }
-  const sorted = [...sessions].sort((a, b) => {
-    const dir = (a.directory ?? '').localeCompare(b.directory ?? '')
-    if (dir !== 0) return dir
-    return b.createdAt - a.createdAt
-  })
-  const rows: DialogRow[] = sorted.map(session => ({
+  const rows: DialogRow[] = sessions.map(session => ({
     items: [
       {
         type: 'button',

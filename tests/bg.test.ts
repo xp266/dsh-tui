@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import React from 'react'
 import { render } from 'ink-testing-library'
-import { InputBar } from '../src/ui/input-bar'
+import { InputBar } from '../src/ui/input/input-bar'
 
 function bgSpans(frame: string): number[] {
   return frame

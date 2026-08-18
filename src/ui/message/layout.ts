@@ -1,9 +1,9 @@
-import type { Message } from '../state/messages.ts'
-import { colToCharIndex, textWidth, wrapLines } from '../utils/text.ts'
-import { selectedRange } from './selection.tsx'
-import type { LineSelection } from './selection.tsx'
+import type { Message } from '../../model/message.ts'
+import { colToCharIndex, textWidth, wrapLines } from '../../utils/text.ts'
+import { selectedRange } from '../../model/selection.ts'
+import type { LineSelection } from '../../model/selection.ts'
 
-export const BUBBLE_WIDTH_OFFSET = 8
+const BUBBLE_WIDTH_OFFSET = 8
 
 export const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 

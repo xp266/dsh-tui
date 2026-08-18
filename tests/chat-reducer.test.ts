@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { CallId, createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { initialTurnState, reduceChatEvent } from '../src/chat/reducer.ts'
-import type { Message } from '../src/state/messages.ts'
+import { initialTurnState, reduceChatEvent } from '../src/chat/store.ts'
+import type { Message } from '../src/model/message.ts'
 
 function userEvent(text: string): SessionEvent {
   return {

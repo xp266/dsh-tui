@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { hitRowIndex } from '../src/ui/dialog.tsx'
-import type { DialogRow } from '../src/ui/dialog.tsx'
+import { hitRowIndex } from '../src/ui/dialog/dialog.tsx'
+import type { DialogRow } from '../src/ui/dialog/dialog.tsx'
 
 function rows(count: number): DialogRow[] {
   return Array.from({ length: count }, (_, i) => ({

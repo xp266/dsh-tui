@@ -1,6 +1,6 @@
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { Message } from '../state/messages.ts'
+import type { Message } from '../model/message.ts'
+import { textFromBlocks } from './blocks.ts'
 
 export interface TurnState {
   thinkingId: string | null
@@ -125,13 +125,4 @@ function appendAssistant(messages: Message[], turn: TurnState, text: string): { 
     if (target !== undefined) target.content += text
   }
   return { messages, turn }
-}
-
-function textFromBlocks(blocks: ContentBlock[]): string {
-  let text = ''
-  for (const block of blocks) {
-    if (block.type === 'text') text += block.text
-    else if (block.type === 'tool-result') text += textFromBlocks(block.content)
-  }
-  return text
 }

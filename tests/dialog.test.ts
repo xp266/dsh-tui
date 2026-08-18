@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { adjustScroll, moveFocus, rowHeight, rowTopOffset } from '../src/ui/dialog.tsx'
-import type { DialogRow } from '../src/ui/dialog.tsx'
+import { adjustScroll, moveFocus, rowHeight, rowTopOffset } from '../src/ui/dialog/dialog.tsx'
+import type { DialogRow } from '../src/ui/dialog/dialog.tsx'
 
 function rows(count: number, perRow = 1): DialogRow[] {
   return Array.from({ length: count }, () => ({

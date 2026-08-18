@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { colToCharIndex } from '../utils/text.ts'
-import { selectedRange } from '../ui/selection.tsx'
-import type { LineSelection } from '../ui/selection.tsx'
+import { selectedRange } from '../model/selection.ts'
+import type { LineSelection } from '../model/selection.ts'
 
 export interface ScreenRect {
   top: number

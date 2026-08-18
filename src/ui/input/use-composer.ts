@@ -1,28 +1,21 @@
-import { Box, Text, useCursor, useInput, useStdout } from 'ink'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { colors } from '../theme.ts'
-import { isMouseResidue } from '../terminal/mouse.ts'
-import { colToCharIndex, lineBreaks, locToPoint, padToWidth, textWidth, truncate, wrapLines } from '../utils/text.ts'
+import { useInput } from 'ink'
+import { useRef, useState } from 'react'
+import { isMouseResidue } from '../../terminal/mouse.ts'
+import { colToCharIndex, lineBreaks, locToPoint } from '../../utils/text.ts'
 import { filterCommands } from './commands.ts'
-import type { CommandHintState } from './commands.ts'
-import { HighlightedText } from './selection.tsx'
 
-export const INPUT_BAR_HEIGHT = 5
-
-const CONTENT_ROWS = 2
-const INPUT_WIDTH_OFFSET = 8
-
-interface InputBarProps {
-  width: number
-  modelName: string
-  onSend: (text: string) => void
-  interactive?: boolean
-  onHintChange?: (hint: CommandHintState | null) => void
+export interface ComposerState {
+  value: string
+  cursor: number
+  hintOpen: boolean
+  commandIndex: number
 }
 
-export function InputBar({ width, modelName, onSend, interactive = true, onHintChange }: InputBarProps) {
-  const { stdout } = useStdout()
-  const { setCursorPosition } = useCursor()
+export function useComposer(
+  onSend: (text: string) => void,
+  interactive: boolean,
+  contentWidth: number,
+): ComposerState {
   const [value, setValue] = useState('')
   const [cursor, setCursor] = useState(0)
   const [hintOpen, setHintOpen] = useState(false)
@@ -35,24 +28,6 @@ export function InputBar({ width, modelName, onSend, interactive = true, onHintC
   cursorRef.current = cursor
   hintOpenRef.current = hintOpen
   commandIndexRef.current = commandIndex
-  const totalRows = stdout?.rows ?? 24
-  const contentWidth = width - INPUT_WIDTH_OFFSET
-  const blockWidth = contentWidth + 4
-  useEffect(() => {
-    process.stdout.write(interactive ? '\x1b[1 q' : '\x1b[2 q')
-  }, [interactive])
-  useEffect(() => {
-    return () => {
-      process.stdout.write('\x1b[0 q')
-    }
-  }, [])
-  const commands = useMemo(() => filterCommands(value), [value])
-  const hintCommands = useMemo(() => commands.slice(0, 5), [commands])
-  const showHint = interactive && hintOpen && commands.length > 0
-  const renderInlineHint = onHintChange === undefined && showHint
-  useEffect(() => {
-    onHintChange?.(showHint ? { commands: hintCommands, selectedIndex: commandIndex } : null)
-  }, [onHintChange, showHint, hintCommands, commandIndex])
   useInput((input, key) => {
     if (!interactive) return
     const v = valueRef.current
@@ -185,66 +160,7 @@ export function InputBar({ width, modelName, onSend, interactive = true, onHintC
       return
     }
   })
-  const lines = wrapLines(value, contentWidth)
-  const point = locToPoint(value, contentWidth, cursor)
-  const visibleStart = Math.max(0, Math.min(point.row, Math.max(0, lines.length - CONTENT_ROWS)))
-  const visibleLines = Array.from({ length: CONTENT_ROWS }, (_, i) => lines[visibleStart + i] ?? '')
-  const cursorRow = point.row - visibleStart
-  if (interactive) {
-    const index = colToCharIndex(visibleLines[cursorRow] ?? '', point.col)
-    setCursorPosition({
-      x: 4 + textWidth((visibleLines[cursorRow] ?? '').slice(0, index)),
-      y: totalRows - INPUT_BAR_HEIGHT + 1 + cursorRow,
-    })
-  } else {
-    setCursorPosition(undefined)
-  }
-  return (
-    <Box flexDirection="column">
-      {renderInlineHint && (
-        <Box marginLeft={2} width={blockWidth} flexDirection="column">
-          {hintCommands.map((command, index) => {
-            const selected = index === commandIndex
-            const line = '  ' + padToWidth(command.command, 20) + command.description
-            const filled = padToWidth(truncate(line, blockWidth), blockWidth)
-            const hintY = totalRows - INPUT_BAR_HEIGHT - 1 - hintCommands.length + index
-            return (
-              <Box key={command.command} width={blockWidth} backgroundColor={selected ? undefined : colors.dialogBackground}>
-                <HighlightedText y={hintY} col={0} text={filled} inverse={selected} />
-              </Box>
-            )
-          })}
-        </Box>
-      )}
-      <EdgeBlock width={blockWidth} />
-      <Box
-        height={CONTENT_ROWS + 1}
-        marginLeft={2}
-        width={blockWidth}
-        paddingLeft={2}
-        paddingRight={2}
-        flexDirection="column"
-        backgroundColor={colors.userBubbleBackground}
-      >
-        {visibleLines.map((line, row) => (
-          <Box key={row}>
-            <HighlightedText y={totalRows - INPUT_BAR_HEIGHT + row} col={4} text={line || ' '} />
-          </Box>
-        ))}
-        <HighlightedText y={totalRows - INPUT_BAR_HEIGHT + CONTENT_ROWS} col={4} text={modelName} color={colors.modelText} />
-      </Box>
-      <EdgeBlock width={blockWidth} bottom />
-    </Box>
-  )
-}
-
-function EdgeBlock({ width, bottom = false }: { width: number; bottom?: boolean }) {
-  const char = bottom ? '▀' : '▄'
-  return (
-    <Box marginLeft={2} width={width}>
-      <Text color={colors.userBubbleBackground}>{char.repeat(width)}</Text>
-    </Box>
-  )
+  return { value, cursor, hintOpen, commandIndex }
 }
 
 function moveLine(value: string, width: number, cursor: number, delta: -1 | 1): number {

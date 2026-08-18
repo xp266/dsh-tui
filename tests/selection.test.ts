@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { clampFocusRow, toScreenSelection } from '../src/ui/selection.tsx'
-import type { LineSelection } from '../src/ui/selection.tsx'
+import { clampFocusRow, toScreenSelection } from '../src/model/selection.ts'
+import type { LineSelection } from '../src/model/selection.ts'
 
 const MESSAGE_HEIGHT = 18
 

@@ -1,10 +1,9 @@
 import { Box, Text } from 'ink'
 import { memo } from 'react'
-import { colors } from '../theme.ts'
+import { colors } from '../../theme.ts'
 import { headerSymbol, SPINNER_FRAMES } from './layout.ts'
 import type { RowInfo } from './layout.ts'
-import { MessageLine } from './text-line.tsx'
-import { HighlightedText } from './selection.tsx'
+import { HighlightedText } from '../selection.tsx'
 
 interface MessageRowProps {
   info: RowInfo
@@ -31,10 +30,10 @@ export const MessageRow = memo(
           paddingRight={2}
           backgroundColor={info.background ? backgroundFor(info.role) : undefined}
         >
-          <MessageLine
+          <HighlightedText
             text={info.text || ' '}
-            row={screenRow}
-            colStart={4}
+            y={screenRow}
+            col={4}
             color={info.role === 'error' ? colors.errorText : info.muted ? colors.toolBodyText : undefined}
           />
         </Box>

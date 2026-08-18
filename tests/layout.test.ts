@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { Message } from '../src/state/messages.ts'
-import { rowCount, rowInfoAt, selectionText } from '../src/ui/layout.ts'
-import type { LineSelection } from '../src/ui/selection.tsx'
+import type { Message } from '../src/model/message.ts'
+import { rowCount, rowInfoAt, selectionText } from '../src/ui/message/layout.ts'
+import type { LineSelection } from '../src/model/selection.ts'
 
 const WIDTH = 80
 

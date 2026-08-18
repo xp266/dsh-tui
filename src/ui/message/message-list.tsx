@@ -1,6 +1,6 @@
 import { Box, useInput } from 'ink'
 import { useEffect, useMemo, useState } from 'react'
-import type { Message } from '../state/messages.ts'
+import type { Message } from '../../model/message.ts'
 import { buildRowIndex } from './layout.ts'
 import { MessageRow } from './message-row.tsx'
 

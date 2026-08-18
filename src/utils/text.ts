@@ -11,7 +11,7 @@ export function textWidth(text: string): number {
   return width
 }
 
-export function charWidth(ch: string): number {
+function charWidth(ch: string): number {
   return stringWidth(ch)
 }
 
