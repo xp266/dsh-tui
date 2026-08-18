@@ -1,7 +1,7 @@
 import { Box, Text, useCursor, useStdout } from 'ink'
 import { useEffect, useMemo } from 'react'
 import { colors, permissionModeInfo } from '../../theme.ts'
-import { colToCharIndex, locToPoint, textWidth, wrapLines } from '../../utils/text.ts'
+import { colToCharIndex, locToPoint, textWidth, truncate, wrapLines } from '../../utils/text.ts'
 import { filterCommands } from './commands.ts'
 import type { CommandHintState } from './commands.ts'
 import { useComposer } from './use-composer.ts'
@@ -17,12 +17,24 @@ interface InputBarProps {
   modelName: string
   permissionMode: string
   onCyclePermission: () => void
+  effortName?: string
+  presetName?: string
   onSend: (text: string) => void
   interactive?: boolean
   onHintChange?: (hint: CommandHintState | null) => void
 }
 
-export function InputBar({ width, modelName, permissionMode, onCyclePermission, onSend, interactive = true, onHintChange }: InputBarProps) {
+export function InputBar({
+  width,
+  modelName,
+  permissionMode,
+  onCyclePermission,
+  effortName,
+  presetName,
+  onSend,
+  interactive = true,
+  onHintChange,
+}: InputBarProps) {
   const { stdout } = useStdout()
   const { setCursorPosition } = useCursor()
   const totalRows = stdout?.rows ?? 24
@@ -75,7 +87,21 @@ export function InputBar({ width, modelName, permissionMode, onCyclePermission, 
             <HighlightedText y={totalRows - INPUT_BAR_HEIGHT + row} col={4} text={line || ' '} />
           </Box>
         ))}
-        <HighlightedText y={totalRows - INPUT_BAR_HEIGHT + CONTENT_ROWS} col={4} text={`${modelName} · ${permission.name}`} color={colors.modelText} />
+        {(() => {
+          const y = totalRows - INPUT_BAR_HEIGHT + CONTENT_ROWS
+          const left = [permission.name, modelName, ...(effortName === undefined ? [] : [effortName])].join(' · ')
+          const leftMax = presetName === undefined
+            ? contentWidth
+            : Math.max(1, contentWidth - textWidth(presetName) - 2)
+          return (
+            <Box width={contentWidth} justifyContent="space-between">
+              <HighlightedText y={y} col={4} text={truncate(left, leftMax)} color={colors.modelText} />
+              {presetName !== undefined && (
+                <HighlightedText y={y} col={4 + contentWidth - textWidth(presetName)} text={presetName} color={colors.modelText} />
+              )}
+            </Box>
+          )
+        })()}
       </Box>
       <EdgeBlock width={blockWidth} color={permission.color} bottom />
     </Box>

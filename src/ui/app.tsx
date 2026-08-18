@@ -16,11 +16,15 @@ import { MessageList } from './message/message-list.tsx'
 import { ModelsDialog } from './dialog/models-dialog.tsx'
 import { SessionsDialog } from './dialog/sessions-dialog.tsx'
 import { PresetsDialog } from './dialog/presets-dialog.tsx'
+import { EffortDialog } from './dialog/effort-dialog.tsx'
 import type { DialogHandle } from './dialog/dialog.tsx'
-import { padToWidth, truncate } from '../utils/text.ts'
+import { padToWidth, textWidth, truncate } from '../utils/text.ts'
 import type { CommandHintState } from './input/commands.ts'
+import type { TokenStats } from '../chat/bridge.ts'
 
 const FORCE_EXIT_DELAY_MS = 6000
+
+type DialogKind = 'models' | 'sessions' | 'presets' | 'effort'
 
 interface AppProps {
   bridge?: ChatBridge
@@ -29,11 +33,9 @@ interface AppProps {
 
 export function App({ bridge, screen }: AppProps) {
   const { columns, rows } = useTerminalSize()
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [sessionsOpen, setSessionsOpen] = useState(false)
-  const [presetsOpen, setPresetsOpen] = useState(false)
+  const [dialog, setDialog] = useState<DialogKind | null>(null)
   const [hintState, setHintState] = useState<CommandHintState | null>(null)
-  const { messages, modelName, setModelName, updateMessages, resetChat } = useChatEvents(bridge, dialogOpen)
+  const { messages, modelName, setModelName, updateMessages, resetChat } = useChatEvents(bridge, dialog !== null)
   const messageHeight = Math.max(1, rows - INPUT_BAR_HEIGHT - 1)
   const total = useMemo(() => rowCount(messages, columns), [messages, columns])
   const { scrollTop, applyScroll } = useScroll(total, messageHeight, messages)
@@ -52,7 +54,7 @@ export function App({ bridge, screen }: AppProps) {
     rows,
     scrollTop,
     messageHeight,
-    dialogOpen: dialogOpen || sessionsOpen || presetsOpen,
+    dialogOpen: dialog !== null,
     hint: hintState,
     screen,
     onScroll: applyScroll,
@@ -61,15 +63,19 @@ export function App({ bridge, screen }: AppProps) {
   })
   const handleSend = (text: string) => {
     if (text === '/models') {
-      if (bridge) setDialogOpen(true)
+      if (bridge) setDialog('models')
+      return
+    }
+    if (text === '/model-effort') {
+      if (bridge) setDialog('effort')
       return
     }
     if (text === '/preset') {
-      if (bridge) setPresetsOpen(true)
+      if (bridge) setDialog('presets')
       return
     }
     if (text === '/sessions') {
-      if (bridge) setSessionsOpen(true)
+      if (bridge) setDialog('sessions')
       return
     }
     if (text === '/new') {
@@ -86,7 +92,7 @@ export function App({ bridge, screen }: AppProps) {
     applyScroll(Infinity)
   }
   useInput((input, key) => {
-    if ((dialogOpen || sessionsOpen || presetsOpen) && !selection) return
+    if (dialog !== null && !selection) return
     if (key.ctrl && input === 'c') {
       if (selection) {
         const text = selection.inMessage
@@ -112,7 +118,7 @@ export function App({ bridge, screen }: AppProps) {
           width={columns}
           scrollTop={scrollTop}
           onScroll={applyScroll}
-          interactive={!dialogOpen && !sessionsOpen && !presetsOpen}
+          interactive={dialog === null}
         />
         <SelectionContext.Provider value={chromeSelection}>
           <InputBar
@@ -120,11 +126,13 @@ export function App({ bridge, screen }: AppProps) {
             modelName={modelName}
             permissionMode={bridge?.permissionMode() ?? 'workspace-write'}
             onCyclePermission={() => bridge?.cyclePermission()}
+            effortName={bridge?.effortName()}
+            presetName={bridge?.presetName()}
             onSend={handleSend}
-            interactive={!dialogOpen && !sessionsOpen && !presetsOpen}
+            interactive={dialog === null}
             onHintChange={setHintState}
           />
-          {hintState !== null && !dialogOpen && !sessionsOpen && !presetsOpen && (
+          {hintState !== null && dialog === null && (
             <Box
               position="absolute"
               top={Math.max(0, rows - INPUT_BAR_HEIGHT - 1 - hintState.commands.length)}
@@ -146,26 +154,47 @@ export function App({ bridge, screen }: AppProps) {
               })}
             </Box>
           )}
-          <Box marginLeft={4}>
-            <HighlightedText y={rows - 1} col={4} text={cwdLabel(bridge)} color={colors.cwdText} />
+          <Box width={columns} paddingLeft={4} paddingRight={4} justifyContent="space-between">
+            {bridge === undefined ? (
+              <HighlightedText y={rows - 1} col={4} text={cwdLabel(undefined)} color={colors.cwdText} />
+            ) : (
+              <>
+                {(() => {
+                  const cwd = cwdLabel(bridge)
+                  const rightCol = Math.max(4, columns - 4 - textWidth(cwd))
+                  const leftMax = Math.max(1, rightCol - 4 - 2)
+                  return (
+                    <>
+                      <HighlightedText
+                        y={rows - 1}
+                        col={4}
+                        text={truncate(statsText(bridge.tokenStats()), leftMax)}
+                        color={colors.cwdText}
+                      />
+                      <HighlightedText y={rows - 1} col={rightCol} text={cwd} color={colors.cwdText} />
+                    </>
+                  )
+                })()}
+              </>
+            )}
           </Box>
         </SelectionContext.Provider>
-      {dialogOpen && bridge !== undefined && (
+      {dialog === 'models' && bridge !== undefined && (
         <SelectionContext.Provider value={chromeSelection}>
           <ModelsDialog
             ref={dialogRef}
             api={bridge}
-            onClose={() => setDialogOpen(false)}
+            onClose={() => setDialog(null)}
             onModelSelected={(_provider, model) => setModelName(model)}
           />
         </SelectionContext.Provider>
       )}
-      {sessionsOpen && bridge !== undefined && (
+      {dialog === 'sessions' && bridge !== undefined && (
         <SelectionContext.Provider value={chromeSelection}>
           <SessionsDialog
             ref={dialogRef}
             api={bridge}
-            onClose={() => setSessionsOpen(false)}
+            onClose={() => setDialog(null)}
             onBeforeSessionSelected={() => {
               resetChat()
               clearSelection()
@@ -176,12 +205,21 @@ export function App({ bridge, screen }: AppProps) {
           />
         </SelectionContext.Provider>
       )}
-      {presetsOpen && bridge !== undefined && (
+      {dialog === 'presets' && bridge !== undefined && (
         <SelectionContext.Provider value={chromeSelection}>
           <PresetsDialog
             ref={dialogRef}
             api={bridge}
-            onClose={() => setPresetsOpen(false)}
+            onClose={() => setDialog(null)}
+          />
+        </SelectionContext.Provider>
+      )}
+      {dialog === 'effort' && bridge !== undefined && (
+        <SelectionContext.Provider value={chromeSelection}>
+          <EffortDialog
+            ref={dialogRef}
+            api={bridge}
+            onClose={() => setDialog(null)}
           />
         </SelectionContext.Provider>
       )}
@@ -194,4 +232,18 @@ function cwdLabel(bridge: ChatBridge | undefined): string {
   const home = process.env.HOME ?? ''
   const cwd = bridge?.cwd() ?? process.cwd()
   return cwd.startsWith(home) ? `~${cwd.slice(home.length)}` : cwd
+}
+
+function statsText(stats: TokenStats): string {
+  const context = `Context ${stats.contextPercent}%`
+  const hit = `Hit ${stats.hitPercent}%`
+  const tokens = `${formatTokens(stats.input)} → ${formatTokens(stats.output)}`
+  return `${context} | ${hit} | ${tokens}`
+}
+
+function formatTokens(n: number): string {
+  if (n < 1_000) return String(n)
+  const scaled = (v: number): string => (v >= 100 ? String(Math.round(v)) : String(Math.round(v * 10) / 10))
+  if (n < 1_000_000) return `${scaled(n / 1_000)}K`
+  return `${scaled(n / 1_000_000)}M`
 }

@@ -21,9 +21,15 @@ function fakeBridge(): ChatBridge {
     cwd: () => process.cwd(),
     listPresets: vi.fn(async () => []),
     currentPreset: () => 'standard',
+    presetName: () => 'Standard mode',
     selectPreset: vi.fn(async () => {}),
+    listEfforts: vi.fn(async () => []),
+    currentEffort: () => undefined,
+    effortName: () => undefined,
+    selectEffort: vi.fn(async () => {}),
     permissionMode: () => 'workspace-write',
     cyclePermission: vi.fn(),
+    tokenStats: () => ({ input: 0, output: 0, hitPercent: 0, contextPercent: 0 }),
   }
 }
 
@@ -184,5 +190,64 @@ describe('App layout', () => {
     const { lastFrame } = render(<App bridge={bridge} />)
     await new Promise(resolve => setTimeout(resolve, 20))
     expect(lastFrame() ?? '').toContain('/home/user/py')
+  })
+
+  it('opens the effort window with the current model efforts and a current marker', async () => {
+    const bridge = fakeBridge()
+    bridge.listEfforts = vi.fn(async () => [
+      { id: 'off', name: 'Off' },
+      { id: 'high', name: 'High' },
+      { id: 'max', name: 'Max' },
+    ])
+    bridge.currentEffort = () => 'high'
+    const { lastFrame, stdin } = render(<App bridge={bridge} />)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    stdin.write('/model-effort')
+    await new Promise(resolve => setTimeout(resolve, 20))
+    stdin.write('\r')
+    await new Promise(resolve => setTimeout(resolve, 20))
+    stdin.write('\r')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('model effort')
+    expect(frame).toContain('Off')
+    expect(frame).toContain('High')
+    expect(frame).toContain('Max')
+    expect(frame).toContain('current')
+  })
+
+  it('shows mode, model, effort, and preset in the input bar line', async () => {
+    const bridge = fakeBridge()
+    bridge.effortName = () => 'High'
+    bridge.presetName = () => 'Creator mode'
+    const { lastFrame } = render(<App bridge={bridge} />)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('Workspace Write · glm-4.7-flash · High')
+    expect(frame).toContain('Creator mode')
+  })
+
+  it('shows token stats and the working directory on the bottom line', async () => {
+    const bridge = fakeBridge()
+    bridge.cwd = () => '/home/user/py'
+    bridge.tokenStats = () => ({ input: 1234, output: 56, hitPercent: 88, contextPercent: 42 })
+    const { lastFrame } = render(<App bridge={bridge} />)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('Context 42%')
+    expect(frame).toContain('Hit 88%')
+    expect(frame).toContain('1.2K → 56')
+    expect(frame).toContain('/home/user/py')
+    expect(frame.indexOf('Context 42%')).toBeLessThan(frame.indexOf('Hit 88%'))
+    expect(frame.indexOf('Hit 88%')).toBeLessThan(frame.indexOf('1.2K → 56'))
+  })
+
+  it('shows zeroed token stats without any chat', async () => {
+    const { lastFrame } = render(<App bridge={fakeBridge()} />)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('Context 0%')
+    expect(frame).toContain('Hit 0%')
+    expect(frame).toContain('0 → 0')
   })
 })

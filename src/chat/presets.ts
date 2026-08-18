@@ -13,6 +13,10 @@ export interface PresetSummary {
   name: string
 }
 
+export function builtInPresetName(id: string): string | undefined {
+  return BUILT_IN_NAMES[id]
+}
+
 export function presetDisplayName(preset: AgentPreset): string {
   return BUILT_IN_NAMES[preset.id] ?? preset.name ?? preset.id
 }

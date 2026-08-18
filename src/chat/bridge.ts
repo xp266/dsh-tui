@@ -6,8 +6,10 @@ import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-agent-presets'
 import { resolveSessionPreset } from '@deepseek-ai/dsh-agent-presets'
-import type { AgentHandle, AgentOptions } from '@deepseek-ai/dsh-agent'
+import { installModelSelection } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentHandle, AgentOptions, ModelSelection, ModelSelectionRef } from '@deepseek-ai/dsh-agent'
 import type { LlmDiscoveredModel, LlmRuntime } from '@deepseek-ai/dsh-llm'
+import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
@@ -16,19 +18,26 @@ import {
   fetchCustomModels,
   listConfiguredModels,
   saveCustomProvider,
-  selectModel,
 } from './models.ts'
 import type { ConfiguredModel, CustomProviderForm } from './models.ts'
 import { computeSessionList } from './session-list.ts'
 import type { SessionSummary } from './session-list.ts'
-import { isBlankSession, presetDisplayName } from './presets.ts'
+import { builtInPresetName, isBlankSession, presetDisplayName } from './presets.ts'
 import type { PresetSummary } from './presets.ts'
+import type { EffortSummary } from './efforts.ts'
 
 export const PERMISSION_PRESETS = ['workspace-write', 'danger-full-access', 'read-only'] as const
 
 interface PermissionPresetsLike {
   current(events: readonly SessionEvent[]): string
   set(session: Session, name: string): void
+}
+
+export interface TokenStats {
+  input: number
+  output: number
+  hitPercent: number
+  contextPercent: number
 }
 
 export interface ChatBridge {
@@ -46,9 +55,15 @@ export interface ChatBridge {
   cwd(): string
   listPresets(): Promise<PresetSummary[]>
   currentPreset(): string
+  presetName(): string
   selectPreset(id: string): Promise<void>
+  listEfforts(): Promise<EffortSummary[]>
+  currentEffort(): string | undefined
+  effortName(): string | undefined
+  selectEffort(id: string): Promise<void>
   permissionMode(): string
   cyclePermission(): void
+  tokenStats(): TokenStats
 }
 
 interface ResolvedModel {
@@ -66,6 +81,8 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   const modelOptions: AgentOptions = model.provider === undefined ? {} : { provider: model.provider, model: model.model }
   const handlers = new Set<(event: SessionEvent) => void>()
   const presets = ctx.get('agentPresets')
+  const selections = new WeakMap<Agent, ModelSelectionRef>()
+  const effortNames = new Map<string, string>()
   let currentCwd = process.cwd()
   void registerWorkspace(ctx, currentCwd)
   let activeHandle: AgentHandle | undefined = await createAgent(currentCwd)
@@ -86,10 +103,59 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     emit(event)
   })
 
+  function installSelection(agentCtx: Context): void {
+    const agent = agentCtx.agent
+    if (agent === undefined) return
+    selectionFor(agent)
+  }
+
+  function selectionFor(agent: Agent): ModelSelectionRef {
+    const installed = selections.get(agent)
+    if (installed !== undefined) return installed
+    let picked: ModelSelection | undefined
+    const selection: ModelSelectionRef = {
+      get current(): ModelSelection {
+        if (picked !== undefined) return picked
+        const logged = agent.session.requestHeader()?.config
+        if (logged === undefined) return ctx.agentDefaultModel.currentSelection()
+        return {
+          provider: logged.provider,
+          model: logged.model,
+          ...logged.reasoningEffort === undefined
+            ? {}
+            : { reasoningEffort: logged.reasoningEffort },
+        }
+      },
+      set current(next: ModelSelection) {
+        picked = next
+      },
+      assembled: undefined,
+    }
+    installModelSelection(agent.ctx, selection)
+    selections.set(agent, selection)
+    return selection
+  }
+
+  function currentSelection(): ModelSelection {
+    return selectionFor(activeAgent).current ?? ctx.agentDefaultModel.currentSelection()
+  }
+
+  async function refreshEffortNames(): Promise<void> {
+    const selection = currentSelection()
+    try {
+      const info = await llm.resolveModelInfo(selection.provider, selection.model)
+      const base = `${selection.provider}/${selection.model}`
+      for (const effort of info.reasoning?.efforts ?? []) {
+        effortNames.set(`${base}/${effort.id}`, effort.name)
+      }
+    } catch {}
+  }
+
   async function createAgent(cwd: string, presetId?: string): Promise<AgentHandle> {
     const resolved = presetId ?? (await presets?.resolve())?.id
     const meta = { cwd, ...(resolved === undefined ? {} : { agentPreset: resolved }) }
     const setup = async (agentCtx: Context) => {
+      installSelection(agentCtx)
       await presets?.mount(agentCtx, resolved)
     }
     if (typeof ctx.agentLoop.createAgent === 'function') {
@@ -105,6 +171,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       modelOptions,
       { cwd },
     )
+    installSelection(agent.ctx)
     await presets?.mount(agent.ctx, resolved)
     return {
       agent,
@@ -120,6 +187,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       readSession?(id: string): Promise<{ session: { cwd?: string }; events: SessionEvent[] }>
     } | undefined
     const setup = async (agentCtx: Context) => {
+      installSelection(agentCtx)
       const session = agentCtx.agent?.session
       const resolved = session === undefined ? undefined : resolveSessionPreset(session)
       await presets?.mount(agentCtx, resolved)
@@ -211,6 +279,93 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     return ctx.get('permissionPresets') as PermissionPresetsLike | undefined
   }
 
+  async function selectModel(provider: string, name: string): Promise<void> {
+    const resolved = await llm.resolveCallConfig({ provider, model: name })
+    selectionFor(activeAgent).current = {
+      provider: resolved.provider,
+      model: resolved.model,
+      ...resolved.reasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: resolved.reasoningEffort },
+    }
+    try {
+      await ctx.agentDefaultModel.saveSelection(resolved)
+    } catch {}
+    void refreshEffortNames()
+  }
+
+  async function listEfforts(): Promise<EffortSummary[]> {
+    const selection = currentSelection()
+    try {
+      const info = await llm.resolveModelInfo(selection.provider, selection.model)
+      const base = `${selection.provider}/${selection.model}`
+      for (const effort of info.reasoning?.efforts ?? []) {
+        effortNames.set(`${base}/${effort.id}`, effort.name)
+      }
+      return (info.reasoning?.efforts ?? []).map(effort => ({ id: effort.id, name: effort.name }))
+    } catch {
+      return []
+    }
+  }
+
+  function currentEffort(): string | undefined {
+    return currentSelection().reasoningEffort
+  }
+
+  function effortName(): string | undefined {
+    const selection = currentSelection()
+    if (selection.reasoningEffort === undefined) return undefined
+    return effortNames.get(`${selection.provider}/${selection.model}/${selection.reasoningEffort}`)
+      ?? String(selection.reasoningEffort)
+  }
+
+  async function selectEffort(id: string): Promise<void> {
+    const current = currentSelection()
+    if (current.reasoningEffort === id) return
+    const resolved = await llm.resolveCallConfig({
+      provider: current.provider,
+      model: current.model,
+      reasoningEffort: ReasoningEffortId(id),
+    })
+    selectionFor(activeAgent).current = {
+      provider: resolved.provider,
+      model: resolved.model,
+      ...resolved.reasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: resolved.reasoningEffort },
+    }
+    try {
+      await ctx.agentDefaultModel.saveSelection(resolved)
+    } catch {}
+    void refreshEffortNames()
+  }
+
+  function tokenStats(): TokenStats {
+    const projections = ctx.get('sessionProjections') as {
+      snapshot?(session: Session): { values: Record<string, unknown> }
+    } | undefined
+    let usage: { uncachedInputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number } | undefined
+    let pressure: { projectedTokens?: number; contextWindow?: number } | undefined
+    if (projections !== undefined) {
+      try {
+        const values = projections.snapshot?.(activeAgent.session)?.values
+        usage = values?.tokenUsage as typeof usage
+        pressure = values?.contextPressure as typeof pressure
+      } catch {}
+    }
+    const input = (usage?.uncachedInputTokens ?? 0) + (usage?.cacheReadTokens ?? 0) + (usage?.cacheWriteTokens ?? 0)
+    const output = usage?.outputTokens ?? 0
+    const contextPercent = pressure?.projectedTokens !== undefined && pressure?.contextWindow !== undefined
+      ? Math.min(100, Math.round(pressure.projectedTokens / pressure.contextWindow * 100))
+      : 0
+    return {
+      input,
+      output,
+      hitPercent: input === 0 ? 0 : Math.round((usage?.cacheReadTokens ?? 0) / input * 100),
+      contextPercent,
+    }
+  }
+
   async function listSessions(): Promise<SessionSummary[]> {
     await refreshSessionList(true)
     return sessionListCache ?? []
@@ -233,6 +388,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   }
 
   void refreshSessionList(true)
+  void refreshEffortNames()
 
   return {
     modelName: () => model.display,
@@ -249,7 +405,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     openSession,
     newSession,
     listModels: () => listConfiguredModels(llm),
-    selectModel: (provider, name) => selectModel(ctx.agentDefaultModel, provider, name),
+    selectModel,
     addDeepSeekKey: key => addDeepSeekKey(ctx.credentials, key),
     fetchCustomModels: form => fetchCustomModels(llm, form),
     saveCustomProvider: (form, models) => saveCustomProvider(ctx.settings, ctx.credentials, form, models),
@@ -259,7 +415,12 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       return (await presets.list()).map(preset => ({ id: preset.id, name: presetDisplayName(preset) }))
     },
     currentPreset,
+    presetName: () => builtInPresetName(currentPreset()) ?? currentPreset(),
     selectPreset,
+    listEfforts,
+    currentEffort,
+    effortName,
+    selectEffort,
     permissionMode: () => permission()?.current(activeAgent.session.events) ?? PERMISSION_PRESETS[0],
     cyclePermission: () => {
       const service = permission()
@@ -269,6 +430,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       const next = PERMISSION_PRESETS[(index + 1) % PERMISSION_PRESETS.length]
       service.set(activeAgent.session, next)
     },
+    tokenStats,
   }
 }
 

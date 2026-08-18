@@ -20,9 +20,15 @@ function fakeBridge(): ChatBridge {
     cwd: () => process.cwd(),
     listPresets: vi.fn(async () => []),
     currentPreset: () => 'standard',
+    presetName: () => 'Standard mode',
     selectPreset: vi.fn(async () => {}),
+    listEfforts: vi.fn(async () => []),
+    currentEffort: () => undefined,
+    effortName: () => undefined,
+    selectEffort: vi.fn(async () => {}),
     permissionMode: () => 'workspace-write',
     cyclePermission: vi.fn(),
+    tokenStats: () => ({ input: 0, output: 0, hitPercent: 0, contextPercent: 0 }),
   }
 }
 

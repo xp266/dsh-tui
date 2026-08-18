@@ -4,8 +4,8 @@ export const colors = {
   errorText: '#ff6b6b',
   toolLabel: '#5fd7ff',
   toolBodyText: '#808080',
-  modelText: '#808080',
-  cwdText: '#808080',
+  modelText: '#ffffff',
+  cwdText: '#ffffff',
   success: '#4caf50',
   dialogBackground: '#000000',
 } as const
