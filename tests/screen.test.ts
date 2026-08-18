@@ -56,20 +56,20 @@ describe('screen capture', () => {
   it('extracts line-based selections across rows', () => {
     const capture = createScreenCapture()
     capture.stream.write('\x1b[Galpha beta\n\x1b[Ggamma delta\n\x1b[Gepsilon\x1b[K')
-    const selection = { anchorRow: 0, anchorCol: 2, focusRow: 2, focusCol: 4, anchorInMessage: true, focusInMessage: true }
+    const selection = { anchorRow: 0, anchorCol: 2, focusRow: 2, focusCol: 4, inMessage: true }
     expect(capture.extractSelection(selection)).toBe('pha beta\ngamma delta\nepsi')
   })
 
   it('extracts a single-line column range', () => {
     const capture = createScreenCapture()
     capture.stream.write('\x1b[Gabcdef\x1b[K')
-    expect(capture.extractSelection({ anchorRow: 0, anchorCol: 1, focusRow: 0, focusCol: 5, anchorInMessage: true, focusInMessage: true })).toBe('bcde')
+    expect(capture.extractSelection({ anchorRow: 0, anchorCol: 1, focusRow: 0, focusCol: 5, inMessage: true })).toBe('bcde')
   })
 
   it('extracts upward selections with the anchor line first', () => {
     const capture = createScreenCapture()
     capture.stream.write('\x1b[Gfirst line\n\x1b[Gsecond line\x1b[K')
-    const selection = { anchorRow: 1, anchorCol: 3, focusRow: 0, focusCol: 2, anchorInMessage: true, focusInMessage: true }
+    const selection = { anchorRow: 1, anchorCol: 3, focusRow: 0, focusCol: 2, inMessage: true }
     expect(capture.extractSelection(selection)).toBe('rst line\nsec')
   })
 
@@ -78,7 +78,7 @@ describe('screen capture', () => {
     capture.stream.write('\x1b[G▄▄▄▄▄\n\x1b[Greal text\x1b[K')
     expect(capture.rowHasText(0)).toBe(false)
     expect(capture.rowHasText(1)).toBe(true)
-    const selection = { anchorRow: 0, anchorCol: 0, focusRow: 1, focusCol: 9, anchorInMessage: true, focusInMessage: true }
+    const selection = { anchorRow: 0, anchorCol: 0, focusRow: 1, focusCol: 9, inMessage: true }
     expect(capture.extractSelection(selection)).toBe('\nreal text')
   })
 })

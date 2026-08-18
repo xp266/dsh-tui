@@ -48,7 +48,7 @@ describe('selection text extraction', () => {
   ]
 
   function msgSel(anchorRow: number, anchorCol: number, focusRow: number, focusCol: number): LineSelection {
-    return { anchorRow, anchorCol, focusRow, focusCol, anchorInMessage: true, focusInMessage: true }
+    return { anchorRow, anchorCol, focusRow, focusCol, inMessage: true }
   }
 
   it('extracts full middle rows between the anchor rows', () => {

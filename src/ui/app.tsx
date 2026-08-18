@@ -11,7 +11,7 @@ import { rowCount, rowInfoAt, selectionText } from './layout.ts'
 import type { ScreenCapture } from '../terminal/screen.ts'
 import { SelectionContext } from './selection.tsx'
 import { HighlightedText } from './selection.tsx'
-import { toScreenSelection } from './selection.tsx'
+import { toScreenSelection, clampFocusRow } from './selection.tsx'
 import type { LineSelection } from './selection.tsx'
 import { InputBar, INPUT_BAR_HEIGHT } from './input-bar.tsx'
 import { MessageList } from './message-list.tsx'
@@ -89,11 +89,11 @@ export function App({ bridge, screen }: AppProps) {
     [selection, scrollTop, messageHeight],
   )
   const messageAreaSelection = useMemo(
-    () => (selection !== null && selection.anchorInMessage && selection.focusInMessage ? screenSelection : null),
+    () => (selection !== null && selection.inMessage ? screenSelection : null),
     [selection, screenSelection],
   )
   const chromeSelection = useMemo(
-    () => (selection !== null && !selection.anchorInMessage ? screenSelection : null),
+    () => (selection !== null && !selection.inMessage ? screenSelection : null),
     [selection, screenSelection],
   )
   const applyScroll = useCallback((next: number) => {
@@ -198,7 +198,7 @@ export function App({ bridge, screen }: AppProps) {
           if (dialogOpenRef.current) {
             dialogClickCandidateRef.current = { x: event.x, y: event.y }
             if (anchorable) {
-              setSelection({ anchorRow: event.y, anchorCol: event.x, focusRow: event.y, focusCol: event.x, anchorInMessage: false, focusInMessage: false })
+              setSelection({ anchorRow: event.y, anchorCol: event.x, focusRow: event.y, focusCol: event.x, inMessage: false })
             }
             return
           }
@@ -207,7 +207,7 @@ export function App({ bridge, screen }: AppProps) {
             return
           }
           if (anchorable) {
-            setSelection({ anchorRow: contentRow, anchorCol: event.x, focusRow: contentRow, focusCol: event.x, anchorInMessage, focusInMessage: anchorInMessage })
+            setSelection({ anchorRow: contentRow, anchorCol: event.x, focusRow: contentRow, focusCol: event.x, inMessage: anchorInMessage })
           }
           return
         }
@@ -216,17 +216,33 @@ export function App({ bridge, screen }: AppProps) {
           if (candidate !== null) {
             candidate.moved = true
             clickCandidateRef.current = null
-            const anchorRow = toContentRow(candidate.y)
-            setSelection({ anchorRow, anchorCol: candidate.x, focusRow: toContentRow(event.y), focusCol: event.x, anchorInMessage: inMessageArea(candidate.y), focusInMessage: inMessageArea(event.y) })
+            const anchorInMessage = inMessageArea(candidate.y)
+            setSelection({
+              anchorRow: toContentRow(candidate.y),
+              anchorCol: candidate.x,
+              focusRow: clampFocusRow(anchorInMessage, event.y, scrollTopRef.current, messageHeightRef.current, rowsRef.current, dialogOpenRef.current),
+              focusCol: event.x,
+              inMessage: anchorInMessage,
+            })
             return
           }
           const dialogCandidate = dialogClickCandidateRef.current
           if (dialogCandidate !== null) {
             dialogClickCandidateRef.current = null
-            setSelection({ anchorRow: dialogCandidate.y, anchorCol: dialogCandidate.x, focusRow: event.y, focusCol: event.x, anchorInMessage: false, focusInMessage: false })
+            setSelection({
+              anchorRow: dialogCandidate.y,
+              anchorCol: dialogCandidate.x,
+              focusRow: clampFocusRow(false, event.y, scrollTopRef.current, messageHeightRef.current, rowsRef.current, dialogOpenRef.current),
+              focusCol: event.x,
+              inMessage: false,
+            })
             return
           }
-          setSelection(current => (current === null ? current : { ...current, focusRow: toContentRow(event.y), focusCol: event.x, focusInMessage: inMessageArea(event.y) }))
+          setSelection(current => (current === null ? current : {
+            ...current,
+            focusRow: clampFocusRow(current.inMessage, event.y, scrollTopRef.current, messageHeightRef.current, rowsRef.current, dialogOpenRef.current),
+            focusCol: event.x,
+          }))
           return
         }
         case 'up': {
@@ -259,10 +275,9 @@ export function App({ bridge, screen }: AppProps) {
     if (dialogOpenRef.current && !selection) return
     if (key.ctrl && input === 'c') {
       if (selection) {
-        const text = selection.anchorInMessage && selection.focusInMessage
+        const text = selection.inMessage
           ? selectionText(messagesRef.current, widthRef.current, selection)
-          : (screenRef.current?.extractSelection(screenSelection ?? selection) ?? '')
-        console.error('DBG copy:', JSON.stringify({ selection, text: text.slice(0, 60), len: text.length }))
+          : (screenRef.current?.extractSelection(selection) ?? '')
         if (text) writeOsc52(text)
         setSelection(null)
         return

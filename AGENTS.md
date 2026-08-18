@@ -27,5 +27,6 @@ pnpm build         # tsdown -> lib/
 - No comments in code unless strictly necessary; no emojis or pictographs.
 - Never write a README.md file.
 - `tests` only contains test content that is reused at high frequency.
+- After completing a feature or fix, always run `pnpm test` and `pnpm build` so the `lib/` bundle stays in sync with `src/`.
 - Never commit proactively; only check and commit when the user explicitly asks.
 - Do not modify this document unless necessary.

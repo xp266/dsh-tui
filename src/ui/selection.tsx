@@ -7,8 +7,7 @@ export interface LineSelection {
   anchorCol: number
   focusRow: number
   focusCol: number
-  anchorInMessage: boolean
-  focusInMessage: boolean
+  inMessage: boolean
 }
 
 export function selectedRange(sel: LineSelection, row: number): { start: number; end: number } | null {
@@ -36,24 +35,37 @@ export function toScreenSelection(
   messageHeight: number,
 ): LineSelection | null {
   if (selection === null) return null
-  const rawAnchor = selection.anchorInMessage ? selection.anchorRow - scrollTop : selection.anchorRow
-  const rawFocus = selection.focusInMessage ? selection.focusRow - scrollTop : selection.focusRow
+  if (!selection.inMessage) return selection
+  const rawAnchor = selection.anchorRow - scrollTop
+  const rawFocus = selection.focusRow - scrollTop
   const visible = (row: number) => row >= 0 && row < messageHeight
-  const anchorVisible = !selection.anchorInMessage || visible(rawAnchor)
-  const focusVisible = !selection.focusInMessage || visible(rawFocus)
-  if (!anchorVisible && !focusVisible) return null
-  const clampRow = (row: number, inMessage: boolean): number => {
-    if (!inMessage) return row
-    return row < 0 ? 0 : row >= messageHeight ? messageHeight - 1 : row
-  }
+  if (!visible(rawAnchor) && !visible(rawFocus)) return null
+  const clampRow = (row: number): number => (row < 0 ? 0 : row >= messageHeight ? messageHeight - 1 : row)
+  const snapCol = (raw: number, col: number): number => (raw < 0 ? 0 : raw >= messageHeight ? Infinity : col)
   return {
-    anchorRow: clampRow(rawAnchor, selection.anchorInMessage),
-    anchorCol: selection.anchorCol,
-    focusRow: clampRow(rawFocus, selection.focusInMessage),
-    focusCol: selection.focusCol,
-    anchorInMessage: selection.anchorInMessage,
-    focusInMessage: selection.focusInMessage,
+    anchorRow: clampRow(rawAnchor),
+    anchorCol: snapCol(rawAnchor, selection.anchorCol),
+    focusRow: clampRow(rawFocus),
+    focusCol: snapCol(rawFocus, selection.focusCol),
+    inMessage: true,
   }
+}
+
+export function clampFocusRow(
+  inMessage: boolean,
+  eventY: number,
+  scrollTop: number,
+  messageHeight: number,
+  rows: number,
+  dialogOpen: boolean,
+): number {
+  if (inMessage) {
+    return Math.min(eventY + scrollTop, scrollTop + messageHeight - 1)
+  }
+  if (dialogOpen) {
+    return Math.max(0, Math.min(eventY, rows - 1))
+  }
+  return Math.max(messageHeight, eventY)
 }
 
 interface HighlightedTextProps {

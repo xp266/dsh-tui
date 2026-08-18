@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { toScreenSelection } from '../src/ui/selection.tsx'
+import { clampFocusRow, toScreenSelection } from '../src/ui/selection.tsx'
 import type { LineSelection } from '../src/ui/selection.tsx'
-import { createScreenCapture } from '../src/terminal/screen.ts'
 
 const MESSAGE_HEIGHT = 18
 
@@ -11,8 +10,7 @@ function messageSelection(overrides: Partial<LineSelection> = {}): LineSelection
     anchorCol: 2,
     focusRow: 8,
     focusCol: 10,
-    anchorInMessage: true,
-    focusInMessage: true,
+    inMessage: true,
     ...overrides,
   }
 }
@@ -43,16 +41,31 @@ describe('toScreenSelection', () => {
 
   it('clamps a selection partially scrolled out of the bottom', () => {
     const selection = messageSelection({ anchorRow: 22, focusRow: 27 })
-    expect(toScreenSelection(selection, 8, MESSAGE_HEIGHT)).toEqual({ ...selection, anchorRow: 14, focusRow: 17 })
+    expect(toScreenSelection(selection, 8, MESSAGE_HEIGHT)).toEqual({ ...selection, anchorRow: 14, focusRow: 17, focusCol: Infinity })
   })
 
   it('clamps a selection partially scrolled out of the top', () => {
     const selection = messageSelection({ anchorRow: 3, focusRow: 9 })
-    expect(toScreenSelection(selection, 8, MESSAGE_HEIGHT)).toEqual({ ...selection, anchorRow: 0, focusRow: 1 })
+    expect(toScreenSelection(selection, 8, MESSAGE_HEIGHT)).toEqual({ ...selection, anchorRow: 0, focusRow: 1, anchorCol: 0 })
+  })
+
+  it('snaps the clamped top endpoint of an upward selection to the row start', () => {
+    const selection = messageSelection({ anchorRow: 9, anchorCol: 7, focusRow: 2, focusCol: 3 })
+    expect(toScreenSelection(selection, 8, MESSAGE_HEIGHT)).toEqual({ ...selection, anchorRow: 1, focusRow: 0, focusCol: 0 })
+  })
+
+  it('snaps the clamped bottom endpoint of an upward selection to the row end', () => {
+    const selection = messageSelection({ anchorRow: 27, anchorCol: 7, focusRow: 22, focusCol: 3 })
+    expect(toScreenSelection(selection, 8, MESSAGE_HEIGHT)).toEqual({ ...selection, anchorRow: 17, focusRow: 14, anchorCol: Infinity })
+  })
+
+  it('keeps columns unchanged while both endpoints stay visible', () => {
+    const selection = messageSelection({ anchorRow: 12, anchorCol: 7, focusRow: 15, focusCol: 3 })
+    expect(toScreenSelection(selection, 6, MESSAGE_HEIGHT)).toEqual({ ...selection, anchorRow: 6, focusRow: 9 })
   })
 
   it('leaves non-message rows unmapped even when scrolled', () => {
-    const selection = messageSelection({ anchorRow: 19, anchorCol: 2, focusRow: 21, focusCol: 4, anchorInMessage: false, focusInMessage: false })
+    const selection = messageSelection({ anchorRow: 19, anchorCol: 2, focusRow: 21, focusCol: 4, inMessage: false })
     expect(toScreenSelection(selection, 7, MESSAGE_HEIGHT)).toEqual(selection)
   })
 
@@ -61,13 +74,20 @@ describe('toScreenSelection', () => {
   })
 })
 
-describe('selection follows content when scrolled', () => {
-  it('copies the anchored content from the scrolled screen', () => {
-    const capture = createScreenCapture()
-    capture.stream.write('\x1b[Galpha beta\n\x1b[Ggamma delta\n\x1b[Gepsilon\x1b[K')
-    const selection = messageSelection({ anchorRow: 2, anchorCol: 0, focusRow: 4, focusCol: 5 })
-    const screen = toScreenSelection(selection, 2, MESSAGE_HEIGHT)
-    expect(screen).toEqual({ ...selection, anchorRow: 0, focusRow: 2 })
-    expect(capture.extractSelection(screen!)).toBe('alpha beta\ngamma delta\nepsil')
+describe('clampFocusRow', () => {
+  it('keeps a message-anchored focus inside the visible message rows', () => {
+    expect(clampFocusRow(true, 3, 10, MESSAGE_HEIGHT, 24, false)).toBe(13)
+    expect(clampFocusRow(true, 17, 10, MESSAGE_HEIGHT, 24, false)).toBe(27)
+    expect(clampFocusRow(true, 30, 10, MESSAGE_HEIGHT, 24, false)).toBe(27)
+  })
+
+  it('keeps a chrome-anchored focus below the message area', () => {
+    expect(clampFocusRow(false, 30, 0, MESSAGE_HEIGHT, 24, false)).toBe(30)
+    expect(clampFocusRow(false, 5, 0, MESSAGE_HEIGHT, 24, false)).toBe(MESSAGE_HEIGHT)
+  })
+
+  it('keeps a dialog-anchored focus anywhere on screen', () => {
+    expect(clampFocusRow(false, 5, 0, MESSAGE_HEIGHT, 24, true)).toBe(5)
+    expect(clampFocusRow(false, 23, 0, MESSAGE_HEIGHT, 24, true)).toBe(23)
   })
 })
