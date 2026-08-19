@@ -16,7 +16,7 @@ export interface ChatEvents {
 
 export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolean): ChatEvents {
   const [messages, setMessages] = useState<Message[]>([])
-  const [modelName, setModelName] = useState('glm 4.7')
+  const [modelName, setModelName] = useState('deepseek-v4-flash')
   const chatStateRef = useRef<{ messages: Message[]; turn: ReturnType<typeof initialTurnState> }>({
     messages: [],
     turn: initialTurnState(),

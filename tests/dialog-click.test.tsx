@@ -30,13 +30,31 @@ describe('dialog hitRowIndex', () => {
     expect(hitRowIndex(TOP + 1 + TITLE_LINES + 2, TOP, TITLE_LINES, list)).toBeNull()
   })
 
-  it('handles multi-line rows', () => {
+  it('handles single-line select rows', () => {
     const list: DialogRow[] = [
       rows(1)[0],
       { items: [{ type: 'select', label: 'S', value: 'a', options: ['a', 'b'], onChange: () => {} }] },
     ]
     expect(hitRowIndex(TOP + 1 + TITLE_LINES + 1, TOP, TITLE_LINES, list)).toBe(1)
-    expect(hitRowIndex(TOP + 1 + TITLE_LINES + 3, TOP, TITLE_LINES, list)).toBe(1)
-    expect(hitRowIndex(TOP + 1 + TITLE_LINES + 4, TOP, TITLE_LINES, list)).toBeNull()
+    expect(hitRowIndex(TOP + 1 + TITLE_LINES + 2, TOP, TITLE_LINES, list)).toBeNull()
+  })
+
+  it('maps clicks through the scroll offset', () => {
+    const list = rows(20)
+    expect(hitRowIndex(TOP + 1 + TITLE_LINES, TOP, TITLE_LINES, list, 15)).toBe(15)
+    expect(hitRowIndex(TOP + 1 + TITLE_LINES + 4, TOP, TITLE_LINES, list, 15)).toBe(19)
+    expect(hitRowIndex(TOP + 1 + TITLE_LINES + 5, TOP, TITLE_LINES, list, 15)).toBeNull()
+  })
+
+  it('maps dialog clicks onto content rows below the fixed search row', () => {
+    const list: DialogRow[] = [
+      { items: [{ type: 'select', label: 'A', value: 'a', options: ['a', 'b'], onChange: () => {}, spaced: true }] },
+      { items: [{ type: 'select', label: 'B', value: 'b', options: ['a', 'b'], onChange: () => {}, spaced: true }] },
+    ]
+    const fixedHeight = 2
+    expect(hitRowIndex(TOP + 1 + TITLE_LINES + fixedHeight, TOP + fixedHeight, TITLE_LINES, list, 0)).toBe(0)
+    expect(hitRowIndex(TOP + 1 + TITLE_LINES + fixedHeight + 1, TOP + fixedHeight, TITLE_LINES, list, 0)).toBe(0)
+    expect(hitRowIndex(TOP + 1 + TITLE_LINES + fixedHeight + 2, TOP + fixedHeight, TITLE_LINES, list, 0)).toBe(1)
+    expect(hitRowIndex(TOP + 1 + TITLE_LINES + fixedHeight + 4, TOP + fixedHeight, TITLE_LINES, list, 0)).toBeNull()
   })
 })

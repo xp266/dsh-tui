@@ -28,6 +28,11 @@ function fakeBridge(): ChatBridge {
     selectEffort: vi.fn(async () => {}),
     permissionMode: () => 'workspace-write',
     cyclePermission: vi.fn(),
+    listPermissionPresets: vi.fn(async () => ['read-only', 'workspace-write', 'danger-full-access']),
+    defaultPermission: () => 'workspace-write',
+    setDefaultPermission: vi.fn(async () => {}),
+    defaultPresetId: () => 'standard',
+    setDefaultPreset: vi.fn(async () => {}),
     tokenStats: () => ({ input: 0, output: 0, hitPercent: 0, contextPercent: 0 }),
     toolPresenter: { call: () => undefined, result: () => undefined, argsJson: () => undefined },
   }

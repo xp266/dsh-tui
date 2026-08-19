@@ -29,6 +29,11 @@ function fakeBridge(): ChatBridge {
     selectEffort: vi.fn(async () => {}),
     permissionMode: () => 'workspace-write',
     cyclePermission: vi.fn(),
+    listPermissionPresets: vi.fn(async () => ['read-only', 'workspace-write', 'danger-full-access']),
+    defaultPermission: () => 'workspace-write',
+    setDefaultPermission: vi.fn(async () => {}),
+    defaultPresetId: () => 'standard',
+    setDefaultPreset: vi.fn(async () => {}),
     tokenStats: () => ({ input: 0, output: 0, hitPercent: 0, contextPercent: 0 }),
     toolPresenter: { call: () => undefined, result: () => undefined, argsJson: () => undefined },
   }
@@ -38,7 +43,7 @@ describe('App layout', () => {
   it('renders the empty shell with model name and cwd', () => {
     const { lastFrame } = render(<App />)
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('glm 4.7')
+    expect(frame).toContain('deepseek-v4-flash')
     expect(frame).toContain('/ts/dsh-tui')
   })
 
@@ -122,6 +127,28 @@ describe('App layout', () => {
     expect(frame).toContain('+Add Deepseek')
     expect(frame).toContain('+Add Custom Model')
     expect(frame).toContain('glm-4.7-flash')
+  })
+
+  it('opens the defaults window with the two carousel rows', async () => {
+    const bridge = fakeBridge()
+    bridge.listPresets = vi.fn(async () => [
+      { id: 'standard', name: 'Standard mode' },
+      { id: 'whale-chat', name: 'Whale chat' },
+    ])
+    const { lastFrame, stdin } = render(<App bridge={bridge} />)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    stdin.write('/defaults')
+    await new Promise(resolve => setTimeout(resolve, 20))
+    stdin.write('\r')
+    await new Promise(resolve => setTimeout(resolve, 20))
+    stdin.write('\r')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('defaults')
+    expect(frame).toContain('Agent Preset:')
+    expect(frame).toContain('Standard mode')
+    expect(frame).toContain('Permission Mode:')
+    expect(frame).toContain('Workspace Write')
   })
 
   it('opens the preset window with the four built-in presets and a current marker', async () => {

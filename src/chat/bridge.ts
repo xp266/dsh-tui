@@ -8,7 +8,7 @@ import type {} from '@deepseek-ai/dsh-agent-presets'
 import { resolveSessionPreset } from '@deepseek-ai/dsh-agent-presets'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentHandle, AgentOptions, ModelSelection, ModelSelectionRef } from '@deepseek-ai/dsh-agent'
-import type { ContentBlock, LlmDiscoveredModel, LlmRuntime } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
@@ -34,6 +34,8 @@ export const PERMISSION_PRESETS = ['workspace-write', 'danger-full-access', 'rea
 interface PermissionPresetsLike {
   current(events: readonly SessionEvent[]): string
   set(session: Session, name: string): void
+  readonly names: readonly string[]
+  readonly defaultPreset: string
 }
 
 export interface TokenStats {
@@ -116,14 +118,13 @@ export interface ChatBridge {
   selectEffort(id: string): Promise<void>
   permissionMode(): string
   cyclePermission(): void
+  listPermissionPresets(): Promise<string[]>
+  defaultPermission(): string
+  setDefaultPermission(id: string): Promise<void>
+  defaultPresetId(): string
+  setDefaultPreset(id: string): Promise<void>
   tokenStats(): TokenStats
   toolPresenter: ChatToolPresenter
-}
-
-interface ResolvedModel {
-  provider?: string
-  model?: string
-  display: string
 }
 
 let sessionCounter = 0
@@ -131,8 +132,11 @@ let sessionCounter = 0
 const SESSION_LIST_REFRESH_MIN_MS = 2000
 
 export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
-  const model = await resolveModel(ctx)
-  const modelOptions: AgentOptions = model.provider === undefined ? {} : { provider: model.provider, model: model.model }
+  const agentOptions = (): AgentOptions => {
+    const selection = ctx.get('agentDefaultModel')?.currentSelection()
+    if (selection === undefined) return {}
+    return { provider: selection.provider, model: selection.model }
+  }
   const handlers = new Set<(event: SessionEvent) => void>()
   const presets = ctx.get('agentPresets')
   const selections = new WeakMap<Agent, ModelSelectionRef>()
@@ -216,13 +220,13 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       return ctx.agentLoop.createAgent(ctx, {
         sessionId: SessionId(`tui-${Date.now()}-${++sessionCounter}`),
         meta,
-        agentOptions: modelOptions,
+        agentOptions: agentOptions(),
         setup,
       })
     }
     const agent = ctx.agentLoop.create(
       SessionId(`tui-${Date.now()}-${++sessionCounter}`),
-      modelOptions,
+      agentOptions(),
       { cwd },
     )
     installSelection(agent.ctx)
@@ -248,7 +252,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     }
     if (typeof ctx.agentLoop.resume === 'function') {
       try {
-        return await ctx.agentLoop.resume(ctx, { resumeSessionId: SessionId(id), agentOptions: modelOptions, setup })
+        return await ctx.agentLoop.resume(ctx, { resumeSessionId: SessionId(id), agentOptions: agentOptions(), setup })
       } catch (error) {
         if (query?.readSession === undefined) throw error
         const snapshot = await query.readSession(String(id))
@@ -256,7 +260,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
           sessionId: SessionId(id),
           seed: snapshot.events,
           meta: { cwd: snapshot.session.cwd },
-          agentOptions: modelOptions,
+          agentOptions: agentOptions(),
           setup,
         })
       }
@@ -267,7 +271,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
         sessionId: SessionId(id),
         seed: snapshot.events,
         meta: { cwd: snapshot.session.cwd },
-        agentOptions: modelOptions,
+        agentOptions: agentOptions(),
         setup,
       })
     }
@@ -349,6 +353,12 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
 
   function permission(): PermissionPresetsLike | undefined {
     return ctx.get('permissionPresets') as PermissionPresetsLike | undefined
+  }
+
+  function settingsService(): { update(ns: string, patch: object): Promise<void> } {
+    const service = ctx.get('settings') as { update(ns: string, patch: object): Promise<void> } | undefined
+    if (service === undefined) throw new Error('settings service is not available')
+    return service
   }
 
   const tools = ctx.get('tools') as ToolsLike | undefined
@@ -534,7 +544,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   void refreshEffortNames()
 
   return {
-    modelName: () => currentSelection()?.model ?? model.display,
+    modelName: () => currentSelection()?.model ?? 'deepseek-v4-flash',
     send(text: string) {
       activeAgent.followup(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
     },
@@ -573,6 +583,18 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       const next = PERMISSION_PRESETS[(index + 1) % PERMISSION_PRESETS.length]
       service.set(activeAgent.session, next)
     },
+    listPermissionPresets: async () => {
+      const service = permission()
+      return service === undefined ? [...PERMISSION_PRESETS] : [...service.names]
+    },
+    defaultPermission: () => permission()?.defaultPreset ?? PERMISSION_PRESETS[0],
+    setDefaultPermission: async id => {
+      await settingsService().update('permission', { defaultPreset: id })
+    },
+    defaultPresetId: () => presets?.defaultId ?? 'standard',
+    setDefaultPreset: async id => {
+      await settingsService().update('agent-presets', { default: id })
+    },
     tokenStats,
     toolPresenter,
   }
@@ -583,31 +605,4 @@ async function registerWorkspace(ctx: Context, path: string): Promise<void> {
   try {
     await workspace?.create?.(path)
   } catch {}
-}
-
-async function resolveModel(ctx: Context): Promise<ResolvedModel> {
-  const llm = ctx.get('llm')
-  if (llm) {
-    const glm = await findGlmModel(llm)
-    if (glm !== undefined) return glm
-  }
-  const selection = ctx.get('agentDefaultModel')?.currentSelection()
-  if (selection) return { provider: selection.provider, model: selection.model, display: selection.model }
-  return { display: 'glm 4.7' }
-}
-
-async function findGlmModel(llm: LlmRuntime): Promise<ResolvedModel | undefined> {
-  for (let attempt = 0; attempt < 10; attempt++) {
-    try {
-      for (const provider of llm.listProviders()) {
-        const models = await llm.listModels(provider.id)
-        const hit = models.find(m => /glm/i.test(m.id))
-        if (hit !== undefined) return { provider: provider.id, model: hit.id, display: hit.id }
-      }
-    } catch {
-      // provider registry still settling from the settings document; retry
-    }
-    await new Promise(resolve => setTimeout(resolve, 500))
-  }
-  return undefined
 }

@@ -17,6 +17,7 @@ import { ModelsDialog } from './dialog/models-dialog.tsx'
 import { SessionsDialog } from './dialog/sessions-dialog.tsx'
 import { PresetsDialog } from './dialog/presets-dialog.tsx'
 import { EffortDialog } from './dialog/effort-dialog.tsx'
+import { DefaultsDialog } from './dialog/defaults-dialog.tsx'
 import type { DialogHandle } from './dialog/dialog.tsx'
 import { padToWidth, textWidth, truncate } from '../utils/text.ts'
 import type { CommandHintState } from './input/commands.ts'
@@ -24,7 +25,7 @@ import type { TokenStats } from '../chat/bridge.ts'
 
 const FORCE_EXIT_DELAY_MS = 6000
 
-type DialogKind = 'models' | 'sessions' | 'presets' | 'effort'
+type DialogKind = 'models' | 'sessions' | 'presets' | 'effort' | 'defaults'
 
 interface AppProps {
   bridge?: ChatBridge
@@ -35,6 +36,7 @@ export function App({ bridge, screen }: AppProps) {
   const { columns, rows } = useTerminalSize()
   const [dialog, setDialog] = useState<DialogKind | null>(null)
   const [hintState, setHintState] = useState<CommandHintState | null>(null)
+  const [, setSessionTick] = useState(0)
   const { messages, modelName, setModelName, updateMessages, resetChat } = useChatEvents(bridge, dialog !== null)
   const messageHeight = Math.max(1, rows - INPUT_BAR_HEIGHT - 1)
   const total = useMemo(() => rowCount(messages, columns), [messages, columns])
@@ -74,6 +76,10 @@ export function App({ bridge, screen }: AppProps) {
       if (bridge) setDialog('presets')
       return
     }
+    if (text === '/defaults') {
+      if (bridge) setDialog('defaults')
+      return
+    }
     if (text === '/sessions') {
       if (bridge) setDialog('sessions')
       return
@@ -83,9 +89,9 @@ export function App({ bridge, screen }: AppProps) {
       resetChat()
       clearSelection()
       applyScroll(Infinity)
-      try {
-        void Promise.resolve(bridge.newSession()).catch(() => {})
-      } catch {}
+      void Promise.resolve(bridge.newSession())
+        .then(() => setSessionTick(tick => tick + 1))
+        .catch(() => {})
       return
     }
     bridge?.send(text)
@@ -200,6 +206,7 @@ export function App({ bridge, screen }: AppProps) {
               clearSelection()
             }}
             onSessionSelected={() => {
+              setSessionTick(tick => tick + 1)
               applyScroll(Infinity)
             }}
           />
@@ -217,6 +224,15 @@ export function App({ bridge, screen }: AppProps) {
       {dialog === 'effort' && bridge !== undefined && (
         <SelectionContext.Provider value={chromeSelection}>
           <EffortDialog
+            ref={dialogRef}
+            api={bridge}
+            onClose={() => setDialog(null)}
+          />
+        </SelectionContext.Provider>
+      )}
+      {dialog === 'defaults' && bridge !== undefined && (
+        <SelectionContext.Provider value={chromeSelection}>
+          <DefaultsDialog
             ref={dialogRef}
             api={bridge}
             onClose={() => setDialog(null)}

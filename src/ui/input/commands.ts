@@ -6,6 +6,7 @@ export interface CommandDef {
 export const COMMANDS: CommandDef[] = [
   { command: '/models', description: 'Open model selection' },
   { command: '/model-effort', description: 'Select reasoning effort' },
+  { command: '/defaults', description: 'Set default permission and agent preset' },
   { command: '/preset', description: 'Select agent preset' },
   { command: '/sessions', description: 'Open session picker' },
   { command: '/new', description: 'Start a new conversation in current directory' },

@@ -153,22 +153,22 @@ export const ModelsDialog = forwardRef<DialogHandle, ModelsDialogProps>(function
     {
       items: [
         {
-          type: 'select',
-          label: 'API Protocol',
-          value: form.apiProtocol,
-          options: API_PROTOCOLS,
-          onChange: value => setField('apiProtocol', value),
+          type: 'input',
+          label: 'API Key',
+          value: form.apiKey,
+          onChange: value => setField('apiKey', value),
+          onEnter: () => void submitCustom(),
         },
       ],
     },
     {
       items: [
         {
-          type: 'input',
-          label: 'API Key',
-          value: form.apiKey,
-          onChange: value => setField('apiKey', value),
-          onEnter: () => void submitCustom(),
+          type: 'select',
+          label: 'API Protocol',
+          value: form.apiProtocol,
+          options: API_PROTOCOLS,
+          onChange: value => setField('apiProtocol', value),
         },
       ],
     },

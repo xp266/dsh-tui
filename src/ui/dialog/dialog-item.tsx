@@ -5,12 +5,46 @@ import { padToWidth, textWidth, truncate } from '../../utils/text.ts'
 import { HighlightedText } from '../selection.tsx'
 import type { DialogItem, DialogRow } from './dialog.tsx'
 
-export function renderRow(row: DialogRow, focused: boolean, contentWidth: number, baseY: number, left: number): ReactNode {
+export const CAROUSEL_BUTTON_WIDTH = 3
+
+export interface SelectBlock {
+  blockWidth: number
+  blockStart: number
+  text: string
+  leftPad: number
+  fullLeftPad: number
+  cursorX: number
+}
+
+export function selectBlock(contentWidth: number, value: string): SelectBlock {
+  const blockWidth = Math.max(3, Math.floor(contentWidth * 0.6))
+  const innerWidth = Math.max(1, blockWidth - CAROUSEL_BUTTON_WIDTH * 2)
+  const text = truncate(value || '(none)', innerWidth)
+  const padding = innerWidth - textWidth(text)
+  const fullPadding = blockWidth - textWidth(text)
+  return {
+    blockWidth,
+    blockStart: contentWidth - blockWidth,
+    text,
+    leftPad: Math.floor(padding / 2),
+    fullLeftPad: Math.floor(fullPadding / 2),
+    cursorX: CAROUSEL_BUTTON_WIDTH + Math.floor(padding / 2) + textWidth(text),
+  }
+}
+
+export function renderRow(
+  row: DialogRow,
+  focused: boolean,
+  contentWidth: number,
+  baseY: number,
+  left: number,
+  pressed: 'left' | 'right' | null = null,
+): ReactNode {
   let col = left + 1
   return (
     <Box flexDirection="row">
       {row.items.map((item, index) => {
-        const next = renderItem(item, focused, contentWidth, baseY, col)
+        const next = renderItem(item, focused, contentWidth, baseY, col, pressed)
         col += textWidth(itemText(item)) + 1
         return (
           <Box key={index} flexDirection="row">
@@ -38,7 +72,14 @@ function itemText(item: DialogItem): string {
   }
 }
 
-function renderItem(item: DialogItem, focused: boolean, contentWidth: number, baseY: number, left: number): ReactNode {
+function renderItem(
+  item: DialogItem,
+  focused: boolean,
+  contentWidth: number,
+  baseY: number,
+  left: number,
+  pressed: 'left' | 'right' | null,
+): ReactNode {
   switch (item.type) {
     case 'search': {
       const isEmpty = item.value === ''
@@ -69,25 +110,32 @@ function renderItem(item: DialogItem, focused: boolean, contentWidth: number, ba
         </Box>
       )
     case 'select': {
-      const index = Math.max(0, item.options.indexOf(item.value))
-      const next = item.options.length > 1 ? item.options[(index + 1) % item.options.length] : undefined
-      const value = truncate(item.value || '(none)', contentWidth)
-      return (
-        <Box flexDirection="column">
-          <Box height={1}>
-            <HighlightedText y={baseY} col={left} text={item.label} />
-          </Box>
-          <Box height={1}>
-            {next === undefined ? (
-              <HighlightedText y={baseY + 1} col={left} text={value} />
-            ) : (
-              <Box>
-                <HighlightedText y={baseY + 1} col={left} text={value} />
-                <HighlightedText y={baseY + 1} col={left + textWidth(value)} text={' → '} color={colors.toolLabel} />
-                <HighlightedText y={baseY + 1} col={left + textWidth(value) + 3} text={truncate(next, contentWidth)} color={colors.toolBodyText} />
-              </Box>
+      const block = selectBlock(contentWidth, item.value)
+      const hasArrows = item.options.length > 1
+      const pad = hasArrows ? block.leftPad : block.fullLeftPad
+      const inner = block.blockWidth - (hasArrows ? CAROUSEL_BUTTON_WIDTH * 2 : 0)
+      const carousel = (
+        <Box width={contentWidth} justifyContent="space-between">
+          <HighlightedText y={baseY} col={left} text={`${item.label}:`} />
+          <Box width={block.blockWidth} flexDirection="row">
+            {hasArrows && (
+              <Text backgroundColor={pressed === 'left' ? colors.carouselButtonPressedBg : colors.carouselButtonBg}> ◀ </Text>
+            )}
+            <Text backgroundColor={colors.carouselCurrentBg}>
+              {' '.repeat(pad)}
+              {block.text}
+              {' '.repeat(inner - pad - textWidth(block.text))}
+            </Text>
+            {hasArrows && (
+              <Text backgroundColor={pressed === 'right' ? colors.carouselButtonPressedBg : colors.carouselButtonBg}> ▶ </Text>
             )}
           </Box>
+        </Box>
+      )
+      if (!item.spaced) return carousel
+      return (
+        <Box flexDirection="column">
+          {carousel}
           <Box height={1}>
             <Text> </Text>
           </Box>
