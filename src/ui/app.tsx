@@ -123,7 +123,7 @@ export function App({ bridge, screen }: AppProps) {
         <SelectionContext.Provider value={chromeSelection}>
           <InputBar
             width={columns}
-            modelName={modelName}
+            modelName={bridge?.modelName() ?? modelName}
             permissionMode={bridge?.permissionMode() ?? 'workspace-write'}
             onCyclePermission={() => bridge?.cyclePermission()}
             effortName={bridge?.effortName()}

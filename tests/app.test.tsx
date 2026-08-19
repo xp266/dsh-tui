@@ -49,6 +49,21 @@ describe('App layout', () => {
     expect(frame).toContain('glm-4.7-flash')
   })
 
+  it('follows the bridge model name when the active session changes', async () => {
+    const bridge = fakeBridge()
+    let name = 'glm-4.7-flash'
+    bridge.modelName = () => name
+    const { lastFrame, rerender } = render(<App bridge={bridge} />)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(lastFrame() ?? '').toContain('glm-4.7-flash')
+    name = 'deepseek-v4-flash'
+    rerender(<App bridge={bridge} />)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('deepseek-v4-flash')
+    expect(frame).not.toContain('glm-4.7-flash')
+  })
+
   it('renders no box-drawing or block characters other than half-block edges', () => {
     const { lastFrame } = render(<App bridge={fakeBridge()} />)
     const frame = lastFrame() ?? ''

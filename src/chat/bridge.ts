@@ -275,6 +275,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       if (previous !== undefined) await previous.dispose()
       syncCwd()
       for (const event of activeAgent.session.events) emit(event)
+      void repairEffortSelection()
       return
     }
     const handle = await resumeAgent(sessionId)
@@ -284,6 +285,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     if (previous !== undefined) await previous.dispose()
     syncCwd()
     for (const event of activeAgent.session.events) emit(event)
+    void repairEffortSelection()
   }
 
   function syncCwd(): void {
@@ -298,6 +300,22 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     activeHandle = handle
     activeAgent = handle.agent
     if (previous !== undefined) await previous.dispose()
+    void repairEffortSelection()
+  }
+
+  async function repairEffortSelection(): Promise<void> {
+    const selection = currentSelection()
+    if (selection === undefined || selection.reasoningEffort === undefined) return
+    try {
+      await llm.resolveCallConfig({
+        provider: selection.provider,
+        model: selection.model,
+        reasoningEffort: selection.reasoningEffort,
+      })
+    } catch {
+      const resolved = await llm.resolveCallConfig({ provider: selection.provider, model: selection.model })
+      selectionFor(activeAgent).current = resolved
+    }
   }
 
   function currentPreset(): string {
@@ -479,7 +497,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   void refreshEffortNames()
 
   return {
-    modelName: () => model.display,
+    modelName: () => currentSelection()?.model ?? model.display,
     send(text: string) {
       activeAgent.followup(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
     },
