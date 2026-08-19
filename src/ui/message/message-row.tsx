@@ -21,23 +21,27 @@ export const MessageRow = memo(
           <HighlightedText y={screenRow} col={2} text={' '.repeat(info.backgroundWidth)} />
         </Box>
       )
-    case 'text':
+    case 'text': {
+      const col = info.colStart
+      const marginLeft = col >= 2 ? 2 : col
+      const paddingLeft = col >= 2 ? col - 2 : 0
       return (
         <Box
-          marginLeft={2}
+          marginLeft={marginLeft}
           width={info.backgroundWidth}
-          paddingLeft={2}
+          paddingLeft={paddingLeft}
           paddingRight={2}
           backgroundColor={info.background ? backgroundFor(info.role) : undefined}
         >
           <HighlightedText
             text={info.text || ' '}
             y={screenRow}
-            col={4}
+            col={col}
             color={info.role === 'error' ? colors.errorText : info.muted ? colors.toolBodyText : undefined}
           />
         </Box>
       )
+    }
     case 'header': {
       const symbol = info.running ? SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length] : headerSymbol(info.running, info.collapsed)
       return <HighlightedText y={screenRow} col={0} text={`  ${symbol} ${info.label}`} color={colors.toolLabel} />

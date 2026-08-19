@@ -41,8 +41,16 @@ export function reduceChatEvent(
     case 'tool/call': {
       const id = nextId('tool')
       turn.toolIds.set(event.data.callId, id)
-      const commandLine = presenter?.call(event.data.name, event.data.callId, event.data.arguments) ?? ''
-      messages.push({ kind: 'collapsible', id, label: event.data.name, body: commandLine, running: true, collapsed: false })
+      const view = presenter?.call(event.data.name, event.data.callId, event.data.arguments)
+      messages.push({
+        kind: 'collapsible',
+        id,
+        label: view?.label ?? event.data.name,
+        body: view?.body ?? '',
+        running: true,
+        collapsed: false,
+        ...view?.bodyCol === undefined ? {} : { bodyCol: view.bodyCol },
+      })
       return { messages, turn }
     }
     case 'tool/result': {
@@ -61,8 +69,22 @@ export function reduceChatEvent(
         isError: block?.isError === true,
         ...event.data.meta === undefined ? {} : { meta: event.data.meta },
       }
-      const view = presenter?.result(callId, result)
-      let text = view?.output
+      const presentation = presenter?.result(callId, result)
+      if (presentation !== undefined && presentation.kind === 'replace') {
+        const body = error === undefined
+          ? presentation.text
+          : `error: ${error.name ?? error.code}${presentation.text === '' ? '' : `\n${presentation.text}`}`
+        turn.toolIds.delete(callId)
+        messages[index] = {
+          ...existing,
+          body,
+          running: false,
+          collapsed: false,
+          ...presentation.bodyCol === undefined ? {} : { bodyCol: presentation.bodyCol },
+        }
+        return { messages, turn }
+      }
+      let text = presentation?.text
       if (text === undefined) text = textFromBlocks(event.data.message.content)
       if (text.trim() === '' && existing.body === '' && presenter !== undefined) {
         const fallback = presenter.argsJson(callId)
@@ -70,8 +92,8 @@ export function reduceChatEvent(
       }
       const lines: string[] = []
       if (text !== '') lines.push(text)
-      if (view?.exitCode !== undefined) lines.push(`[exit code: ${view.exitCode}]`)
-      else if (view?.signal !== undefined) lines.push(`[killed by signal: ${view.signal}]`)
+      if (presentation?.exitCode !== undefined) lines.push(`[exit code: ${presentation.exitCode}]`)
+      else if (presentation?.signal !== undefined) lines.push(`[killed by signal: ${presentation.signal}]`)
       const rendered = lines.join('\n')
       const body = error === undefined
         ? rendered === '' ? existing.body
@@ -79,14 +101,7 @@ export function reduceChatEvent(
             : `${existing.body}\n\n${rendered}`
         : `error: ${error.name ?? error.code}${rendered ? `\n${rendered}` : ''}`
       turn.toolIds.delete(callId)
-      messages[index] = {
-        kind: 'collapsible',
-        id,
-        label: existing.label,
-        body,
-        running: false,
-        collapsed: false,
-      }
+      messages[index] = { ...existing, body, running: false, collapsed: false }
       return { messages, turn }
     }
     case 'turn/end': {

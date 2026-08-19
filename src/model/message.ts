@@ -12,6 +12,7 @@ export interface CollapsibleMessage {
   body: string
   running: boolean
   collapsed: boolean
+  bodyCol?: number
 }
 
 export type Message = BubbleMessage | CollapsibleMessage

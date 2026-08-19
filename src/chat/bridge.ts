@@ -21,6 +21,8 @@ import {
   saveCustomProvider,
 } from './models.ts'
 import type { ConfiguredModel, CustomProviderForm } from './models.ts'
+import { formatDiffDiffs, formatReadLines, readBodyCol, relativize, summarizeOthers, summarizeParams, truncateSummary } from './tool-view.ts'
+import type { DiffLike, ReadLineLike } from './tool-view.ts'
 import { computeSessionList } from './session-list.ts'
 import type { SessionSummary } from './session-list.ts'
 import { builtInPresetName, isBlankSession, presetDisplayName } from './presets.ts'
@@ -41,20 +43,28 @@ export interface TokenStats {
   contextPercent: number
 }
 
-export interface ToolResultPresentation {
-  output?: string
-  exitCode?: number
-  signal?: string
-}
-
 export interface ToolResultLike {
   content: readonly ContentBlock[]
   isError: boolean
   meta?: unknown
 }
 
+export interface ToolResultPresentation {
+  kind: 'replace' | 'append'
+  text: string
+  exitCode?: number
+  signal?: string
+  bodyCol?: number
+}
+
+export interface ToolCallPresentation {
+  label: string
+  body: string
+  bodyCol?: number
+}
+
 export interface ChatToolPresenter {
-  call(name: string, callId: string, argumentsRaw: string): string | undefined
+  call(name: string, callId: string, argumentsRaw: string): ToolCallPresentation | undefined
   result(callId: string, result: ToolResultLike): ToolResultPresentation | undefined
   argsJson(callId: string): string | undefined
 }
@@ -63,6 +73,7 @@ interface CallViewLike {
   card: string
   title?: string
   rawInput?: unknown
+  diffs?: readonly DiffLike[]
 }
 
 interface ResultViewLike {
@@ -71,6 +82,8 @@ interface ResultViewLike {
   exitCode?: number
   signal?: string
   content?: readonly ContentBlock[]
+  diffs?: readonly DiffLike[]
+  lines?: readonly ReadLineLike[]
 }
 
 interface ToolsLike {
@@ -340,6 +353,15 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
 
   const tools = ctx.get('tools') as ToolsLike | undefined
   const toolCalls = new Map<string, { name: string; args: unknown }>()
+  const argsJson = (callId: string): string | undefined => {
+    const call = toolCalls.get(callId)
+    if (call === undefined) return undefined
+    try {
+      return JSON.stringify(call.args, null, 2)
+    } catch {
+      return undefined
+    }
+  }
   const toolPresenter: ChatToolPresenter = {
     call(name, callId, argumentsRaw) {
       let args: unknown
@@ -350,12 +372,28 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       }
       toolCalls.set(callId, { name, args })
       const view = tools?.get?.(name, activeAgent)?.presentCall?.(args)
-      if (view === undefined) return undefined
-      if (view.card === 'terminal') return view.title
-      if (view.title !== undefined) return view.title
-      const raw = view.rawInput
-      if (raw === undefined) return undefined
-      return typeof raw === 'string' ? raw : JSON.stringify(raw)
+      const cwd = currentCwd
+      if (view !== undefined && view.card === 'diff' && view.diffs !== undefined && view.diffs.length > 0) {
+        const rawPath = view.diffs[0]!.path
+        const path = typeof rawPath === 'string' && rawPath !== '' ? rawPath
+          : String((args as { file_path?: unknown }).file_path ?? (args as { path?: unknown }).path ?? '')
+        return {
+          label: `${name}[${truncateSummary(relativize(path, cwd))}]`,
+          body: formatDiffDiffs(view.diffs),
+          bodyCol: 2,
+        }
+      }
+      if (name === 'read') {
+        const rawPath = String((args as { file_path?: unknown }).file_path ?? '')
+        return {
+          label: `read[${truncateSummary(relativize(rawPath, cwd) + summarizeOthers(args, ['file_path'], cwd))}]`,
+          body: argsJson(callId) ?? '',
+        }
+      }
+      return {
+        label: `${name}[${summarizeParams(args, cwd)}]`,
+        body: argsJson(callId) ?? '',
+      }
     },
     result(callId, result) {
       const call = toolCalls.get(callId)
@@ -364,25 +402,24 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       if (view === undefined) return undefined
       if (view.card === 'terminal') {
         return {
-          output: view.output,
+          kind: 'append',
+          text: view.output ?? '',
           ...view.exitCode === undefined ? {} : { exitCode: view.exitCode },
           ...view.signal === undefined ? {} : { signal: view.signal },
         }
       }
+      if (view.card === 'read' && view.lines !== undefined) {
+        return { kind: 'replace', text: formatReadLines(view.lines), bodyCol: readBodyCol(view.lines) }
+      }
+      if (view.card === 'diff' && view.diffs !== undefined) {
+        return { kind: 'replace', text: formatDiffDiffs(view.diffs), bodyCol: 2 }
+      }
       if (view.card === 'generic' && view.content !== undefined) {
-        return { output: textFromBlocks(view.content) }
+        return { kind: 'append', text: textFromBlocks(view.content) }
       }
       return undefined
     },
-    argsJson(callId) {
-      const call = toolCalls.get(callId)
-      if (call === undefined) return undefined
-      try {
-        return JSON.stringify(call.args, null, 2)
-      } catch {
-        return undefined
-      }
-    },
+    argsJson,
   }
 
   async function selectModel(provider: string, name: string): Promise<void> {

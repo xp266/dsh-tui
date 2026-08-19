@@ -154,7 +154,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
           ...base,
           kind: 'text',
           text: lines[offset - 2] ?? '',
-          colStart: 4,
+          colStart: message.bodyCol ?? 4,
           selectable: true,
           muted: true,
         }

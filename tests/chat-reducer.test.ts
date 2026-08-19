@@ -62,13 +62,17 @@ function fakePresenter(): ChatToolPresenter {
   return {
     call: (_name, _callId, argumentsRaw) => {
       try {
-        return (JSON.parse(argumentsRaw) as { command?: string }).command
+        const args = JSON.parse(argumentsRaw) as { command?: string }
+        return args.command === undefined
+          ? undefined
+          : { label: `bash[command=${args.command}]`, body: args.command }
       } catch {
         return undefined
       }
     },
     result: (_callId, result) => ({
-      output: result.content.map(block => block.type === 'text' ? block.text : '').join(''),
+      kind: 'append',
+      text: result.content.map(block => block.type === 'text' ? block.text : '').join(''),
     }),
     argsJson: _callId => undefined,
   }
@@ -182,7 +186,7 @@ describe('chat event reducer', () => {
     const next = reduceChatEvent(messages, bashCall, turn, fakePresenter())
     messages = next.messages
     turn = next.turn
-    expect(messages[0]).toMatchObject({ kind: 'collapsible', label: 'bash', running: true, body: 'ls -a' })
+    expect(messages[0]).toMatchObject({ kind: 'collapsible', label: 'bash[command=ls -a]', running: true, body: 'ls -a' })
     const done = reduceChatEvent(messages, toolResult('c1', 'xx.xx'), turn, fakePresenter())
     expect(done.messages[0]).toMatchObject({ running: false, body: 'ls -a\n\nxx.xx' })
   })
@@ -198,7 +202,7 @@ describe('chat event reducer', () => {
     }
     const presenter: ChatToolPresenter = {
       ...fakePresenter(),
-      result: () => ({ output: '' }),
+      result: () => ({ kind: 'append', text: '' }),
       argsJson: () => '{"command":"ls -a"}',
     }
     const called = reduceChatEvent(messages, call, turn, presenter)
@@ -217,7 +221,7 @@ describe('chat event reducer', () => {
     }
     const presenter: ChatToolPresenter = {
       call: () => undefined,
-      result: () => ({ output: '' }),
+      result: () => ({ kind: 'append', text: '' }),
       argsJson: () => '{\n  "todos": []\n}',
     }
     const called = reduceChatEvent(messages, call, turn, presenter)
@@ -251,5 +255,53 @@ describe('chat event reducer', () => {
     let state = apply([], [toolCall('c1')])
     const next = reduceChatEvent(state.messages, turnEnd(), state.turn)
     expect(next.messages[0]).toMatchObject({ running: false, body: '(no result)' })
+  })
+
+  it('replaces the body with structured content when the result presentation replaces', () => {
+    let messages: Message[] = []
+    let turn = initialTurnState()
+    const call: SessionEvent = {
+      type: 'tool/call',
+      seq: 1,
+      time: 0,
+      data: { turn: 1, step: 1, callId: CallId('c1'), name: 'read', arguments: '{"file_path":"/w/src/main.py","offset":1}' },
+    }
+    const presenter: ChatToolPresenter = {
+      call: () => ({ label: 'read[src/main.py, offset=1]', body: '{}', bodyCol: 1 }),
+      result: () => ({ kind: 'replace', text: ' 1 aaa\n 2 bbb', bodyCol: 1 }),
+      argsJson: () => '{}',
+    }
+    const called = reduceChatEvent(messages, call, turn, presenter)
+    expect(called.messages[0]).toMatchObject({ label: 'read[src/main.py, offset=1]', body: '{}', bodyCol: 1 })
+    const done = reduceChatEvent(called.messages, toolResult('c1', 'x'), called.turn, presenter)
+    expect(done.messages[0]).toMatchObject({ running: false, body: ' 1 aaa\n 2 bbb', bodyCol: 1 })
+  })
+
+  it('prefixes an error line when the replace presentation accompanies a failed result', () => {
+    let messages: Message[] = []
+    let turn = initialTurnState()
+    const presenter: ChatToolPresenter = {
+      call: () => ({ label: 'read[x]', body: '' }),
+      result: () => ({ kind: 'replace', text: 'raw' }),
+      argsJson: () => undefined,
+    }
+    const called = reduceChatEvent(messages, toolCall('c1'), turn, presenter)
+    const failed: SessionEvent = {
+      type: 'tool/result',
+      seq: 1,
+      time: 0,
+      data: {
+        turn: 1,
+        step: 1,
+        error: { name: 'boom', code: 'E_FAIL' },
+        message: createToolResultMessage({
+          callId: CallId('c1'),
+          content: [{ type: 'text', text: 'stderr' }],
+          isError: true,
+        }),
+      },
+    }
+    const done = reduceChatEvent(called.messages, failed, called.turn, presenter)
+    expect(done.messages[0]).toMatchObject({ body: 'error: boom\nraw' })
   })
 })
