@@ -58,7 +58,9 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
     modelName,
     setModelName,
     updateMessages(fn) {
-      setMessages(fn)
+      const next = fn(chatStateRef.current.messages)
+      chatStateRef.current = { ...chatStateRef.current, messages: next }
+      setMessages(next)
     },
     resetChat() {
       setMessages([])

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CallId, createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
+import { CallId, createAssistantMessage, createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { initialTurnState, reduceChatEvent } from '../src/chat/store.ts'
 import type { ChatToolPresenter } from '../src/chat/bridge.ts'
@@ -45,6 +45,19 @@ function toolResult(callId: string, output: string): SessionEvent {
 
 function turnEnd(): SessionEvent {
   return { type: 'turn/end', seq: 1, time: 0, data: { turn: 1, reason: { kind: 'completed' } } }
+}
+
+function assistantMessage(step = 1): SessionEvent {
+  return {
+    type: 'assistant/message',
+    seq: 1,
+    time: 0,
+    data: {
+      turn: 1,
+      step,
+      message: createAssistantMessage({ content: [{ type: 'text', text: '' }], source: { provider: 'p', model: 'm' } }),
+    },
+  }
 }
 
 function apply(initial: Message[], events: SessionEvent[]) {
@@ -249,6 +262,41 @@ describe('chat event reducer', () => {
     expect(next.messages).toHaveLength(2)
     expect(next.messages[0]).toMatchObject({ running: false, collapsed: true })
     expect(next.messages[1]).toMatchObject({ running: false, collapsed: true })
+  })
+
+  it('stops the Thinking spinner when its step assembles', () => {
+    const state = apply([], [reasoning('r1'), assistantMessage(1)])
+    expect(state.messages[0]).toMatchObject({ kind: 'collapsible', label: 'Thinking', running: false })
+  })
+
+  it('stops each Thinking row at its own step', () => {
+    let state = apply([], [reasoning('r1', 1), assistantMessage(1), reasoning('r2', 2)])
+    expect(state.messages[0]).toMatchObject({ running: false })
+    expect(state.messages[1]).toMatchObject({ running: true })
+    state = reduceChatEvent(state.messages, assistantMessage(2), state.turn)
+    expect(state.messages[1]).toMatchObject({ running: false })
+  })
+
+  it('ignores assistant/message for steps without thinking', () => {
+    const state = apply([], [textDelta('A'), assistantMessage(1)])
+    expect(state.messages).toHaveLength(1)
+    expect(state.messages[0]).toMatchObject({ kind: 'bubble', content: 'A' })
+  })
+
+  it('keeps a manually expanded tool open through its result', () => {
+    let state = apply([], [toolCall('c1')])
+    const tool = state.messages[0]
+    if (tool !== undefined && tool.kind === 'collapsible') state.messages[0] = { ...tool, collapsed: false }
+    state = reduceChatEvent(state.messages, toolResult('c1', 'out'), state.turn)
+    expect(state.messages[0]).toMatchObject({ running: false, collapsed: false })
+  })
+
+  it('keeps a manually expanded Thinking open through turn end', () => {
+    let state = apply([], [reasoning('r1')])
+    const thinking = state.messages[0]
+    if (thinking !== undefined && thinking.kind === 'collapsible') state.messages[0] = { ...thinking, collapsed: false }
+    const next = reduceChatEvent(state.messages, turnEnd(), state.turn)
+    expect(next.messages[0]).toMatchObject({ running: false, collapsed: false })
   })
 
   it('marks an interrupted tool call at turn end', () => {

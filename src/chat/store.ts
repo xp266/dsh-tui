@@ -79,7 +79,6 @@ export function reduceChatEvent(
           ...existing,
           body,
           running: false,
-          collapsed: true,
           ...presentation.bodyCol === undefined ? {} : { bodyCol: presentation.bodyCol },
         }
         return { messages, turn }
@@ -101,7 +100,16 @@ export function reduceChatEvent(
             : `${existing.body}\n\n${rendered}`
         : `error: ${error.name ?? error.code}${rendered ? `\n${rendered}` : ''}`
       turn.toolIds.delete(callId)
-      messages[index] = { ...existing, body, running: false, collapsed: true }
+      messages[index] = { ...existing, body, running: false }
+      return { messages, turn }
+    }
+    case 'assistant/message': {
+      const id = turn.thinkingIds.get(event.data.step)
+      if (id === undefined) return { messages, turn }
+      const index = messages.findIndex(m => m.id === id)
+      if (index >= 0 && messages[index]?.kind === 'collapsible') {
+        messages[index] = { ...messages[index], running: false }
+      }
       return { messages, turn }
     }
     case 'turn/end': {
@@ -112,7 +120,7 @@ export function reduceChatEvent(
         if (thinking !== undefined && thinking.kind === 'collapsible' && thinking.body === '') {
           messages.splice(thinkingIndex, 1)
         } else if (thinking !== undefined && thinking.kind === 'collapsible') {
-          messages[thinkingIndex] = { ...thinking, running: false, collapsed: true }
+          messages[thinkingIndex] = { ...thinking, running: false }
         }
       }
       for (const message of messages) {
