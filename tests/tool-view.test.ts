@@ -16,17 +16,20 @@ describe('tool-view', () => {
     expect(relativize('/other/x', '/home/u/p')).toBe('/other/x')
   })
 
-  it('truncates overlong summaries at 20 display chars plus ellipsis', () => {
+  it('truncates overlong summaries at the safety cap plus ellipsis', () => {
     expect(truncateSummary('short')).toBe('short')
-    const long = 'command=ls -la src, description=List files'
-    expect(truncateSummary(long)).toBe('command=ls -la src, ...')
-    expect(truncateSummary('中文'.repeat(20)).length).toBeLessThan(20)
+    expect(truncateSummary('command=ls -la src, description=List files', 20)).toBe('command=ls -la src, ...')
+    expect(truncateSummary('中文'.repeat(200)).length).toBeLessThan(200)
+    const huge = `value=${'x'.repeat(1000)}`
+    const capped = truncateSummary(huge)
+    expect(capped.length).toBeLessThan(310)
+    expect(capped.endsWith('...')).toBe(true)
   })
 
   it('summarizes params as name=value pairs joined by commas', () => {
     expect(summarizeParams({ command: 'ls -la' }, '/w')).toBe('command=ls -la')
-    expect(summarizeParams({ file_path: '/w/src/a.py', offset: 1, limit: 50 }, '/w')).toBe('file_path=src/a.py, ...')
-    expect(summarizeParams({ plugin: { kind: 'new' }, enabled: true }, '/w')).toBe('plugin={"kind":"new"...')
+    expect(summarizeParams({ file_path: '/w/src/a.py', offset: 1, limit: 50 }, '/w')).toBe('file_path=src/a.py, offset=1, limit=50')
+    expect(summarizeParams({ plugin: { kind: 'new' }, enabled: true }, '/w')).toBe('plugin={"kind":"new"}, enabled=true')
     expect(summarizeParams({ a: null, b: undefined, c: '' }, '/w')).toBe('')
     expect(summarizeParams('plain', '/w')).toBe('plain')
   })
@@ -34,6 +37,14 @@ describe('tool-view', () => {
   it('summarizes the remaining params after skipping keys', () => {
     expect(summarizeOthers({ file_path: '/w/src/main.py', offset: 1, limit: 50 }, ['file_path'], '/w')).toBe(', offset=1, limit=50')
     expect(summarizeOthers({ file_path: '/w/src/main.py' }, ['file_path'], '/w')).toBe('')
+  })
+
+  it('flattens newlines and tabs in values so the label stays on one line', () => {
+    expect(summarizeParams({ prompt: 'hello\nworld' }, '/w')).toBe('prompt=hello\\nworld')
+    expect(summarizeParams({ prompt: 'a\r\nb' }, '/w')).toBe('prompt=a\\nb')
+    expect(summarizeParams({ code: 'x\ty' }, '/w')).toBe('code=x\\ty')
+    expect(summarizeParams('line1\nline2', '/w')).toBe('line1\\nline2')
+    expect(relativize('/w/a\nb.py', '/w')).toBe('a\\nb.py')
   })
 
   it('formats an edit call diff as removals before additions', () => {

@@ -48,7 +48,7 @@ export function reduceChatEvent(
         label: view?.label ?? event.data.name,
         body: view?.body ?? '',
         running: true,
-        collapsed: false,
+        collapsed: true,
         ...view?.bodyCol === undefined ? {} : { bodyCol: view.bodyCol },
       })
       return { messages, turn }
@@ -79,7 +79,7 @@ export function reduceChatEvent(
           ...existing,
           body,
           running: false,
-          collapsed: false,
+          collapsed: true,
           ...presentation.bodyCol === undefined ? {} : { bodyCol: presentation.bodyCol },
         }
         return { messages, turn }
@@ -101,7 +101,7 @@ export function reduceChatEvent(
             : `${existing.body}\n\n${rendered}`
         : `error: ${error.name ?? error.code}${rendered ? `\n${rendered}` : ''}`
       turn.toolIds.delete(callId)
-      messages[index] = { ...existing, body, running: false, collapsed: false }
+      messages[index] = { ...existing, body, running: false, collapsed: true }
       return { messages, turn }
     }
     case 'turn/end': {
@@ -112,7 +112,7 @@ export function reduceChatEvent(
         if (thinking !== undefined && thinking.kind === 'collapsible' && thinking.body === '') {
           messages.splice(thinkingIndex, 1)
         } else if (thinking !== undefined && thinking.kind === 'collapsible') {
-          messages[thinkingIndex] = { ...thinking, running: false, collapsed: false }
+          messages[thinkingIndex] = { ...thinking, running: false, collapsed: true }
         }
       }
       for (const message of messages) {
@@ -136,7 +136,7 @@ function appendThinking(messages: Message[], turn: TurnState, text: string, step
   if (id === undefined) {
     const fresh = nextId('think')
     turn.thinkingIds.set(step, fresh)
-    messages.push({ kind: 'collapsible', id: fresh, label: 'Thinking', body: text, running: true, collapsed: false })
+    messages.push({ kind: 'collapsible', id: fresh, label: 'Thinking', body: text, running: true, collapsed: true, thinking: true })
     return { messages, turn }
   }
   const index = messages.findIndex(m => m.id === id)

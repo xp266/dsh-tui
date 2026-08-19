@@ -1,20 +1,25 @@
 import { truncate } from '../utils/text.ts'
 
-export const SUMMARY_MAX = 20
+export const SUMMARY_SAFETY_MAX = 300
 
 export function relativize(path: string, cwd: string): string {
-  if (path === cwd) return '.'
-  if (path.startsWith(`${cwd}/`)) return path.slice(cwd.length + 1)
-  return path
+  const flatPath = flat(path)
+  if (flatPath === cwd) return '.'
+  if (flatPath.startsWith(`${cwd}/`)) return flatPath.slice(cwd.length + 1)
+  return flatPath
 }
 
-export function truncateSummary(text: string): string {
-  const cut = truncate(text, SUMMARY_MAX)
+export function truncateSummary(text: string, max = SUMMARY_SAFETY_MAX): string {
+  const cut = truncate(text, max)
   return cut.length === text.length ? cut : `${cut}...`
 }
 
+function flat(text: string): string {
+  return text.replace(/\r\n|\r|\n/g, '\\n').replace(/\t/g, '\\t')
+}
+
 function valueText(value: unknown, cwd: string): string {
-  if (typeof value === 'string') return relativize(value, cwd)
+  if (typeof value === 'string') return flat(relativize(value, cwd))
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
   if (value === null || value === undefined) return ''
   try {
@@ -25,7 +30,7 @@ function valueText(value: unknown, cwd: string): string {
 }
 
 export function summarizeParams(args: unknown, cwd: string): string {
-  if (typeof args === 'string') return truncateSummary(args)
+  if (typeof args === 'string') return truncateSummary(flat(args))
   if (typeof args !== 'object' || args === null) return ''
   const parts: string[] = []
   for (const [key, value] of Object.entries(args as Record<string, unknown>)) {

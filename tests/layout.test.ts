@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import type { Message } from '../src/model/message.ts'
-import { rowCount, rowInfoAt, selectionText } from '../src/ui/message/layout.ts'
+import { fitLabel, rowCount, rowInfoAt, selectionText } from '../src/ui/message/layout.ts'
 import type { LineSelection } from '../src/model/selection.ts'
+import { textWidth } from '../src/utils/text.ts'
+import { mdStyles } from '../src/ui/message/markdown.ts'
+import type { MarkStyle, Segment } from '../src/ui/message/markdown.ts'
 
 const WIDTH = 80
+
+function seg(text: string, style: MarkStyle = mdStyles.plain): Segment {
+  return { text, style }
+}
 
 describe('row layout', () => {
   it('maps bubble rows to text rows starting at column 4', () => {
@@ -38,6 +45,85 @@ describe('row layout', () => {
     ]
     expect(rowCount(messages, WIDTH)).toBe(2)
     expect(rowInfoAt(messages, WIDTH, 1)).toMatchObject({ kind: 'blank' })
+  })
+
+  it('attaches styled segments to assistant bubble rows', () => {
+    const messages: Message[] = [
+      { kind: 'bubble', id: 'a', role: 'assistant', content: '**bold** text' },
+    ]
+    const row = rowInfoAt(messages, WIDTH, 1)
+    expect(row).toMatchObject({ kind: 'text', text: 'bold text', colStart: 4, selectable: true })
+    expect(row?.segments).toEqual([seg('bold', mdStyles.bold), seg(' text')])
+    expect(row?.segKey).toBeDefined()
+  })
+
+  it('keeps plain assistant rows segment-free compatible', () => {
+    const messages: Message[] = [
+      { kind: 'bubble', id: 'a', role: 'assistant', content: 'plain text' },
+    ]
+    const row = rowInfoAt(messages, WIDTH, 1)
+    expect(row).toMatchObject({ kind: 'text', text: 'plain text' })
+    expect(row?.segments).toEqual([seg('plain text')])
+  })
+
+  it('leaves user and tool rows without segments', () => {
+    const messages: Message[] = [
+      { kind: 'bubble', id: 'u', role: 'user', content: '**not markdown**' },
+      { kind: 'collapsible', id: 't', label: 'Bash', body: '**not markdown**', running: false, collapsed: false },
+    ]
+    expect(rowInfoAt(messages, WIDTH, 1)?.segments).toBeUndefined()
+    expect(rowInfoAt(messages, WIDTH, 5)?.segments).toBeUndefined()
+  })
+
+  it('attaches styled segments to thinking rows while keeping markers', () => {
+    const messages: Message[] = [
+      { kind: 'collapsible', id: 't', label: 'Thinking', body: 'use `code` here', running: true, collapsed: false, thinking: true },
+    ]
+    const row = rowInfoAt(messages, WIDTH, 2)
+    expect(row).toMatchObject({ kind: 'text', text: 'use `code` here', colStart: 4, muted: true, selectable: true })
+    expect(row?.segments).toEqual([
+      seg('use `'),
+      seg('code', mdStyles.thinkInlineCode),
+      seg('` here'),
+    ])
+    expect(row?.segKey).toBeDefined()
+  })
+})
+
+describe('fitLabel', () => {
+  it('keeps a label that fits the row', () => {
+    expect(fitLabel('bash[command=ls -la src]', 80)).toBe('bash[command=ls -la src]')
+  })
+
+  it('truncates the bracket content to the available width with an ellipsis', () => {
+    const label = `bash[command=ls -la src, description=List files in the working directory]`
+    expect(fitLabel(label, 30)).toBe('bash[command=ls -l...]')
+  })
+
+  it('fits shorter labels in narrower windows', () => {
+    const label = `read[src/main.py, offset=1]`
+    expect(fitLabel(label, 30)).toBe('read[src/main.py, ...]')
+    expect(fitLabel(label, 22)).toBe('read[src/m...]')
+  })
+
+  it('truncates labels without brackets as plain text', () => {
+    expect(fitLabel('a'.repeat(50), 30)).toBe(`${'a'.repeat(19)}...`)
+  })
+
+  it('fits labels into the row header through the row index', () => {
+    const messages: Message[] = [
+      { kind: 'collapsible', id: 'b', label: `bash[command=${'x'.repeat(200)}]`, body: '', running: false, collapsed: true },
+    ]
+    const header = rowInfoAt(messages, 40, 0)
+    expect(header).toMatchObject({ kind: 'header', label: `bash[command=${'x'.repeat(15)}...]` })
+  })
+
+  it('never renders a fitted label wider than the available row', () => {
+    const label = `bash[command=${'x'.repeat(200)}, path=src/main.py]`
+    for (let width = 20; width <= 160; width += 7) {
+      const fitted = fitLabel(label, width)
+      expect(textWidth(fitted)).toBeLessThanOrEqual(Math.max(1, width - 8))
+    }
   })
 })
 

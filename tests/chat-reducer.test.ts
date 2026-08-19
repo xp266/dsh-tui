@@ -90,7 +90,7 @@ describe('chat event reducer', () => {
     expect(state.messages).toHaveLength(1)
     expect(state.messages[0]).toMatchObject({ kind: 'collapsible', label: 'Thinking', running: true, body: 'step 1 step 2' })
     state = reduceChatEvent(state.messages, turnEnd(), state.turn)
-    expect(state.messages[0]).toMatchObject({ running: false, collapsed: false })
+    expect(state.messages[0]).toMatchObject({ running: false, collapsed: true })
   })
 
   it('streams assistant text into one bubble', () => {
@@ -101,9 +101,9 @@ describe('chat event reducer', () => {
 
   it('tracks tool call and result as a collapsible pair', () => {
     let state = apply([], [toolCall('c1')])
-    expect(state.messages[0]).toMatchObject({ kind: 'collapsible', label: 'bash', running: true, collapsed: false })
+    expect(state.messages[0]).toMatchObject({ kind: 'collapsible', label: 'bash', running: true, collapsed: true })
     state = reduceChatEvent(state.messages, toolResult('c1', 'out'), state.turn)
-    expect(state.messages[0]).toMatchObject({ kind: 'collapsible', label: 'bash', running: false, collapsed: false, body: 'out' })
+    expect(state.messages[0]).toMatchObject({ kind: 'collapsible', label: 'bash', running: false, collapsed: true, body: 'out' })
   })
 
   it('drops an empty Thinking block at turn end', () => {
@@ -117,8 +117,8 @@ describe('chat event reducer', () => {
     const { messages } = apply([], [userEvent('q'), reasoning('r'), toolCall('c1'), toolResult('c1', 'o'), textDelta('A'), textDelta('B'), turnEnd()])
     expect(messages).toHaveLength(4)
     expect(messages[0]).toMatchObject({ role: 'user', content: 'q' })
-    expect(messages[1]).toMatchObject({ label: 'Thinking', running: false, collapsed: false })
-    expect(messages[2]).toMatchObject({ label: 'bash', running: false, collapsed: false, body: 'o' })
+    expect(messages[1]).toMatchObject({ label: 'Thinking', running: false, collapsed: true })
+    expect(messages[2]).toMatchObject({ label: 'bash', running: false, collapsed: true, body: 'o' })
     expect(messages[3]).toMatchObject({ role: 'assistant', content: 'AB' })
   })
 
@@ -247,8 +247,8 @@ describe('chat event reducer', () => {
     let state = apply([], [reasoning('r1', 1), reasoning('r2', 2)])
     const next = reduceChatEvent(state.messages, turnEnd(), state.turn)
     expect(next.messages).toHaveLength(2)
-    expect(next.messages[0]).toMatchObject({ running: false, collapsed: false })
-    expect(next.messages[1]).toMatchObject({ running: false, collapsed: false })
+    expect(next.messages[0]).toMatchObject({ running: false, collapsed: true })
+    expect(next.messages[1]).toMatchObject({ running: false, collapsed: true })
   })
 
   it('marks an interrupted tool call at turn end', () => {

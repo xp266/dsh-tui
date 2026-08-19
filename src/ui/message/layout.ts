@@ -1,7 +1,9 @@
 import type { Message } from '../../model/message.ts'
-import { colToCharIndex, textWidth, wrapLines } from '../../utils/text.ts'
+import { colToCharIndex, textWidth, truncate, wrapLines } from '../../utils/text.ts'
 import { selectedRange } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
+import { segmentsKey, tokenizeMarkdown, tokenizeThinking, wrapSegments } from './markdown.ts'
+import type { Segment } from './markdown.ts'
 
 const BUBBLE_WIDTH_OFFSET = 8
 
@@ -24,35 +26,49 @@ export interface RowInfo {
   running: boolean
   collapsed: boolean
   role: 'user' | 'assistant' | 'error' | undefined
+  segments?: Segment[]
+  segKey?: string
 }
 
 interface WrapEntry {
   content: string
   collapsed: boolean
   lines: string[]
+  rows: Segment[][] | null
 }
 
 const wrapCache = new Map<string, WrapEntry>()
 
-function wrapFor(message: Message, width: number): string[] {
+function wrapFor(message: Message, width: number): WrapEntry {
   const key = `${message.id}:${width}`
   const entry = wrapCache.get(key)
   const content = message.kind === 'bubble' ? message.content : message.body
   const collapsed = message.kind === 'collapsible' && message.collapsed
   if (entry !== undefined && entry.content === content && entry.collapsed === collapsed) {
-    return entry.lines
+    return entry
   }
-  const lines = wrapLines(content, width - BUBBLE_WIDTH_OFFSET)
-  wrapCache.set(key, { content, collapsed, lines })
-  return lines
+  let lines: string[]
+  let rows: Segment[][] | null = null
+  if (message.kind === 'bubble' && message.role === 'assistant') {
+    rows = wrapSegments(tokenizeMarkdown(content), width - BUBBLE_WIDTH_OFFSET)
+    lines = rows.map(row => row.map(segment => segment.text).join(''))
+  } else if (message.kind === 'collapsible' && message.thinking === true) {
+    rows = wrapSegments(tokenizeThinking(content), width - BUBBLE_WIDTH_OFFSET)
+    lines = rows.map(row => row.map(segment => segment.text).join(''))
+  } else {
+    lines = wrapLines(content, width - BUBBLE_WIDTH_OFFSET)
+  }
+  const next: WrapEntry = { content, collapsed, lines, rows }
+  wrapCache.set(key, next)
+  return next
 }
 
 export function lineCount(message: Message, width: number): number {
   switch (message.kind) {
     case 'bubble':
-      return wrapFor(message, width).length + 3
+      return wrapFor(message, width).lines.length + 3
     case 'collapsible':
-      return message.collapsed ? 2 : wrapFor(message, width).length + 3
+      return message.collapsed ? 2 : wrapFor(message, width).lines.length + 3
   }
 }
 
@@ -120,15 +136,17 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
         return { ...base, kind: 'pad', background: true, role: message.role }
       }
       if (offset <= count - 3) {
-        const lines = wrapFor(message, width)
+        const wrapped = wrapFor(message, width)
+        const segments = wrapped.rows?.[offset - 1]
         return {
           ...base,
           kind: 'text',
-          text: lines[offset - 1] ?? '',
+          text: wrapped.lines[offset - 1] ?? '',
           colStart: 4,
           selectable: true,
           background: true,
           role: message.role,
+          ...segments === undefined ? {} : { segments, segKey: segmentsKey(segments) },
         }
       }
       return { ...base, kind: 'blank' }
@@ -140,7 +158,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
           kind: 'header',
           colStart: 2,
           clickable: true,
-          label: message.label,
+          label: fitLabel(message.label, width),
           running: message.running,
           collapsed: message.collapsed,
         }
@@ -148,20 +166,38 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
       if (offset === 1 || message.collapsed) {
         return { ...base, kind: 'blank' }
       }
-      const lines = wrapFor(message, width)
-      if (offset <= lines.length + 1) {
+      const wrapped = wrapFor(message, width)
+      if (offset <= wrapped.lines.length + 1) {
+        const line = offset - 2
+        const segments = wrapped.rows?.[line]
         return {
           ...base,
           kind: 'text',
-          text: lines[offset - 2] ?? '',
+          text: wrapped.lines[line] ?? '',
           colStart: message.bodyCol ?? 4,
           selectable: true,
           muted: true,
+          ...segments === undefined ? {} : { segments, segKey: segmentsKey(segments) },
         }
       }
       return { ...base, kind: 'blank' }
     }
   }
+}
+
+export function fitLabel(label: string, width: number): string {
+  const available = Math.max(1, width - 8)
+  if (textWidth(label) <= available) return label
+  const bracket = label.indexOf('[')
+  if (bracket < 0) {
+    const cut = truncate(label, Math.max(1, available - 3))
+    return cut.length === label.length ? cut : `${cut}...`
+  }
+  const name = label.slice(0, bracket + 1)
+  const rest = label.slice(bracket + 1)
+  const budget = Math.max(1, available - textWidth(name) - 4)
+  const cut = truncate(rest, budget)
+  return `${name}${cut.length === rest.length ? rest : `${cut}...`}]`
 }
 
 export function headerSymbol(running: boolean, collapsed: boolean): string {

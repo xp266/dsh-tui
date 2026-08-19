@@ -3,7 +3,7 @@ import { memo } from 'react'
 import { colors } from '../../theme.ts'
 import { headerSymbol, SPINNER_FRAMES } from './layout.ts'
 import type { RowInfo } from './layout.ts'
-import { HighlightedText } from '../selection.tsx'
+import { HighlightedText, RichText } from '../selection.tsx'
 
 interface MessageRowProps {
   info: RowInfo
@@ -25,6 +25,7 @@ export const MessageRow = memo(
       const col = info.colStart
       const marginLeft = col >= 2 ? 2 : col
       const paddingLeft = col >= 2 ? col - 2 : 0
+      const baseColor = info.role === 'error' ? colors.errorText : info.muted ? colors.toolBodyText : undefined
       return (
         <Box
           marginLeft={marginLeft}
@@ -33,12 +34,16 @@ export const MessageRow = memo(
           paddingRight={2}
           backgroundColor={info.background ? backgroundFor(info.role) : undefined}
         >
-          <HighlightedText
-            text={info.text || ' '}
-            y={screenRow}
-            col={col}
-            color={info.role === 'error' ? colors.errorText : info.muted ? colors.toolBodyText : undefined}
-          />
+          {info.segments !== undefined && info.segments.length > 0 ? (
+            <RichText y={screenRow} col={col} segments={info.segments} baseColor={baseColor} />
+          ) : (
+            <HighlightedText
+              text={info.text || ' '}
+              y={screenRow}
+              col={col}
+              color={baseColor}
+            />
+          )}
         </Box>
       )
     }
@@ -68,6 +73,7 @@ export const MessageRow = memo(
       a.clickable === b.clickable &&
       a.running === b.running &&
       a.collapsed === b.collapsed &&
+      a.segKey === b.segKey &&
       (a.kind !== 'header' || prev.spinnerFrame === next.spinnerFrame)
     )
   },
