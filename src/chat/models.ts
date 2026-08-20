@@ -33,14 +33,6 @@ export async function listConfiguredModels(llm: Pick<LlmRuntime, 'listProviders'
   return models
 }
 
-export interface ModelSaver {
-  saveSelection(selection: { provider: string; model: string }): Promise<void>
-}
-
-export async function selectModel(saver: ModelSaver, provider: string, model: string): Promise<void> {
-  await saver.saveSelection({ provider, model })
-}
-
 export interface KeyStorer {
   set(ref: string, value: string): Promise<void>
 }

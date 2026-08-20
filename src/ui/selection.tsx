@@ -5,71 +5,62 @@ import { colToCharIndex, textWidth } from '../utils/text.ts'
 import { selectedRange } from '../model/selection.ts'
 import type { LineSelection } from '../model/selection.ts'
 import type { Segment } from './message/markdown.ts'
+import { colors } from '../theme.ts'
 
 export const SelectionContext = createContext<LineSelection | null>(null)
 
-interface HighlightedTextProps {
+export interface SelectableTextProps {
   y: number
   col: number
-  text: string
+  text?: string
+  segments?: Segment[]
   color?: string
   inverse?: boolean
+  backgroundColor?: string
 }
 
-export function HighlightedText({ y, col, text, color, inverse = false }: HighlightedTextProps) {
+export function SelectableText({ y, col, text, segments, color, inverse = false, backgroundColor }: SelectableTextProps) {
   const selection = useContext(SelectionContext)
-  if (selection !== null) {
-    const range = selectedRange(selection, y)
-    if (range !== null) {
-      const lineWidth = textWidth(text)
-      const start = Math.max(range.start, col)
-      const end = Math.min(range.end, col + lineWidth)
-      if (start < end) {
-        const startIndex = colToCharIndex(text, start - col)
-        const endIndex = colToCharIndex(text, end - col)
+  const content = text ?? (segments?.map(segment => segment.text).join('') ?? '')
+  const range = selection === null ? null : selectedRange(selection, y)
+  if (range !== null) {
+    const lineWidth = textWidth(content)
+    const start = Math.max(range.start, col)
+    const end = Math.min(range.end, col + lineWidth)
+    if (start < end) {
+      const startIndex = colToCharIndex(content, start - col)
+      const endIndex = colToCharIndex(content, end - col)
+      const highlight = (
+        <Text backgroundColor={colors.selectionBg} color={colors.selectionFg}>
+          {content.slice(startIndex, endIndex)}
+        </Text>
+      )
+      if (segments !== undefined) {
         return (
-          <Text inverse={inverse} color={color}>
-            {text.slice(0, startIndex)}
-            <Text backgroundColor="white" color="black">{text.slice(startIndex, endIndex)}</Text>
-            {text.slice(endIndex)}
+          <Text backgroundColor={backgroundColor}>
+            {renderSegments(segments, 0, startIndex, color)}
+            {highlight}
+            {renderSegments(segments, endIndex, content.length, color)}
           </Text>
         )
       }
+      return (
+        <Text backgroundColor={backgroundColor} inverse={inverse} color={color}>
+          {content.slice(0, startIndex)}
+          {highlight}
+          {content.slice(endIndex)}
+        </Text>
+      )
     }
   }
-  return <Text inverse={inverse} color={color}>{text}</Text>
-}
-
-interface RichTextProps {
-  y: number
-  col: number
-  segments: Segment[]
-  baseColor?: string
-}
-
-export function RichText({ y, col, segments, baseColor }: RichTextProps) {
-  const selection = useContext(SelectionContext)
-  const text = segments.map(segment => segment.text).join('')
-  if (selection !== null) {
-    const range = selectedRange(selection, y)
-    if (range !== null) {
-      const lineWidth = textWidth(text)
-      const start = Math.max(range.start, col)
-      const end = Math.min(range.end, col + lineWidth)
-      if (start < end) {
-        const startIndex = colToCharIndex(text, start - col)
-        const endIndex = colToCharIndex(text, end - col)
-        return (
-          <Text>
-            {renderSegments(segments, 0, startIndex, baseColor)}
-            <Text backgroundColor="white" color="black">{text.slice(startIndex, endIndex)}</Text>
-            {renderSegments(segments, endIndex, text.length, baseColor)}
-          </Text>
-        )
-      }
-    }
+  if (segments !== undefined) {
+    return <Text backgroundColor={backgroundColor}>{renderSegments(segments, 0, content.length, color)}</Text>
   }
-  return <Text>{renderSegments(segments, 0, text.length, baseColor)}</Text>
+  return (
+    <Text backgroundColor={backgroundColor} inverse={inverse} color={color}>
+      {content}
+    </Text>
+  )
 }
 
 function renderSegments(segments: Segment[], start: number, end: number, baseColor?: string): ReactNode[] {

@@ -11,6 +11,8 @@ export const colors = {
   carouselCurrentBg: '#2e2e2e',
   carouselButtonBg: '#1a1a1a',
   carouselButtonPressedBg: '#3a3a3a',
+  selectionBg: '#ffffff',
+  selectionFg: '#000000',
   mdBold: '#ff8800',
   mdInlineCode: '#4caf50',
   mdList: '#5fd7ff',
@@ -43,7 +45,7 @@ export const colors = {
 } as const
 
 export const permissionModes = {
-  'workspace-write': { color: '#3a3a3a', name: 'Workspace Write' },
+  'workspace-write': { color: colors.userBubbleBackground, name: 'Workspace Write' },
   'danger-full-access': { color: '#6b2a2a', name: 'Full access' },
   'read-only': { color: '#6b5f2a', name: 'Read Only' },
 } as const

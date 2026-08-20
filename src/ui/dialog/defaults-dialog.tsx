@@ -1,70 +1,63 @@
-import { Text } from 'ink'
-import { forwardRef, useEffect, useState } from 'react'
-import type { PresetSummary } from '../../chat/presets.ts'
-import { colors, permissionModeInfo } from '../../theme.ts'
-import { Dialog } from './dialog.tsx'
-import type { DialogHandle, DialogRow } from './dialog.tsx'
+import { useState } from 'react'
 import type { Ref } from 'react'
+import { colors, permissionModeInfo } from '../../theme.ts'
+import type { PresetSummary } from '../../chat/presets.ts'
+import { errorText } from '../../utils/text.ts'
+import { useAsyncList } from '../hooks/use-async-list.ts'
+import { Dialog } from './dialog.tsx'
+import type { DialogFooterLine, DialogHandle, DialogRow } from './dialog.tsx'
+
+export interface DefaultsApi {
+  listPresets(): Promise<PresetSummary[]>
+  defaultPresetId(): string
+  setDefaultPreset(id: string): Promise<void>
+  listPermissionPresets(): Promise<string[]>
+  defaultPermission(): string
+  setDefaultPermission(id: string): Promise<void>
+}
 
 export interface DefaultsDialogProps {
-  api: {
-    listPresets(): Promise<PresetSummary[]>
-    defaultPresetId(): string
-    setDefaultPreset(id: string): Promise<void>
-    listPermissionPresets(): Promise<string[]>
-    defaultPermission(): string
-    setDefaultPermission(id: string): Promise<void>
-  }
+  api: DefaultsApi
   onClose: () => void
+  ref?: Ref<DialogHandle>
 }
 
 const DIALOG_WIDTH = 70
 const DIALOG_MAX_HEIGHT = 14
 
-export const DefaultsDialog = forwardRef<DialogHandle, DefaultsDialogProps>(function DefaultsDialog(
-  { api, onClose },
-  ref,
-) {
-  const [presets, setPresets] = useState<PresetSummary[]>([])
-  const [permissionIds, setPermissionIds] = useState<string[]>([])
+interface DefaultsData {
+  presets: PresetSummary[]
+  permissions: string[]
+}
+
+export function DefaultsDialog({ api, onClose, ref }: DefaultsDialogProps) {
+  const { items, loading, error } = useAsyncList<DefaultsData>(async () => {
+    const [presetList, permissionList] = await Promise.all([api.listPresets(), api.listPermissionPresets()])
+    return [{ presets: presetList, permissions: permissionList }]
+  })
   const [presetDefault, setPresetDefault] = useState(api.defaultPresetId())
   const [permissionDefault, setPermissionDefault] = useState(api.defaultPermission())
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true)
-      try {
-        const [presetList, permissionList] = await Promise.all([api.listPresets(), api.listPermissionPresets()])
-        setPresets(presetList)
-        setPermissionIds(permissionList)
-        setError(null)
-      } catch (cause) {
-        setError(String(cause))
-      } finally {
-        setLoading(false)
-      }
-    }
-    void load()
-  }, [api])
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const presets = items[0]?.presets ?? []
+  const permissionIds = items[0]?.permissions ?? []
   const savePreset = async (id: string) => {
     setPresetDefault(id)
     try {
       await api.setDefaultPreset(id)
-      setError(null)
+      setSaveError(null)
     } catch (cause) {
       setPresetDefault(api.defaultPresetId())
-      setError(String(cause))
+      setSaveError(errorText(cause))
     }
   }
   const savePermission = async (id: string) => {
     setPermissionDefault(id)
     try {
       await api.setDefaultPermission(id)
-      setError(null)
+      setSaveError(null)
     } catch (cause) {
       setPermissionDefault(api.defaultPermission())
-      setError(String(cause))
+      setSaveError(errorText(cause))
     }
   }
   const presetIds = presets.map(preset => preset.id)
@@ -104,20 +97,21 @@ export const DefaultsDialog = forwardRef<DialogHandle, DefaultsDialogProps>(func
       ],
     },
   ]
-  const footer = loading
-    ? <Text color={colors.toolBodyText}>loading…</Text>
-    : error === null
-      ? undefined
-      : <Text color={colors.errorText}>{error}</Text>
+  const footer: DialogFooterLine[] = [
+    ...(loading ? [{ text: 'loading…', color: colors.toolBodyText }] : []),
+    ...(error !== null ? [{ text: error, color: colors.errorText }] : []),
+    ...(saveError !== null ? [{ text: saveError, color: colors.errorText }] : []),
+  ]
   return (
     <Dialog
-      ref={ref as Ref<DialogHandle>}
+      ref={ref}
       width={DIALOG_WIDTH}
       maxHeight={DIALOG_MAX_HEIGHT}
       title="defaults"
       rows={rows}
       footer={footer}
       onClose={onClose}
+      onConfirmLast={onClose}
     />
   )
-})
+}

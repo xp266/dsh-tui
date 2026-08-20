@@ -60,8 +60,8 @@ describe('App dialog keyboard', () => {
     const { lastFrame, stdin } = render(<App bridge={fakeBridge()} />)
     await openModelsDialog(stdin)
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('Add Deepseek')
-    expect(focusedSegment(frame)).toContain('+Add Deepseek')
+    expect(frame).toContain('Add DeepSeek')
+    expect(focusedSegment(frame)).toContain('+Add DeepSeek')
     act(() => {
       stdin.write('\u001b[B')
     })

@@ -1,45 +1,29 @@
-import { Text } from 'ink'
-import { forwardRef, useEffect, useState } from 'react'
-import type { SessionSummary } from '../../chat/session-list.ts'
-import { colors } from '../../theme.ts'
-import { Dialog } from './dialog.tsx'
-import type { DialogHandle, DialogRow } from './dialog.tsx'
+import { useState } from 'react'
 import type { Ref } from 'react'
+import { colors } from '../../theme.ts'
+import { errorText } from '../../utils/text.ts'
+import type { SessionSummary } from '../../chat/session-list.ts'
+import { ListDialog } from './list-dialog.tsx'
+import type { DialogFooterLine, DialogHandle } from './dialog.tsx'
+
+export interface SessionsApi {
+  listSessions(): Promise<SessionSummary[]>
+  openSession(id: string): Promise<void>
+}
 
 export interface SessionsDialogProps {
-  api: {
-    listSessions(): Promise<SessionSummary[]>
-    openSession(id: string): Promise<void>
-  }
+  api: SessionsApi
   onClose: () => void
   onBeforeSessionSelected?: () => void
   onSessionSelected: (session: SessionSummary) => void
+  ref?: Ref<DialogHandle>
 }
 
 const DIALOG_WIDTH = 70
 const DIALOG_MAX_HEIGHT = 18
 
-export const SessionsDialog = forwardRef<DialogHandle, SessionsDialogProps>(function SessionsDialog(
-  { api, onClose, onBeforeSessionSelected, onSessionSelected },
-  ref,
-) {
-  const [sessions, setSessions] = useState<SessionSummary[]>([])
+export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessionSelected, ref }: SessionsDialogProps) {
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const loadSessions = async () => {
-    setLoading(true)
-    try {
-      setSessions(await api.listSessions())
-      setError(null)
-    } catch (cause) {
-      setError(String(cause))
-    } finally {
-      setLoading(false)
-    }
-  }
-  useEffect(() => {
-    void loadSessions()
-  }, [api])
   const selectSession = async (session: SessionSummary) => {
     try {
       onBeforeSessionSelected?.()
@@ -47,35 +31,24 @@ export const SessionsDialog = forwardRef<DialogHandle, SessionsDialogProps>(func
       onSessionSelected(session)
       onClose()
     } catch (cause) {
-      setError(String(cause))
+      setError(errorText(cause))
     }
   }
-  const rows: DialogRow[] = sessions.map(session => ({
-    items: [
-      {
-        type: 'button',
-        label: session.name || session.id,
-        right: session.ungrouped ? 'Ungrouped' : session.directory,
-        onPress: () => void selectSession(session),
-      },
-    ],
-  }))
-  const footer = loading
-    ? <Text color={colors.toolBodyText}>loading…</Text>
-    : error === null
-      ? undefined
-      : <Text color={colors.errorText}>{error}</Text>
+  const footerLines: DialogFooterLine[] = error === null ? [] : [{ text: error, color: colors.errorText }]
   return (
-    <Dialog
-      ref={ref as Ref<DialogHandle>}
+    <ListDialog
+      ref={ref}
+      title="sessions"
       width={DIALOG_WIDTH}
       maxHeight={DIALOG_MAX_HEIGHT}
-      title="sessions"
-      rows={rows}
-      footer={footer}
-      onClose={onClose}
+      load={api.listSessions}
       search
       searchRight
+      labelOf={session => session.name || session.id}
+      rightOf={session => (session.ungrouped ? 'Ungrouped' : session.directory)}
+      onSelect={session => void selectSession(session)}
+      onClose={onClose}
+      footerLines={footerLines}
     />
   )
-})
+}

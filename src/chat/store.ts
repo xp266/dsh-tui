@@ -2,6 +2,7 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { Message } from '../model/message.ts'
 import { textFromBlocks } from './blocks.ts'
 import type { ChatToolPresenter, ToolResultLike } from './bridge.ts'
+import type { CollapsibleMessage } from '../model/message.ts'
 
 export interface TurnState {
   thinkingIds: Map<number, string>
@@ -34,8 +35,8 @@ export function reduceChatEvent(
     }
     case 'assistant/chunk': {
       const chunk = event.data.chunk
-      if (chunk.type === 'reasoning-delta') return appendThinking(messages, turn, chunk.text, event.data.step)
-      if (chunk.type === 'text-delta') return appendAssistant(messages, turn, chunk.text, event.data.step)
+      if (chunk.type === 'reasoning-delta') return appendChunk(messages, turn, chunk.text, event.data.step, 'thinking')
+      if (chunk.type === 'text-delta') return appendChunk(messages, turn, chunk.text, event.data.step, 'assistant')
       return { messages, turn }
     }
     case 'tool/call': {
@@ -58,10 +59,8 @@ export function reduceChatEvent(
       if (callId === undefined) return { messages, turn }
       const id = turn.toolIds.get(callId)
       if (id === undefined) return { messages, turn }
-      const index = messages.findIndex(m => m.id === id)
-      if (index < 0) return { messages, turn }
-      const existing = messages[index]
-      if (existing === undefined || existing.kind !== 'collapsible') return { messages, turn }
+      const collapsible = collapsibleById(messages, id)
+      if (collapsible === undefined) return { messages, turn }
       const error = event.data.error
       const block = event.data.message.content[0]
       const result: ToolResultLike = {
@@ -75,17 +74,17 @@ export function reduceChatEvent(
           ? presentation.text
           : `error: ${error.name ?? error.code}${presentation.text === '' ? '' : `\n${presentation.text}`}`
         turn.toolIds.delete(callId)
-        messages[index] = {
-          ...existing,
+        updateById(messages, id, message => ({
+          ...message,
           body,
           running: false,
           ...presentation.bodyCol === undefined ? {} : { bodyCol: presentation.bodyCol },
-        }
+        }))
         return { messages, turn }
       }
       let text = presentation?.text
       if (text === undefined) text = textFromBlocks(event.data.message.content)
-      if (text.trim() === '' && existing.body === '' && presenter !== undefined) {
+      if (text.trim() === '' && collapsible.body === '' && presenter !== undefined) {
         const fallback = presenter.argsJson(callId)
         if (fallback !== undefined && fallback.trim() !== '') text = fallback
       }
@@ -95,33 +94,28 @@ export function reduceChatEvent(
       else if (presentation?.signal !== undefined) lines.push(`[killed by signal: ${presentation.signal}]`)
       const rendered = lines.join('\n')
       const body = error === undefined
-        ? rendered === '' ? existing.body
-          : existing.body === '' ? rendered
-            : `${existing.body}\n\n${rendered}`
+        ? rendered === '' ? collapsible.body
+          : collapsible.body === '' ? rendered
+            : `${collapsible.body}\n\n${rendered}`
         : `error: ${error.name ?? error.code}${rendered ? `\n${rendered}` : ''}`
       turn.toolIds.delete(callId)
-      messages[index] = { ...existing, body, running: false }
+      updateById(messages, id, message => ({ ...message, body, running: false }))
       return { messages, turn }
     }
     case 'assistant/message': {
       const id = turn.thinkingIds.get(event.data.step)
       if (id === undefined) return { messages, turn }
-      const index = messages.findIndex(m => m.id === id)
-      if (index >= 0 && messages[index]?.kind === 'collapsible') {
-        messages[index] = { ...messages[index], running: false }
-      }
+      updateById(messages, id, message =>
+        message.kind === 'collapsible' ? { ...message, running: false } : message,
+      )
       return { messages, turn }
     }
     case 'turn/end': {
       for (const id of turn.thinkingIds.values()) {
-        const thinkingIndex = messages.findIndex(m => m.id === id)
-        if (thinkingIndex < 0) continue
-        const thinking = messages[thinkingIndex]
-        if (thinking !== undefined && thinking.kind === 'collapsible' && thinking.body === '') {
-          messages.splice(thinkingIndex, 1)
-        } else if (thinking !== undefined && thinking.kind === 'collapsible') {
-          messages[thinkingIndex] = { ...thinking, running: false }
-        }
+        const thinking = collapsibleById(messages, id)
+        if (thinking === undefined) continue
+        if (thinking.body === '') messages.splice(messages.indexOf(thinking), 1)
+        else updateById(messages, id, message => ({ ...message, running: false }))
       }
       for (const message of messages) {
         if (message.kind !== 'collapsible' || !message.running) continue
@@ -139,34 +133,47 @@ export function reduceChatEvent(
   }
 }
 
-function appendThinking(messages: Message[], turn: TurnState, text: string, step: number): { messages: Message[]; turn: TurnState } {
-  const id = turn.thinkingIds.get(step)
+function appendChunk(
+  messages: Message[],
+  turn: TurnState,
+  text: string,
+  step: number,
+  kind: 'thinking' | 'assistant',
+): { messages: Message[]; turn: TurnState } {
+  const ids = kind === 'thinking' ? turn.thinkingIds : turn.assistantIds
+  const id = ids.get(step)
   if (id === undefined) {
-    const fresh = nextId('think')
-    turn.thinkingIds.set(step, fresh)
-    messages.push({ kind: 'collapsible', id: fresh, label: 'Thinking', body: text, running: true, collapsed: true, thinking: true })
+    const fresh = nextId(kind === 'thinking' ? 'think' : 'ai')
+    ids.set(step, fresh)
+    if (kind === 'thinking') {
+      messages.push({ kind: 'collapsible', id: fresh, label: 'Thinking', body: text, running: true, collapsed: true, thinking: true })
+    } else {
+      messages.push({ kind: 'bubble', id: fresh, role: 'assistant', content: text })
+    }
     return { messages, turn }
   }
-  const index = messages.findIndex(m => m.id === id)
-  if (index >= 0 && messages[index]?.kind === 'collapsible') {
-    const target = messages[index]
-    if (target !== undefined) target.body += text
+  if (kind === 'thinking') {
+    const index = messages.findIndex(m => m.id === id)
+    if (index >= 0 && messages[index]?.kind === 'collapsible') {
+      const target = messages[index]
+      if (target !== undefined) target.body += text
+    }
+  } else {
+    const index = messages.findIndex(m => m.id === id)
+    if (index >= 0 && messages[index]?.kind === 'bubble') {
+      const target = messages[index]
+      if (target !== undefined) target.content += text
+    }
   }
   return { messages, turn }
 }
 
-function appendAssistant(messages: Message[], turn: TurnState, text: string, step: number): { messages: Message[]; turn: TurnState } {
-  const id = turn.assistantIds.get(step)
-  if (id === undefined) {
-    const fresh = nextId('ai')
-    turn.assistantIds.set(step, fresh)
-    messages.push({ kind: 'bubble', id: fresh, role: 'assistant', content: text })
-    return { messages, turn }
-  }
+function collapsibleById(messages: Message[], id: string): CollapsibleMessage | undefined {
+  const message = messages.find(m => m.id === id)
+  return message?.kind === 'collapsible' ? message : undefined
+}
+
+function updateById(messages: Message[], id: string, update: (message: Message) => Message): void {
   const index = messages.findIndex(m => m.id === id)
-  if (index >= 0 && messages[index]?.kind === 'bubble') {
-    const target = messages[index]
-    if (target !== undefined) target.content += text
-  }
-  return { messages, turn }
+  if (index >= 0) messages[index] = update(messages[index]!)
 }

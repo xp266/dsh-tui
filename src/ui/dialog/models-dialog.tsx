@@ -1,12 +1,13 @@
-import { Text } from 'ink'
-import { forwardRef, useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
+import type { Ref } from 'react'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import type { ConfiguredModel, CustomProviderForm } from '../../chat/models.ts'
 import { API_PROTOCOLS } from '../../chat/models.ts'
 import { colors } from '../../theme.ts'
+import { errorText } from '../../utils/text.ts'
 import { Dialog } from './dialog.tsx'
-import type { DialogHandle, DialogRow } from './dialog.tsx'
-import type { Ref } from 'react'
+import type { DialogFooterLine, DialogHandle, DialogRow } from './dialog.tsx'
+import { ListDialog } from './list-dialog.tsx'
 
 export interface ModelApi {
   listModels(): Promise<ConfiguredModel[]>
@@ -20,6 +21,7 @@ export interface ModelsDialogProps {
   api: ModelApi
   onClose: () => void
   onModelSelected: (provider: string, model: string) => void
+  ref?: Ref<DialogHandle>
 }
 
 type Window = { kind: 'list' } | { kind: 'add-deepseek' } | { kind: 'add-custom' } | { kind: 'select-models' }
@@ -35,35 +37,20 @@ const EMPTY_FORM: CustomProviderForm = {
   apiKey: '',
 }
 
-export const ModelsDialog = forwardRef<DialogHandle, ModelsDialogProps>(function ModelsDialog(
-  { api, onClose, onModelSelected },
-  ref,
-) {
+export function ModelsDialog({ api, onClose, onModelSelected, ref }: ModelsDialogProps) {
   const [window, setWindow] = useState<Window>({ kind: 'list' })
-  const [models, setModels] = useState<ConfiguredModel[]>([])
   const [error, setError] = useState<string | null>(null)
   const [deepSeekKey, setDeepSeekKey] = useState('')
   const [form, setForm] = useState<CustomProviderForm>(EMPTY_FORM)
   const [discovered, setDiscovered] = useState<LlmDiscoveredModel[]>([])
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set())
-  const loadModels = useCallback(async () => {
-    try {
-      setModels(await api.listModels())
-      setError(null)
-    } catch (cause) {
-      setError(String(cause))
-    }
-  }, [api])
-  useEffect(() => {
-    void loadModels()
-  }, [loadModels])
   const selectModel = async (model: ConfiguredModel) => {
     try {
       await api.selectModel(model.provider, model.id)
       onModelSelected(model.provider, model.id)
       onClose()
     } catch (cause) {
-      setError(String(cause))
+      setError(errorText(cause))
     }
   }
   const submitDeepSeek = async () => {
@@ -72,9 +59,8 @@ export const ModelsDialog = forwardRef<DialogHandle, ModelsDialogProps>(function
       setDeepSeekKey('')
       setError(null)
       setWindow({ kind: 'list' })
-      void loadModels()
     } catch (cause) {
-      setError(String(cause))
+      setError(errorText(cause))
     }
   }
   const setField = <K extends keyof CustomProviderForm>(key: K, value: CustomProviderForm[K]) => {
@@ -91,8 +77,8 @@ export const ModelsDialog = forwardRef<DialogHandle, ModelsDialogProps>(function
       setPicked(new Set())
       setError(null)
       setWindow({ kind: 'select-models' })
-    } catch {
-      setError('Failed to fetch models')
+    } catch (cause) {
+      setError(errorText(cause))
     }
   }
   const toggleModel = (id: string) => {
@@ -114,30 +100,9 @@ export const ModelsDialog = forwardRef<DialogHandle, ModelsDialogProps>(function
       setForm(EMPTY_FORM)
       setError(null)
       setWindow({ kind: 'list' })
-      void loadModels()
     } catch (cause) {
-      setError(String(cause))
+      setError(errorText(cause))
     }
-  }
-  const listRows: DialogRow[] = [
-    {
-      items: [{ type: 'button', label: '+Add Deepseek', onPress: () => setWindow({ kind: 'add-deepseek' }) }],
-    },
-    {
-      items: [{ type: 'button', label: '+Add Custom Model', onPress: () => setWindow({ kind: 'add-custom' }) }],
-    },
-  ]
-  for (const model of models) {
-    listRows.push({
-      items: [
-        {
-          type: 'button',
-          label: model.name,
-          right: model.providerName,
-          onPress: () => void selectModel(model),
-        },
-      ],
-    })
   }
   const deepSeekRows: DialogRow[] = [
     {
@@ -184,35 +149,46 @@ export const ModelsDialog = forwardRef<DialogHandle, ModelsDialogProps>(function
       },
     ],
   }))
-  const footer = (
-    <>
-      {window.kind === 'select-models' && <Text color={colors.toolBodyText}>Press Space to toggle, Enter to confirm</Text>}
-      {error !== null && <Text color={colors.errorText}>{error}</Text>}
-    </>
-  )
-  let title = 'model'
-  let rows = listRows
-  if (window.kind === 'add-deepseek') {
-    title = 'Add Deepseek'
-    rows = deepSeekRows
-  } else if (window.kind === 'add-custom') {
-    title = 'Add Custom Model'
-    rows = customRows
-  } else if (window.kind === 'select-models') {
-    title = 'Select Models'
-    rows = selectRows
+  const footerLines: DialogFooterLine[] = [
+    ...(window.kind === 'select-models' ? [{ text: 'Press Space to toggle, Enter to confirm', color: colors.toolBodyText }] : []),
+    ...(error !== null ? [{ text: error, color: colors.errorText }] : []),
+  ]
+  if (window.kind === 'list') {
+    return (
+      <ListDialog
+        ref={ref}
+        width={DIALOG_WIDTH}
+        maxHeight={DIALOG_MAX_HEIGHT}
+        title="model"
+        load={api.listModels}
+        search
+        staticRows={[
+          { items: [{ type: 'button', label: '+Add DeepSeek', onPress: () => setWindow({ kind: 'add-deepseek' }) }] },
+          { items: [{ type: 'button', label: '+Add Custom Model', onPress: () => setWindow({ kind: 'add-custom' }) }] },
+        ]}
+        labelOf={model => model.name}
+        rightOf={model => model.providerName}
+        onSelect={model => void selectModel(model)}
+        onClose={onClose}
+        footerLines={footerLines}
+      />
+    )
   }
+  const title =
+    window.kind === 'add-deepseek' ? 'Add DeepSeek' : window.kind === 'add-custom' ? 'Add Custom Model' : 'Select Models'
+  const rows = window.kind === 'add-deepseek' ? deepSeekRows : window.kind === 'add-custom' ? customRows : selectRows
   return (
     <Dialog
-      ref={ref as Ref<DialogHandle>}
+      ref={ref}
       key={window.kind}
       width={DIALOG_WIDTH}
       maxHeight={DIALOG_MAX_HEIGHT}
       title={title}
       rows={rows}
-      footer={footer}
+      footer={footerLines}
       onClose={onClose}
-      search={window.kind === 'list' || window.kind === 'select-models'}
+      onConfirmLast={window.kind === 'add-custom' ? () => void submitCustom() : undefined}
+      search={window.kind === 'select-models'}
     />
   )
-})
+}

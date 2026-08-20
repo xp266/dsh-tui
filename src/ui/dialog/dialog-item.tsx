@@ -2,7 +2,7 @@ import { Box, Text } from 'ink'
 import type { ReactNode } from 'react'
 import { colors } from '../../theme.ts'
 import { padToWidth, textWidth, truncate } from '../../utils/text.ts'
-import { HighlightedText } from '../selection.tsx'
+import { SelectableText } from '../selection.tsx'
 import type { DialogItem, DialogRow } from './dialog.tsx'
 
 export const CAROUSEL_BUTTON_WIDTH = 3
@@ -87,7 +87,7 @@ function renderItem(
       return (
         <Box flexDirection="column">
           <Box width={contentWidth} backgroundColor={colors.userBubbleBackground}>
-            <HighlightedText y={baseY} col={left} text={truncate(text, contentWidth)} color={isEmpty ? colors.toolBodyText : undefined} />
+            <SelectableText y={baseY} col={left} text={truncate(text, contentWidth)} color={isEmpty ? colors.toolBodyText : undefined} />
           </Box>
           <Box height={1}>
             <Text> </Text>
@@ -99,10 +99,10 @@ function renderItem(
       return (
         <Box flexDirection="column">
           <Box height={1}>
-            <HighlightedText y={baseY} col={left} text={item.label} />
+            <SelectableText y={baseY} col={left} text={item.label} />
           </Box>
           <Box width={contentWidth} height={1} backgroundColor={colors.userBubbleBackground}>
-            <HighlightedText y={baseY + 1} col={left} text={truncate(item.value, contentWidth)} />
+            <SelectableText y={baseY + 1} col={left} text={truncate(item.value, contentWidth)} />
           </Box>
           <Box height={1}>
             <Text> </Text>
@@ -114,18 +114,16 @@ function renderItem(
       const hasArrows = item.options.length > 1
       const pad = hasArrows ? block.leftPad : block.fullLeftPad
       const inner = block.blockWidth - (hasArrows ? CAROUSEL_BUTTON_WIDTH * 2 : 0)
+      const valueCol = left + block.blockStart + (hasArrows ? CAROUSEL_BUTTON_WIDTH : 0)
+      const valueText = ' '.repeat(pad) + block.text + ' '.repeat(Math.max(0, inner - pad - textWidth(block.text)))
       const carousel = (
         <Box width={contentWidth} justifyContent="space-between">
-          <HighlightedText y={baseY} col={left} text={`${item.label}:`} />
+          <SelectableText y={baseY} col={left} text={`${item.label}:`} />
           <Box width={block.blockWidth} flexDirection="row">
             {hasArrows && (
               <Text backgroundColor={pressed === 'left' ? colors.carouselButtonPressedBg : colors.carouselButtonBg}> ◀ </Text>
             )}
-            <Text backgroundColor={colors.carouselCurrentBg}>
-              {' '.repeat(pad)}
-              {block.text}
-              {' '.repeat(inner - pad - textWidth(block.text))}
-            </Text>
+            <SelectableText y={baseY} col={valueCol} text={valueText} backgroundColor={colors.carouselCurrentBg} />
             {hasArrows && (
               <Text backgroundColor={pressed === 'right' ? colors.carouselButtonPressedBg : colors.carouselButtonBg}> ▶ </Text>
             )}
@@ -147,33 +145,33 @@ function renderItem(
         if (focused) {
           const right = truncate(item.right, Math.floor(contentWidth / 2))
           const leftWidth = Math.max(1, contentWidth - textWidth(right))
-          return <HighlightedText y={baseY} col={left} text={padToWidth(truncate(item.label, leftWidth), leftWidth) + right} inverse />
+          return <SelectableText y={baseY} col={left} text={padToWidth(truncate(item.label, leftWidth), leftWidth) + right} inverse />
         }
         const right = item.right
         return (
           <Box width={contentWidth} justifyContent="space-between">
-            <HighlightedText y={baseY} col={left} text={item.label} />
-            <HighlightedText y={baseY} col={left + contentWidth - textWidth(right)} text={right} />
+            <SelectableText y={baseY} col={left} text={item.label} />
+            <SelectableText y={baseY} col={left + contentWidth - textWidth(right)} text={right} />
           </Box>
         )
       }
-      if (focused) return <HighlightedText y={baseY} col={left} text={padToWidth(truncate(item.label, contentWidth), contentWidth)} inverse />
-      return <HighlightedText y={baseY} col={left} text={item.label} />
+      if (focused) return <SelectableText y={baseY} col={left} text={padToWidth(truncate(item.label, contentWidth), contentWidth)} inverse />
+      return <SelectableText y={baseY} col={left} text={item.label} />
     case 'checkbox':
       if (focused) {
         return (
           <Box>
-            <HighlightedText y={baseY} col={left} text={padToWidth(truncate(item.label, contentWidth - 2), contentWidth - 2)} inverse />
+            <SelectableText y={baseY} col={left} text={padToWidth(truncate(item.label, contentWidth - 2), contentWidth - 2)} inverse />
             {item.checked && (
-              <HighlightedText y={baseY} col={left + contentWidth - 2} text={' \u2713'} color={colors.success} inverse />
+              <SelectableText y={baseY} col={left + contentWidth - 2} text={' \u2713'} color={colors.success} inverse />
             )}
           </Box>
         )
       }
       return (
         <Box>
-          <HighlightedText y={baseY} col={left} text={item.label} />
-          {item.checked && <HighlightedText y={baseY} col={left + textWidth(item.label)} text={' \u2713'} color={colors.success} />}
+          <SelectableText y={baseY} col={left} text={item.label} />
+          {item.checked && <SelectableText y={baseY} col={left + textWidth(item.label)} text={' \u2713'} color={colors.success} />}
         </Box>
       )
   }

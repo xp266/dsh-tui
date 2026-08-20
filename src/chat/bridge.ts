@@ -129,7 +129,40 @@ export interface ChatBridge {
 
 let sessionCounter = 0
 
-const SESSION_LIST_REFRESH_MIN_MS = 2000
+const SESSION_LIST_TTL_MS = 2000
+const EFFORT_LIST_TTL_MS = 30000
+const PRESET_LIST_TTL_MS = 2000
+
+interface CachedList<T> {
+  get(force?: boolean): Promise<T[]>
+  invalidate(): void
+}
+
+function cachedList<T>(load: () => Promise<T[]>, ttlMs: number): CachedList<T> {
+  let cache: T[] | undefined
+  let refresh: Promise<T[]> | undefined
+  let refreshedAt = 0
+  return {
+    get(force = false) {
+      const now = Date.now()
+      if (!force && cache !== undefined && refreshedAt > now - ttlMs) return Promise.resolve(cache)
+      if (refresh !== undefined) return refresh
+      refresh = load()
+        .then(records => {
+          cache = records
+          refreshedAt = Date.now()
+          return records
+        })
+        .finally(() => {
+          refresh = undefined
+        })
+      return refresh
+    },
+    invalidate() {
+      refreshedAt = 0
+    },
+  }
+}
 
 export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   const agentOptions = (): AgentOptions => {
@@ -146,9 +179,15 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   let activeHandle: AgentHandle | undefined = await createAgent(currentCwd)
   let activeAgent = activeHandle.agent
   const llm = ctx.llm
-  let sessionListCache: SessionSummary[] | undefined
-  let sessionListRefresh: Promise<void> | undefined
-  let sessionListRefreshAt = 0
+  const sessionList = cachedList(() => computeSessionList(ctx, String(activeAgent.id)), SESSION_LIST_TTL_MS)
+  const efforts = cachedList(() => resolveEffortSummaries(currentSelection()), EFFORT_LIST_TTL_MS)
+  const presetsList = cachedList(
+    async () => {
+      if (presets === undefined) return []
+      return (await presets.list()).map(preset => ({ id: preset.id, name: presetDisplayName(preset) }))
+    },
+    PRESET_LIST_TTL_MS,
+  )
 
   function emit(event: SessionEvent): void {
     for (const handler of [...handlers]) handler(event)
@@ -157,7 +196,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   ctx.on('session/event', (session, event) => {
     if (session.id !== activeAgent.id) return
     const type = (event as { type?: string }).type
-    if (type === 'session/title' || type === 'turn/start') void refreshSessionList()
+    if (type === 'session/title' || type === 'turn/start') sessionList.invalidate()
     emit(event)
   })
 
@@ -198,15 +237,21 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     return selectionFor(activeAgent).current ?? ctx.agentDefaultModel.currentSelection()
   }
 
-  async function refreshEffortNames(): Promise<void> {
-    const selection = currentSelection()
+  async function resolveEffortSummaries(selection: ModelSelection): Promise<EffortSummary[]> {
     try {
       const info = await llm.resolveModelInfo(selection.provider, selection.model)
       const base = `${selection.provider}/${selection.model}`
       for (const effort of info.reasoning?.efforts ?? []) {
         effortNames.set(`${base}/${effort.id}`, effort.name)
       }
-    } catch {}
+      return (info.reasoning?.efforts ?? []).map(effort => ({ id: effort.id, name: effort.name }))
+    } catch {
+      return []
+    }
+  }
+
+  async function refreshEffortNames(): Promise<void> {
+    await resolveEffortSummaries(currentSelection())
   }
 
   async function createAgent(cwd: string, presetId?: string): Promise<AgentHandle> {
@@ -293,6 +338,8 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       syncCwd()
       for (const event of activeAgent.session.events) emit(event)
       void repairEffortSelection()
+      sessionList.invalidate()
+      efforts.invalidate()
       return
     }
     const handle = await resumeAgent(sessionId)
@@ -303,6 +350,8 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     syncCwd()
     for (const event of activeAgent.session.events) emit(event)
     void repairEffortSelection()
+    sessionList.invalidate()
+    efforts.invalidate()
   }
 
   function syncCwd(): void {
@@ -318,6 +367,8 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     activeAgent = handle.agent
     if (previous !== undefined) await previous.dispose()
     void repairEffortSelection()
+    sessionList.invalidate()
+    efforts.invalidate()
   }
 
   async function repairEffortSelection(): Promise<void> {
@@ -333,6 +384,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       const resolved = await llm.resolveCallConfig({ provider: selection.provider, model: selection.model })
       selectionFor(activeAgent).current = resolved
     }
+    efforts.invalidate()
   }
 
   function currentPreset(): string {
@@ -444,21 +496,12 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     try {
       await ctx.agentDefaultModel.saveSelection(resolved)
     } catch {}
+    efforts.invalidate()
     void refreshEffortNames()
   }
 
   async function listEfforts(): Promise<EffortSummary[]> {
-    const selection = currentSelection()
-    try {
-      const info = await llm.resolveModelInfo(selection.provider, selection.model)
-      const base = `${selection.provider}/${selection.model}`
-      for (const effort of info.reasoning?.efforts ?? []) {
-        effortNames.set(`${base}/${effort.id}`, effort.name)
-      }
-      return (info.reasoning?.efforts ?? []).map(effort => ({ id: effort.id, name: effort.name }))
-    } catch {
-      return []
-    }
+    return efforts.get()
   }
 
   function currentEffort(): string | undefined {
@@ -490,6 +533,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     try {
       await ctx.agentDefaultModel.saveSelection(resolved)
     } catch {}
+    efforts.invalidate()
     void refreshEffortNames()
   }
 
@@ -520,27 +564,10 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   }
 
   async function listSessions(): Promise<SessionSummary[]> {
-    await refreshSessionList(true)
-    return sessionListCache ?? []
+    return sessionList.get()
   }
 
-  async function refreshSessionList(force = false): Promise<void> {
-    const now = Date.now()
-    if (!force && sessionListRefreshAt > now - SESSION_LIST_REFRESH_MIN_MS) return
-    if (sessionListRefresh !== undefined) return sessionListRefresh
-    sessionListRefresh = computeSessionList(ctx, String(activeAgent.id))
-      .then(records => {
-        sessionListCache = records
-        sessionListRefreshAt = Date.now()
-      })
-      .catch(() => {})
-      .finally(() => {
-        sessionListRefresh = undefined
-      })
-    return sessionListRefresh
-  }
-
-  void refreshSessionList(true)
+  void sessionList.get()
   void refreshEffortNames()
 
   return {
@@ -563,10 +590,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     fetchCustomModels: form => fetchCustomModels(llm, form),
     saveCustomProvider: (form, models) => saveCustomProvider(ctx.settings, ctx.credentials, form, models),
     cwd: () => currentCwd,
-    listPresets: async () => {
-      if (presets === undefined) return []
-      return (await presets.list()).map(preset => ({ id: preset.id, name: presetDisplayName(preset) }))
-    },
+    listPresets: () => presetsList.get(),
     currentPreset,
     presetName: () => builtInPresetName(currentPreset()) ?? currentPreset(),
     selectPreset,

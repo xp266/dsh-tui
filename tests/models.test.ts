@@ -7,7 +7,6 @@ import {
   listConfiguredModels,
   providerKeyRef,
   saveCustomProvider,
-  selectModel,
 } from '../src/chat/models.ts'
 import type { CustomProviderForm } from '../src/chat/models.ts'
 
@@ -29,12 +28,6 @@ describe('model management', () => {
       { id: 'glm-4.7-flash', name: 'glm-4.7-flash', provider: 'zai', providerName: 'zai' },
       { id: 'deepseek-v4-flash', name: 'deepseek-v4-flash', provider: 'deepseek-official', providerName: 'DeepSeek' },
     ])
-  })
-
-  it('persists a model selection through the default-model service', async () => {
-    const saver = { saveSelection: vi.fn(async () => {}) }
-    await selectModel(saver, 'zai', 'glm-4.7-flash')
-    expect(saver.saveSelection).toHaveBeenCalledWith({ provider: 'zai', model: 'glm-4.7-flash' })
   })
 
   it('stores the DeepSeek key under the official env ref', async () => {

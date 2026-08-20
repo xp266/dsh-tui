@@ -112,3 +112,7 @@ export function truncate(text: string, width: number): string {
   }
   return text
 }
+
+export function errorText(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause)
+}

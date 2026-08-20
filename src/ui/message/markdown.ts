@@ -93,7 +93,7 @@ export function tokenizeThinking(content: string): Segment[] {
       styled.push([{ text: line, style: mdStyles.plain }])
       continue
     }
-    styled.push(tokenizeInlineKeep(line))
+    styled.push(tokenizeInline(line, true))
   }
   const segments: Segment[] = []
   for (let i = 0; i < styled.length; i++) {
@@ -103,7 +103,7 @@ export function tokenizeThinking(content: string): Segment[] {
   return segments
 }
 
-function tokenizeInlineKeep(line: string): Segment[] {
+function tokenizeInline(line: string, keep: boolean): Segment[] {
   const segments: Segment[] = []
   let plain = ''
   const flush = () => {
@@ -118,31 +118,37 @@ function tokenizeInlineKeep(line: string): Segment[] {
     if (ch === '`') {
       flush()
       const end = line.indexOf('`', i + 1)
-      if (end < 0) {
-        segments.push({ text: '`', style: mdStyles.plain })
-        if (line.length > i + 1) segments.push({ text: line.slice(i + 1), style: mdStyles.thinkInlineCode })
-        i = line.length
-      } else {
-        segments.push({ text: '`', style: mdStyles.plain })
-        if (end > i + 1) segments.push({ text: line.slice(i + 1, end), style: mdStyles.thinkInlineCode })
-        segments.push({ text: '`', style: mdStyles.plain })
+      const rest = line.slice(i + 1, end < 0 ? undefined : end)
+      if (keep) segments.push({ text: '`', style: mdStyles.plain })
+      if (rest !== '') segments.push({ text: rest, style: keep ? mdStyles.thinkInlineCode : mdStyles.inlineCode })
+      if (end >= 0) {
+        if (keep) segments.push({ text: '`', style: mdStyles.plain })
         i = end + 1
+      } else {
+        i = line.length
       }
       continue
     }
-    if (ch === '"') {
+    if (keep && ch === '"') {
       flush()
       const end = line.indexOf('"', i + 1)
-      if (end < 0) {
-        segments.push({ text: '"', style: mdStyles.plain })
-        if (line.length > i + 1) segments.push({ text: line.slice(i + 1), style: mdStyles.thinkQuote })
-        i = line.length
-      } else {
-        segments.push({ text: '"', style: mdStyles.plain })
-        if (end > i + 1) segments.push({ text: line.slice(i + 1, end), style: mdStyles.thinkQuote })
+      const rest = line.slice(i + 1, end < 0 ? undefined : end)
+      segments.push({ text: '"', style: mdStyles.plain })
+      if (rest !== '') segments.push({ text: rest, style: mdStyles.thinkQuote })
+      if (end >= 0) {
         segments.push({ text: '"', style: mdStyles.plain })
         i = end + 1
+      } else {
+        i = line.length
       }
+      continue
+    }
+    if (!keep && line.startsWith('**', i)) {
+      flush()
+      const end = line.indexOf('**', i + 2)
+      const rest = line.slice(i + 2, end < 0 ? undefined : end)
+      if (rest !== '') segments.push({ text: rest, style: mdStyles.bold })
+      i = end < 0 ? line.length : end + 2
       continue
     }
     plain += ch
@@ -158,7 +164,7 @@ function lineSegments(line: string): Segment[] {
     const level = heading[1]!.length
     const style: MarkStyle = level === 1 ? mdStyles.h1 : level === 2 ? mdStyles.h2 : mdStyles.h3
     const text = line.slice(heading[0].length)
-    const inline = tokenizeInline(text)
+    const inline = tokenizeInline(text, false)
     return inline.map(segment => ({
       text: segment.text,
       style: {
@@ -173,51 +179,9 @@ function lineSegments(line: string): Segment[] {
     const marker = { text: list[0], style: mdStyles.list }
     const rest = line.slice(list[0].length)
     if (rest === '') return [marker]
-    return [marker, ...tokenizeInline(rest)]
+    return [marker, ...tokenizeInline(rest, false)]
   }
-  return tokenizeInline(line)
-}
-
-function tokenizeInline(line: string): Segment[] {
-  const segments: Segment[] = []
-  let plain = ''
-  const flush = () => {
-    if (plain !== '') {
-      segments.push({ text: plain, style: mdStyles.plain })
-      plain = ''
-    }
-  }
-  let i = 0
-  while (i < line.length) {
-    if (line.startsWith('**', i)) {
-      flush()
-      const end = line.indexOf('**', i + 2)
-      if (end < 0) {
-        segments.push({ text: line.slice(i + 2), style: mdStyles.bold })
-        i = line.length
-      } else {
-        if (end > i + 2) segments.push({ text: line.slice(i + 2, end), style: mdStyles.bold })
-        i = end + 2
-      }
-      continue
-    }
-    if (line[i] === '`') {
-      flush()
-      const end = line.indexOf('`', i + 1)
-      if (end < 0) {
-        segments.push({ text: line.slice(i + 1), style: mdStyles.inlineCode })
-        i = line.length
-      } else {
-        if (end > i + 1) segments.push({ text: line.slice(i + 1, end), style: mdStyles.inlineCode })
-        i = end + 1
-      }
-      continue
-    }
-    plain += line[i]!
-    i++
-  }
-  flush()
-  return segments
+  return tokenizeInline(line, false)
 }
 
 export function wrapSegments(segments: Segment[], width: number): Segment[][] {

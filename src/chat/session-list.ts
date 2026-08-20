@@ -3,6 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { textFromBlocks } from './blocks.ts'
+import { isBlankSession } from './presets.ts'
 
 export interface SessionSummary {
   id: string
@@ -29,7 +30,7 @@ export async function computeSessionList(ctx: Context, currentId?: string): Prom
     const id = String(session.id)
     attached.add(id)
     if (archived.has(id)) continue
-    if (isBlank(session.events) && id !== currentId) continue
+    if (isBlankSession(session.events) && id !== currentId) continue
     const title = titleService?.get?.(session)?.title ?? firstUserText(session.events)
     summaries.push(toSummary(id, title, session.header.cwd, session.header.createdAt, lastPromptAt(session.events), workspacePaths))
   }
@@ -75,10 +76,6 @@ function collectArchivedIds(ctx: Context): Set<string> {
   } catch {
     return new Set()
   }
-}
-
-function isBlank(events: readonly SessionEvent[]): boolean {
-  return !events.some(event => event.type === 'turn/start')
 }
 
 function lastPromptAt(events: readonly SessionEvent[]): number {
@@ -152,7 +149,7 @@ async function mergeColdSummaries(
     if (typeof persistence.readFrom === 'function') {
       try {
         const { events } = await persistence.readFrom(String(header.id), 0)
-        blank = isBlank(events)
+        blank = isBlankSession(events)
         title = titleFromEvents(events) ?? firstUserText(events)
         promptAt = lastPromptAt(events)
       } catch {

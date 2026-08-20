@@ -1,10 +1,10 @@
 import { Box, Text, useCursor, useInput, useStdout } from 'ink'
-import type { ReactNode } from 'react'
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import type { ReactNode, Ref } from 'react'
+import { useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { colors } from '../../theme.ts'
 import { isMouseResidue } from '../../terminal/mouse.ts'
-import { textWidth } from '../../utils/text.ts'
-import { HighlightedText } from '../selection.tsx'
+import { textWidth, truncate, wrapLines } from '../../utils/text.ts'
+import { SelectableText } from '../selection.tsx'
 import { renderRow, selectBlock, CAROUSEL_BUTTON_WIDTH } from './dialog-item.tsx'
 
 export interface DialogRow {
@@ -60,15 +60,42 @@ export function adjustScroll(rows: DialogRow[], focus: DialogFocus, scrollTop: n
   return scrollTop
 }
 
+export interface DialogFooterLine {
+  text: string
+  color?: string
+}
+
+interface FooterRenderLine {
+  text: string
+  color?: string
+}
+
+function wrapFooter(footer: DialogFooterLine[] | undefined, width: number): FooterRenderLine[] {
+  if (footer === undefined) return []
+  const rows: FooterRenderLine[] = []
+  for (const line of footer) {
+    if (line.text === '') continue
+    const wrapped = wrapLines(line.text, width)
+    const capped = wrapped.slice(0, 2)
+    if (wrapped.length > 2) {
+      capped[1] = truncate(capped[1] ?? '', Math.max(1, width - 1)) + '…'
+    }
+    for (const text of capped) rows.push({ text, color: line.color })
+  }
+  return rows
+}
+
 export interface DialogProps {
   width: number
   maxHeight: number
   title?: string
   rows: DialogRow[]
-  footer?: ReactNode
+  footer?: DialogFooterLine[]
   onClose: () => void
+  onConfirmLast?: () => void
   search?: boolean
   searchRight?: boolean
+  ref?: Ref<DialogHandle>
 }
 
 export interface DialogHandle {
@@ -93,10 +120,18 @@ function arrowFromRaw(input: string): 'up' | 'down' | 'left' | 'right' | null {
   return letter === 'A' ? 'up' : letter === 'B' ? 'down' : letter === 'C' ? 'right' : 'left'
 }
 
-export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
-  { width, maxHeight, title, rows, footer, onClose, search = false, searchRight = false },
+export function Dialog({
+  width,
+  maxHeight,
+  title,
+  rows,
+  footer,
+  onClose,
+  onConfirmLast,
+  search = false,
+  searchRight = false,
   ref,
-) {
+}: DialogProps) {
   const { stdout } = useStdout()
   const { setCursorPosition } = useCursor()
   const columns = stdout?.columns ?? 80
@@ -129,8 +164,6 @@ export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
   const fixedHeight = search ? rowHeight(searchRow) : 0
   const focusMinRow = search ? 1 : 0
   const focusMaxRow = Math.max(focusMinRow, displayRows.length - 1)
-  const focusMinRowRef = useRef(focusMinRow)
-  const focusMaxRowRef = useRef(focusMaxRow)
   useEffect(() => {
     setFocus(current =>
       current.row < focusMinRow ? { row: focusMinRow, col: 0 }
@@ -139,38 +172,43 @@ export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
     )
   }, [displayRows, focusMinRow, focusMaxRow])
   const titleLines = title === undefined ? 0 : 2
-  const footerLines = footer === undefined ? 0 : 1
   const windowWidth = Math.min(width + 2, columns)
   const contentWidth = Math.max(1, windowWidth - 2)
-  const desired = displayRows.reduce((sum, row) => sum + rowHeight(row), 0) + titleLines + footerLines + 2
+  const footerRows = wrapFooter(footer, contentWidth)
+  const extraHeight = footerRows.length > 0 ? 1 + footerRows.length : 0
+  const desired = displayRows.reduce((sum, row) => sum + rowHeight(row), 0) + titleLines + extraHeight + 2
   const windowHeight = Math.min(desired, maxHeight, totalRows)
-  const contentHeight = Math.max(1, windowHeight - 2 - titleLines - footerLines)
+  const contentHeight = Math.max(1, windowHeight - 2 - titleLines - extraHeight)
   const viewportHeight = Math.max(1, contentHeight - fixedHeight)
   const top = Math.max(0, Math.floor((totalRows - windowHeight) / 2))
   const left = Math.max(0, Math.floor((columns - windowWidth) / 2))
-  const rowsRef = useRef(displayRows)
-  const contentRowsRef = useRef(contentRows)
-  const focusRef = useRef(focus)
-  const scrollTopRef = useRef(scrollTop)
-  const cursorRef = useRef(cursor)
-  const valueRef = useRef('')
-  const searchValueRef = useRef(searchValue)
-  const contentHeightRef = useRef(contentHeight)
-  rowsRef.current = displayRows
-  contentRowsRef.current = contentRows
-  focusRef.current = focus
-  scrollTopRef.current = scrollTop
-  cursorRef.current = cursor
-  searchValueRef.current = searchValue
-  contentHeightRef.current = viewportHeight
-  focusMinRowRef.current = focusMinRow
-  focusMaxRowRef.current = focusMaxRow
+  const live = useRef({
+    rows: displayRows,
+    contentRows,
+    focus,
+    scrollTop,
+    cursor,
+    value: '',
+    searchValue,
+    viewportHeight,
+    focusMinRow,
+    focusMaxRow,
+  })
+  live.current.rows = displayRows
+  live.current.contentRows = contentRows
+  live.current.focus = focus
+  live.current.scrollTop = scrollTop
+  live.current.cursor = cursor
+  live.current.searchValue = searchValue
+  live.current.viewportHeight = viewportHeight
+  live.current.focusMinRow = focusMinRow
+  live.current.focusMaxRow = focusMaxRow
   const safeFocus: DialogFocus = {
     row: Math.min(Math.max(focus.row, focusMinRow), focusMaxRow),
     col: Math.min(focus.col, Math.max(0, (displayRows[focus.row]?.items.length ?? 1) - 1)),
   }
   const current = displayRows[safeFocus.row]?.items[safeFocus.col]
-  valueRef.current = current?.type === 'input' || current?.type === 'search' ? current.value : ''
+  live.current.value = current?.type === 'input' || current?.type === 'search' ? current.value : ''
   useEffect(() => {
     const item = displayRows[safeFocus.row]?.items[safeFocus.col]
     setCursor(item?.type === 'input' || item?.type === 'search' ? item.value.length : 0)
@@ -204,16 +242,16 @@ export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
     }
   }, [])
   useInput((input, key) => {
-    const liveRows = rowsRef.current
-    const liveFocus = focusRef.current
-    const liveScroll = scrollTopRef.current
-    const liveContentHeight = contentHeightRef.current
+    const liveRows = live.current.rows
+    const liveFocus = live.current.focus
+    const liveScroll = live.current.scrollTop
+    const liveContentHeight = live.current.viewportHeight
     const liveNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
       const next = moveFocus(liveRows, liveFocus, direction)
-      const clamped = { ...next, row: Math.min(Math.max(next.row, focusMinRowRef.current), focusMaxRowRef.current) }
+      const clamped = { ...next, row: Math.min(Math.max(next.row, live.current.focusMinRow), live.current.focusMaxRow) }
       setFocus(clamped)
       const contentRow = Math.max(0, clamped.row - (search ? 1 : 0))
-      setScrollTop(adjustScroll(contentRowsRef.current, { row: contentRow, col: clamped.col }, liveScroll, liveContentHeight))
+      setScrollTop(adjustScroll(live.current.contentRows, { row: contentRow, col: clamped.col }, liveScroll, liveContentHeight))
     }
     const liveCurrent = liveRows[liveFocus.row]?.items[liveFocus.col]
     const rawArrow = arrowFromRaw(input)
@@ -235,13 +273,13 @@ export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
       return
     }
     if ((isLeft || isRight) && liveCurrent?.type === 'input') {
-      const c = cursorRef.current
+      const c = live.current.cursor
       if (isLeft && c > 0) {
-        cursorRef.current = c - 1
+        live.current.cursor = c - 1
         setCursor(c - 1)
       }
       if (isRight && c < liveCurrent.value.length) {
-        cursorRef.current = c + 1
+        live.current.cursor = c + 1
         setCursor(c + 1)
       }
       return
@@ -252,9 +290,11 @@ export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
     }
     if (key.return) {
       if (liveCurrent === undefined) return
+      const onLastRow = liveFocus.row === liveRows.length - 1
       switch (liveCurrent.type) {
         case 'input':
           if (liveCurrent.onEnter) liveCurrent.onEnter()
+          else if (onLastRow && onConfirmLast !== undefined) onConfirmLast()
           else liveNavigate('down')
           break
         case 'search':
@@ -262,6 +302,7 @@ export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
           break
         case 'select':
           if (liveCurrent.onEnter) liveCurrent.onEnter()
+          else if (onLastRow && onConfirmLast !== undefined) onConfirmLast()
           else liveNavigate('down')
           break
         case 'button':
@@ -278,7 +319,7 @@ export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
       return
     }
     if (search && liveCurrent?.type !== 'input') {
-      const v = searchValueRef.current
+      const v = live.current.searchValue
       if ((key.backspace || key.delete) && v.length > 0) {
         handleSearch(v.slice(0, -1))
         return
@@ -289,26 +330,26 @@ export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
       }
     }
     if (liveCurrent?.type === 'input' || liveCurrent?.type === 'search') {
-      const c = cursorRef.current
-      const v = valueRef.current
+      const c = live.current.cursor
+      const v = live.current.value
       if (key.backspace) {
         if (c > 0) {
           const next = v.slice(0, c - 1) + v.slice(c)
-          valueRef.current = next
-          cursorRef.current = c - 1
+          live.current.value = next
+          live.current.cursor = c - 1
           liveCurrent.onChange(next)
           setCursor(c - 1)
         }
       } else if (key.delete) {
         if (c < v.length) {
           const next = v.slice(0, c) + v.slice(c + 1)
-          valueRef.current = next
+          live.current.value = next
           liveCurrent.onChange(next)
         }
       } else if (input && !key.ctrl && !key.meta && !isMouseResidue(input)) {
         const next = v.slice(0, c) + input + v.slice(c)
-        valueRef.current = next
-        cursorRef.current = c + input.length
+        live.current.value = next
+        live.current.cursor = c + input.length
         liveCurrent.onChange(next)
         setCursor(c + input.length)
       }
@@ -387,7 +428,7 @@ export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
       {title !== undefined && (
         <>
           <Box justifyContent="center">
-            <HighlightedText y={top + 1} col={left + 1 + Math.max(0, Math.floor((contentWidth - textWidth(title)) / 2))} text={title} />
+            <SelectableText y={top + 1} col={left + 1 + Math.max(0, Math.floor((contentWidth - textWidth(title)) / 2))} text={title} />
           </Box>
           <Box height={1}>
             <Text> </Text>
@@ -404,7 +445,22 @@ export const Dialog = forwardRef<DialogHandle, DialogProps>(function Dialog(
           {visibleRows}
         </Box>
       </Box>
-      {footer !== undefined && <Box flexDirection="column">{footer}</Box>}
+      {footerRows.length > 0 && (
+        <>
+          <Box height={1}>
+            <Text> </Text>
+          </Box>
+          {footerRows.map((line, index) => (
+            <SelectableText
+              key={index}
+              y={top + windowHeight - footerRows.length + index - 1}
+              col={left + 1}
+              text={line.text}
+              color={line.color}
+            />
+          ))}
+        </>
+      )}
     </Box>
   )
-})
+}

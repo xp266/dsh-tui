@@ -124,7 +124,7 @@ describe('App layout', () => {
     await new Promise(resolve => setTimeout(resolve, 50))
     const frame = lastFrame() ?? ''
     expect(frame).toContain('model')
-    expect(frame).toContain('+Add Deepseek')
+    expect(frame).toContain('+Add DeepSeek')
     expect(frame).toContain('+Add Custom Model')
     expect(frame).toContain('glm-4.7-flash')
   })

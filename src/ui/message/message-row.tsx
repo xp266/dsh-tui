@@ -3,7 +3,7 @@ import { memo } from 'react'
 import { colors } from '../../theme.ts'
 import { headerSymbol, SPINNER_FRAMES } from './layout.ts'
 import type { RowInfo } from './layout.ts'
-import { HighlightedText, RichText } from '../selection.tsx'
+import { SelectableText } from '../selection.tsx'
 
 interface MessageRowProps {
   info: RowInfo
@@ -18,7 +18,7 @@ export const MessageRow = memo(
     case 'pad':
       return (
         <Box marginLeft={2} width={info.backgroundWidth} backgroundColor={backgroundFor(info.role)}>
-          <HighlightedText y={screenRow} col={2} text={' '.repeat(info.backgroundWidth)} />
+          <SelectableText y={screenRow} col={2} text={' '.repeat(info.backgroundWidth)} />
         </Box>
       )
     case 'text': {
@@ -35,9 +35,9 @@ export const MessageRow = memo(
           backgroundColor={info.background ? backgroundFor(info.role) : undefined}
         >
           {info.segments !== undefined && info.segments.length > 0 ? (
-            <RichText y={screenRow} col={col} segments={info.segments} baseColor={baseColor} />
+            <SelectableText y={screenRow} col={col} segments={info.segments} color={baseColor} />
           ) : (
-            <HighlightedText
+            <SelectableText
               text={info.text || ' '}
               y={screenRow}
               col={col}
@@ -49,7 +49,7 @@ export const MessageRow = memo(
     }
     case 'header': {
       const symbol = info.running ? SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length] : headerSymbol(info.running, info.collapsed)
-      return <HighlightedText y={screenRow} col={0} text={`  ${symbol} ${info.label}`} color={colors.toolLabel} />
+      return <SelectableText y={screenRow} col={0} text={`  ${symbol} ${info.label}`} color={colors.toolLabel} />
     }
     case 'blank':
       return <Text> </Text>

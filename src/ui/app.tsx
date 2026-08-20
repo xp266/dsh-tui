@@ -1,12 +1,14 @@
 import { Box, Text, useInput } from 'ink'
+import type { ReactNode } from 'react'
 import { useMemo, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 import { colors } from '../theme.ts'
 import { writeOsc52 } from '../terminal/clipboard.ts'
 import type { ChatBridge } from '../chat/bridge.ts'
 import { rowCount, selectionText } from './message/layout.ts'
 import type { ScreenCapture } from '../terminal/screen.ts'
 import { SelectionContext } from './selection.tsx'
-import { HighlightedText } from './selection.tsx'
+import { SelectableText } from './selection.tsx'
 import { useTerminalSize } from './hooks/use-terminal-size.ts'
 import { useChatEvents } from './hooks/use-chat-events.ts'
 import { useScroll } from './hooks/use-scroll.ts'
@@ -154,7 +156,7 @@ export function App({ bridge, screen }: AppProps) {
                 const hintY = Math.max(0, rows - INPUT_BAR_HEIGHT - 1 - hintState.commands.length) + index
                 return (
                   <Box key={command.command} width={blockWidth} backgroundColor={colors.dialogBackground}>
-                    <HighlightedText y={hintY} col={0} text={filled} inverse={selected} />
+                    <SelectableText y={hintY} col={0} text={filled} inverse={selected} />
                   </Box>
                 )
               })}
@@ -162,7 +164,7 @@ export function App({ bridge, screen }: AppProps) {
           )}
           <Box width={columns} paddingLeft={4} paddingRight={4} justifyContent="space-between">
             {bridge === undefined ? (
-              <HighlightedText y={rows - 1} col={4} text={cwdLabel(undefined)} color={colors.cwdText} />
+              <SelectableText y={rows - 1} col={4} text={cwdLabel(undefined)} color={colors.cwdText} />
             ) : (
               <>
                 {(() => {
@@ -171,13 +173,13 @@ export function App({ bridge, screen }: AppProps) {
                   const leftMax = Math.max(1, rightCol - 4 - 2)
                   return (
                     <>
-                      <HighlightedText
+                      <SelectableText
                         y={rows - 1}
                         col={4}
                         text={truncate(statsText(bridge.tokenStats()), leftMax)}
                         color={colors.cwdText}
                       />
-                      <HighlightedText y={rows - 1} col={rightCol} text={cwd} color={colors.cwdText} />
+                      <SelectableText y={rows - 1} col={rightCol} text={cwd} color={colors.cwdText} />
                     </>
                   )
                 })()}
@@ -185,63 +187,57 @@ export function App({ bridge, screen }: AppProps) {
             )}
           </Box>
         </SelectionContext.Provider>
-      {dialog === 'models' && bridge !== undefined && (
+      {dialog !== null && bridge !== undefined && (
         <SelectionContext.Provider value={chromeSelection}>
-          <ModelsDialog
-            ref={dialogRef}
-            api={bridge}
-            onClose={() => setDialog(null)}
-            onModelSelected={(_provider, model) => setModelName(model)}
-          />
-        </SelectionContext.Provider>
-      )}
-      {dialog === 'sessions' && bridge !== undefined && (
-        <SelectionContext.Provider value={chromeSelection}>
-          <SessionsDialog
-            ref={dialogRef}
-            api={bridge}
-            onClose={() => setDialog(null)}
-            onBeforeSessionSelected={() => {
+          {dialogView(dialog, bridge, {
+            dialogRef,
+            onClose: () => setDialog(null),
+            onModelSelected: (_provider, model) => setModelName(model),
+            onBeforeSessionSelected: () => {
               resetChat()
               clearSelection()
-            }}
-            onSessionSelected={() => {
+            },
+            onSessionSelected: () => {
               setSessionTick(tick => tick + 1)
               applyScroll(Infinity)
-            }}
-          />
-        </SelectionContext.Provider>
-      )}
-      {dialog === 'presets' && bridge !== undefined && (
-        <SelectionContext.Provider value={chromeSelection}>
-          <PresetsDialog
-            ref={dialogRef}
-            api={bridge}
-            onClose={() => setDialog(null)}
-          />
-        </SelectionContext.Provider>
-      )}
-      {dialog === 'effort' && bridge !== undefined && (
-        <SelectionContext.Provider value={chromeSelection}>
-          <EffortDialog
-            ref={dialogRef}
-            api={bridge}
-            onClose={() => setDialog(null)}
-          />
-        </SelectionContext.Provider>
-      )}
-      {dialog === 'defaults' && bridge !== undefined && (
-        <SelectionContext.Provider value={chromeSelection}>
-          <DefaultsDialog
-            ref={dialogRef}
-            api={bridge}
-            onClose={() => setDialog(null)}
-          />
+            },
+          })}
         </SelectionContext.Provider>
       )}
       </Box>
     </SelectionContext.Provider>
   )
+}
+
+interface DialogCallbacks {
+  dialogRef: RefObject<DialogHandle | null>
+  onClose(): void
+  onModelSelected(provider: string, model: string): void
+  onBeforeSessionSelected(): void
+  onSessionSelected(): void
+}
+
+function dialogView(kind: DialogKind, bridge: ChatBridge, cbs: DialogCallbacks): ReactNode {
+  switch (kind) {
+    case 'models':
+      return <ModelsDialog ref={cbs.dialogRef} api={bridge} onClose={cbs.onClose} onModelSelected={cbs.onModelSelected} />
+    case 'sessions':
+      return (
+        <SessionsDialog
+          ref={cbs.dialogRef}
+          api={bridge}
+          onClose={cbs.onClose}
+          onBeforeSessionSelected={cbs.onBeforeSessionSelected}
+          onSessionSelected={cbs.onSessionSelected}
+        />
+      )
+    case 'presets':
+      return <PresetsDialog ref={cbs.dialogRef} api={bridge} onClose={cbs.onClose} />
+    case 'effort':
+      return <EffortDialog ref={cbs.dialogRef} api={bridge} onClose={cbs.onClose} />
+    case 'defaults':
+      return <DefaultsDialog ref={cbs.dialogRef} api={bridge} onClose={cbs.onClose} />
+  }
 }
 
 function cwdLabel(bridge: ChatBridge | undefined): string {

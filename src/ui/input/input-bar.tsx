@@ -5,7 +5,7 @@ import { colToCharIndex, locToPoint, textWidth, truncate, wrapLines } from '../.
 import { filterCommands } from './commands.ts'
 import type { CommandHintState } from './commands.ts'
 import { useComposer } from './use-composer.ts'
-import { HighlightedText } from '../selection.tsx'
+import { SelectableText } from '../selection.tsx'
 
 export const INPUT_BAR_HEIGHT = 5
 
@@ -84,7 +84,7 @@ export function InputBar({
       >
         {visibleLines.map((line, row) => (
           <Box key={row}>
-            <HighlightedText y={totalRows - INPUT_BAR_HEIGHT + row} col={4} text={line || ' '} />
+            <SelectableText y={totalRows - INPUT_BAR_HEIGHT + row} col={4} text={line || ' '} />
           </Box>
         ))}
         {(() => {
@@ -95,9 +95,9 @@ export function InputBar({
             : Math.max(1, contentWidth - textWidth(presetName) - 2)
           return (
             <Box width={contentWidth} justifyContent="space-between">
-              <HighlightedText y={y} col={4} text={truncate(left, leftMax)} color={colors.modelText} />
+              <SelectableText y={y} col={4} text={truncate(left, leftMax)} color={colors.modelText} />
               {presetName !== undefined && (
-                <HighlightedText y={y} col={4 + contentWidth - textWidth(presetName)} text={presetName} color={colors.modelText} />
+                <SelectableText y={y} col={4 + contentWidth - textWidth(presetName)} text={presetName} color={colors.modelText} />
               )}
             </Box>
           )
