@@ -98,7 +98,7 @@ export function DefaultsDialog({ api, onClose, ref }: DefaultsDialogProps) {
     },
   ]
   const footer: DialogFooterLine[] = [
-    ...(loading ? [{ text: 'loading…', color: colors.toolBodyText }] : []),
+    ...(loading ? [{ text: 'loading…', color: colors.dialogHintText }] : []),
     ...(error !== null ? [{ text: error, color: colors.errorText }] : []),
     ...(saveError !== null ? [{ text: saveError, color: colors.errorText }] : []),
   ]

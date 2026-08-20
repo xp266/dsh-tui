@@ -15,18 +15,18 @@ export interface Segment {
 
 export const mdStyles = {
   plain: {} as MarkStyle,
-  bold: { color: colors.mdBold, bold: true },
-  inlineCode: { color: colors.mdInlineCode },
-  list: { color: colors.mdList },
-  h1: { color: colors.mdH1, bold: true },
-  h2: { color: colors.mdH2 },
-  h3: { color: colors.mdH3 },
-  code: { color: colors.mdCode },
-  codeNoLang: { color: colors.mdCodeNoLang },
-  codeDark: { color: colors.codeOperatorDark },
-  codeNoLangDark: { color: colors.codeNoLangDark },
-  thinkInlineCode: { color: colors.thinkInlineCode },
-  thinkQuote: { color: colors.thinkQuote },
+  get bold() { return { color: colors.mdBold, bold: true } },
+  get inlineCode() { return { color: colors.mdInlineCode } },
+  get list() { return { color: colors.mdList } },
+  get h1() { return { color: colors.mdH1, bold: true } },
+  get h2() { return { color: colors.mdH2 } },
+  get h3() { return { color: colors.mdH3 } },
+  get code() { return { color: colors.mdCode } },
+  get codeNoLang() { return { color: colors.mdCodeNoLang } },
+  get codeDark() { return { color: colors.codeOperatorDark } },
+  get codeNoLangDark() { return { color: colors.codeNoLangDark } },
+  get thinkInlineCode() { return { color: colors.thinkInlineCode } },
+  get thinkQuote() { return { color: colors.thinkQuote } },
 } as const
 
 const FENCE_RE = /^```/

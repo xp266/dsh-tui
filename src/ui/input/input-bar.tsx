@@ -89,15 +89,41 @@ export function InputBar({
         ))}
         {(() => {
           const y = totalRows - INPUT_BAR_HEIGHT + CONTENT_ROWS
-          const left = [permission.name, modelName, ...(effortName === undefined ? [] : [effortName])].join(' · ')
           const leftMax = presetName === undefined
             ? contentWidth
             : Math.max(1, contentWidth - textWidth(presetName) - 2)
+          const parts: Array<{ text: string; color: string }> = [
+            { text: permission.name, color: permission.textColor },
+            { text: ' · ', color: colors.statusSeparator },
+            { text: modelName, color: colors.modelText },
+            ...(effortName === undefined ? [] : [
+              { text: ' · ', color: colors.statusSeparator },
+              { text: effortName, color: colors.effortText },
+            ]),
+          ]
+          const segments: Array<{ text: string; color: string }> = []
+          let used = 0
+          for (const part of parts) {
+            const remaining = leftMax - used
+            if (remaining <= 0) break
+            const text = truncate(part.text, remaining)
+            segments.push({ text, color: part.color })
+            used += textWidth(text)
+          }
           return (
             <Box width={contentWidth} justifyContent="space-between">
-              <SelectableText y={y} col={4} text={truncate(left, leftMax)} color={colors.modelText} />
+              <Box flexDirection="row">
+                {(() => {
+                  let col = 4
+                  return segments.map((segment, index) => {
+                    const node = <SelectableText key={index} y={y} col={col} text={segment.text} color={segment.color} />
+                    col += textWidth(segment.text)
+                    return node
+                  })
+                })()}
+              </Box>
               {presetName !== undefined && (
-                <SelectableText y={y} col={4 + contentWidth - textWidth(presetName)} text={presetName} color={colors.modelText} />
+                <SelectableText y={y} col={4 + contentWidth - textWidth(presetName)} text={presetName} color={colors.presetText} />
               )}
             </Box>
           )

@@ -10,10 +10,11 @@ interface MessageRowProps {
   row: number
   screenRow: number
   spinnerFrame: number
+  themeTick?: number
 }
 
 export const MessageRow = memo(
-  function MessageRow({ info, row, screenRow, spinnerFrame }: MessageRowProps) {
+  function MessageRow({ info, row, screenRow, spinnerFrame, themeTick = 0 }: MessageRowProps) {
   switch (info.kind) {
     case 'pad':
       return (
@@ -49,7 +50,7 @@ export const MessageRow = memo(
     }
     case 'header': {
       const symbol = info.running ? SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length] : headerSymbol(info.running, info.collapsed)
-      return <SelectableText y={screenRow} col={0} text={`  ${symbol} ${info.label}`} color={colors.toolLabel} />
+      return <SelectableText y={screenRow} col={0} text={`  ${symbol} ${info.label}`} color={info.thinking ? colors.thinkingLabel : colors.toolLabel} />
     }
     case 'blank':
       return <Text> </Text>
@@ -58,6 +59,7 @@ export const MessageRow = memo(
   (prev, next) => {
     if (prev.row !== next.row) return false
     if (prev.screenRow !== next.screenRow) return false
+    if (prev.themeTick !== next.themeTick) return false
     const a = prev.info
     const b = next.info
     return (
@@ -73,6 +75,7 @@ export const MessageRow = memo(
       a.clickable === b.clickable &&
       a.running === b.running &&
       a.collapsed === b.collapsed &&
+      a.thinking === b.thinking &&
       a.segKey === b.segKey &&
       (a.kind !== 'header' || prev.spinnerFrame === next.spinnerFrame)
     )

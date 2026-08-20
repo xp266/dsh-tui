@@ -1,0 +1,52 @@
+import { readFileSync } from 'node:fs'
+import { colors, permissionModes } from './theme.ts'
+import { clearHighlightCache } from './ui/message/highlight.ts'
+import { clearWrapCache } from './ui/message/layout.ts'
+
+const REFRESH_MS = 300
+
+export interface HotThemeHandle {
+  stop(): void
+}
+
+export function startHotTheme(onChange: () => void): HotThemeHandle | undefined {
+  if (process.env.DSH_TUI_HOT_THEME !== '1') return undefined
+  const themePath = new URL('../src/theme.ts', import.meta.url)
+  let lastSource = ''
+  try {
+    lastSource = readFileSync(themePath, 'utf8')
+  } catch {
+    console.error('dsh-tui: DSH_TUI_HOT_THEME is set but src/theme.ts is missing; hot theme disabled')
+    return undefined
+  }
+  console.error('dsh-tui: hot theme enabled; saving src/theme.ts applies colors live')
+  const timer = setInterval(async () => {
+    let source: string
+    try {
+      source = readFileSync(themePath, 'utf8')
+    } catch {
+      return
+    }
+    if (source === lastSource) return
+    lastSource = source
+    try {
+      const fresh = (await import(`../src/theme.ts?t=${Date.now()}`)) as {
+        colors: typeof colors
+        permissionModes: typeof permissionModes
+      }
+      Object.assign(colors, fresh.colors)
+      Object.assign(permissionModes, fresh.permissionModes)
+      clearWrapCache()
+      clearHighlightCache()
+      onChange()
+    } catch {
+      // theme.ts is mid-edit or temporarily broken; retry on the next tick
+    }
+  }, REFRESH_MS)
+  timer.unref()
+  return {
+    stop() {
+      clearInterval(timer)
+    },
+  }
+}

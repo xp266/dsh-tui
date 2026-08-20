@@ -32,9 +32,10 @@ type DialogKind = 'models' | 'sessions' | 'presets' | 'effort' | 'defaults'
 interface AppProps {
   bridge?: ChatBridge
   screen?: ScreenCapture
+  themeTick?: number
 }
 
-export function App({ bridge, screen }: AppProps) {
+export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const { columns, rows } = useTerminalSize()
   const [dialog, setDialog] = useState<DialogKind | null>(null)
   const [hintState, setHintState] = useState<CommandHintState | null>(null)
@@ -127,6 +128,7 @@ export function App({ bridge, screen }: AppProps) {
           scrollTop={scrollTop}
           onScroll={applyScroll}
           interactive={dialog === null}
+          themeTick={themeTick}
         />
         <SelectionContext.Provider value={chromeSelection}>
           <InputBar
@@ -177,7 +179,7 @@ export function App({ bridge, screen }: AppProps) {
                         y={rows - 1}
                         col={4}
                         text={truncate(statsText(bridge.tokenStats()), leftMax)}
-                        color={colors.cwdText}
+                        color={colors.statsText}
                       />
                       <SelectableText y={rows - 1} col={rightCol} text={cwd} color={colors.cwdText} />
                     </>

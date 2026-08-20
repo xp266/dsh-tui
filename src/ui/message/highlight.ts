@@ -119,8 +119,16 @@ import 'prismjs/components/prism-turtle.js'
 import 'prismjs/components/prism-sparql.js'
 import 'prismjs/components/prism-mongodb.js'
 
-const CODE_PLAIN: MarkStyle = { color: colors.codeOperator }
-const CODE_PLAIN_DARK: MarkStyle = { color: colors.codeOperatorDark }
+const CODE_PLAIN: MarkStyle = {
+  get color() {
+    return colors.codeOperator
+  },
+}
+const CODE_PLAIN_DARK: MarkStyle = {
+  get color() {
+    return colors.codeOperatorDark
+  },
+}
 
 const LANGUAGE_ALIASES: Record<string, string> = {
   py: 'python',
@@ -209,68 +217,72 @@ const LANGUAGE_ALIASES: Record<string, string> = {
 }
 
 export const codeStyles: Record<string, MarkStyle> = {
-  comment: { color: colors.codeComment, italic: true },
-  string: { color: colors.codeString },
-  'template-string': { color: colors.codeString },
-  'attr-value': { color: colors.codeString },
-  char: { color: colors.codeString },
-  regex: { color: colors.codeString },
-  number: { color: colors.codeNumber },
-  literal: { color: colors.codeNumber },
-  boolean: { color: colors.codeConstant },
-  symbol: { color: colors.codeConstant },
-  constant: { color: colors.codeConstant },
-  keyword: { color: colors.codeKeyword },
-  atrule: { color: colors.codeKeyword },
-  rule: { color: colors.codeKeyword },
-  function: { color: colors.codeFunction },
-  'class-name': { color: colors.codeType },
-  builtin: { color: colors.codeType },
-  type: { color: colors.codeType },
-  variable: { color: colors.codeVariable },
-  parameter: { color: colors.codeVariable },
-  property: { color: colors.codeVariable },
-  'attr-name': { color: colors.codeVariable },
-  operator: { color: colors.codeOperator },
-  punctuation: { color: colors.codeOperator },
-  tag: { color: colors.codeOperator },
-  selector: { color: colors.codeOperator },
-  entity: { color: colors.codeOperator },
-  important: { color: colors.codeOperator },
+  get comment() { return { color: colors.codeComment, italic: true } },
+  get string() { return { color: colors.codeString } },
+  get 'template-string'() { return { color: colors.codeString } },
+  get 'attr-value'() { return { color: colors.codeString } },
+  get char() { return { color: colors.codeString } },
+  get regex() { return { color: colors.codeString } },
+  get number() { return { color: colors.codeNumber } },
+  get literal() { return { color: colors.codeNumber } },
+  get boolean() { return { color: colors.codeConstant } },
+  get symbol() { return { color: colors.codeConstant } },
+  get constant() { return { color: colors.codeConstant } },
+  get keyword() { return { color: colors.codeKeyword } },
+  get atrule() { return { color: colors.codeKeyword } },
+  get rule() { return { color: colors.codeKeyword } },
+  get function() { return { color: colors.codeFunction } },
+  get 'class-name'() { return { color: colors.codeType } },
+  get builtin() { return { color: colors.codeType } },
+  get type() { return { color: colors.codeType } },
+  get variable() { return { color: colors.codeVariable } },
+  get parameter() { return { color: colors.codeVariable } },
+  get property() { return { color: colors.codeVariable } },
+  get 'attr-name'() { return { color: colors.codeVariable } },
+  get operator() { return { color: colors.codeOperator } },
+  get punctuation() { return { color: colors.codeOperator } },
+  get tag() { return { color: colors.codeOperator } },
+  get selector() { return { color: colors.codeOperator } },
+  get entity() { return { color: colors.codeOperator } },
+  get important() { return { color: colors.codeOperator } },
 }
 
 export const codeStylesDark: Record<string, MarkStyle> = {
-  comment: { color: colors.codeCommentDark, italic: true },
-  string: { color: colors.codeStringDark },
-  'template-string': { color: colors.codeStringDark },
-  'attr-value': { color: colors.codeStringDark },
-  char: { color: colors.codeStringDark },
-  regex: { color: colors.codeStringDark },
-  number: { color: colors.codeNumberDark },
-  literal: { color: colors.codeNumberDark },
-  boolean: { color: colors.codeConstantDark },
-  symbol: { color: colors.codeConstantDark },
-  constant: { color: colors.codeConstantDark },
-  keyword: { color: colors.codeKeywordDark },
-  atrule: { color: colors.codeKeywordDark },
-  rule: { color: colors.codeKeywordDark },
-  function: { color: colors.codeFunctionDark },
-  'class-name': { color: colors.codeTypeDark },
-  builtin: { color: colors.codeTypeDark },
-  type: { color: colors.codeTypeDark },
-  variable: { color: colors.codeVariableDark },
-  parameter: { color: colors.codeVariableDark },
-  property: { color: colors.codeVariableDark },
-  'attr-name': { color: colors.codeVariableDark },
-  operator: { color: colors.codeOperatorDark },
-  punctuation: { color: colors.codeOperatorDark },
-  tag: { color: colors.codeOperatorDark },
-  selector: { color: colors.codeOperatorDark },
-  entity: { color: colors.codeOperatorDark },
-  important: { color: colors.codeOperatorDark },
+  get comment() { return { color: colors.codeCommentDark, italic: true } },
+  get string() { return { color: colors.codeStringDark } },
+  get 'template-string'() { return { color: colors.codeStringDark } },
+  get 'attr-value'() { return { color: colors.codeStringDark } },
+  get char() { return { color: colors.codeStringDark } },
+  get regex() { return { color: colors.codeStringDark } },
+  get number() { return { color: colors.codeNumberDark } },
+  get literal() { return { color: colors.codeNumberDark } },
+  get boolean() { return { color: colors.codeConstantDark } },
+  get symbol() { return { color: colors.codeConstantDark } },
+  get constant() { return { color: colors.codeConstantDark } },
+  get keyword() { return { color: colors.codeKeywordDark } },
+  get atrule() { return { color: colors.codeKeywordDark } },
+  get rule() { return { color: colors.codeKeywordDark } },
+  get function() { return { color: colors.codeFunctionDark } },
+  get 'class-name'() { return { color: colors.codeTypeDark } },
+  get builtin() { return { color: colors.codeTypeDark } },
+  get type() { return { color: colors.codeTypeDark } },
+  get variable() { return { color: colors.codeVariableDark } },
+  get parameter() { return { color: colors.codeVariableDark } },
+  get property() { return { color: colors.codeVariableDark } },
+  get 'attr-name'() { return { color: colors.codeVariableDark } },
+  get operator() { return { color: colors.codeOperatorDark } },
+  get punctuation() { return { color: colors.codeOperatorDark } },
+  get tag() { return { color: colors.codeOperatorDark } },
+  get selector() { return { color: colors.codeOperatorDark } },
+  get entity() { return { color: colors.codeOperatorDark } },
+  get important() { return { color: colors.codeOperatorDark } },
 }
 
 const highlightCache = new Map<string, Segment[] | null>()
+
+export function clearHighlightCache(): void {
+  highlightCache.clear()
+}
 
 export function highlightCode(line: string, lang: string, dark = false): Segment[] | null {
   const key = `${dark ? 'd' : 'l'}\x00${lang}\x00${line}`

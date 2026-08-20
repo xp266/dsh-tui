@@ -40,7 +40,7 @@ export function ListDialog<T>({
     items: [{ type: 'button', label: labelOf(item), right: rightOf?.(item), onPress: () => onSelect(item) }],
   }))
   const footer: DialogFooterLine[] = loading
-    ? [{ text: 'loading…', color: colors.toolBodyText }]
+    ? [{ text: 'loading…', color: colors.dialogHintText }]
     : error !== null
       ? [{ text: error, color: colors.errorText }]
       : footerLines ?? []

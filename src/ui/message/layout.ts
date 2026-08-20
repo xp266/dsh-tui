@@ -25,6 +25,7 @@ export interface RowInfo {
   label: string
   running: boolean
   collapsed: boolean
+  thinking: boolean
   role: 'user' | 'assistant' | 'error' | undefined
   segments?: Segment[]
   segKey?: string
@@ -38,6 +39,10 @@ interface WrapEntry {
 }
 
 const wrapCache = new Map<string, WrapEntry>()
+
+export function clearWrapCache(): void {
+  wrapCache.clear()
+}
 
 function wrapFor(message: Message, width: number): WrapEntry {
   const key = `${message.id}:${width}`
@@ -128,6 +133,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
     label: '',
     running: false,
     collapsed: false,
+    thinking: false,
     role: undefined,
   }
   switch (message.kind) {
@@ -161,6 +167,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
           label: fitLabel(message.label, width),
           running: message.running,
           collapsed: message.collapsed,
+          thinking: message.thinking === true,
         }
       }
       if (offset === 1 || message.collapsed) {

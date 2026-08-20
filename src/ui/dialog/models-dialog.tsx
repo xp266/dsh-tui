@@ -150,7 +150,7 @@ export function ModelsDialog({ api, onClose, onModelSelected, ref }: ModelsDialo
     ],
   }))
   const footerLines: DialogFooterLine[] = [
-    ...(window.kind === 'select-models' ? [{ text: 'Press Space to toggle, Enter to confirm', color: colors.toolBodyText }] : []),
+    ...(window.kind === 'select-models' ? [{ text: 'Press Space to toggle, Enter to confirm', color: colors.dialogHintText }] : []),
     ...(error !== null ? [{ text: error, color: colors.errorText }] : []),
   ]
   if (window.kind === 'list') {

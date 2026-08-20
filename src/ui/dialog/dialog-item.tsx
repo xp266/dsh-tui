@@ -86,8 +86,8 @@ function renderItem(
       const text = isEmpty ? 'Search' : item.value
       return (
         <Box flexDirection="column">
-          <Box width={contentWidth} backgroundColor={colors.userBubbleBackground}>
-            <SelectableText y={baseY} col={left} text={truncate(text, contentWidth)} color={isEmpty ? colors.toolBodyText : undefined} />
+          <Box width={contentWidth} backgroundColor={colors.dialogInputBackground}>
+            <SelectableText y={baseY} col={left} text={truncate(text, contentWidth)} color={isEmpty ? colors.dialogHintText : undefined} />
           </Box>
           <Box height={1}>
             <Text> </Text>
@@ -101,7 +101,7 @@ function renderItem(
           <Box height={1}>
             <SelectableText y={baseY} col={left} text={item.label} />
           </Box>
-          <Box width={contentWidth} height={1} backgroundColor={colors.userBubbleBackground}>
+          <Box width={contentWidth} height={1} backgroundColor={colors.dialogInputBackground}>
             <SelectableText y={baseY + 1} col={left} text={truncate(item.value, contentWidth)} />
           </Box>
           <Box height={1}>
