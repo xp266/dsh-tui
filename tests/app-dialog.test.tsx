@@ -13,6 +13,8 @@ function fakeBridge(): ChatBridge {
     listSessions: vi.fn(async () => []),
     openSession: vi.fn(async () => {}),
     newSession: vi.fn(async () => {}),
+    archiveSession: vi.fn(async () => {}),
+    activeSessionId: () => '',
     listModels: vi.fn(async () => []),
     selectModel: vi.fn(async () => {}),
     addDeepSeekKey: vi.fn(async () => {}),
@@ -47,8 +49,21 @@ async function openModelsDialog(stdin: { write(data: string): void }) {
   act(() => {
     stdin.write('/models')
   })
+  await new Promise(resolve => setTimeout(resolve, 20))
   act(() => {
     stdin.write('\r')
+  })
+  await new Promise(resolve => setTimeout(resolve, 20))
+  act(() => {
+    stdin.write('\r')
+  })
+  await new Promise(resolve => setTimeout(resolve, 20))
+}
+
+async function openAddCustomForm(stdin: { write(data: string): void }) {
+  await openModelsDialog(stdin)
+  act(() => {
+    stdin.write('\u001b[B')
   })
   act(() => {
     stdin.write('\r')
@@ -80,15 +95,9 @@ describe('App dialog keyboard', () => {
         }),
     )
     const { lastFrame, stdin } = render(<App bridge={bridge} />)
-    await openModelsDialog(stdin)
-    act(() => {
-      stdin.write('\u001b[B')
-    })
-    act(() => {
-      stdin.write('\r')
-    })
-    await new Promise(resolve => setTimeout(resolve, 20))
-    for (let i = 0; i < 3; i++) {
+    await openAddCustomForm(stdin)
+    expect(lastFrame() ?? '').toContain('Submit')
+    for (let i = 0; i < 5; i++) {
       act(() => {
         stdin.write('\u001b[B')
       })
@@ -125,15 +134,8 @@ describe('App dialog keyboard', () => {
         }),
     )
     const { lastFrame, stdin } = render(<App bridge={bridge} />)
-    await openModelsDialog(stdin)
-    act(() => {
-      stdin.write('\u001b[B')
-    })
-    act(() => {
-      stdin.write('\r')
-    })
-    await new Promise(resolve => setTimeout(resolve, 20))
-    for (let i = 0; i < 3; i++) {
+    await openAddCustomForm(stdin)
+    for (let i = 0; i < 5; i++) {
       act(() => {
         stdin.write('\u001b[B')
       })
@@ -150,5 +152,15 @@ describe('App dialog keyboard', () => {
     const frame = lastFrame() ?? ''
     expect(frame).toContain('network unreachable')
     expect(frame).not.toContain('Fetching models...')
+  })
+
+  it('separates the protocol carousel and the submit row with a blank line', async () => {
+    const { lastFrame, stdin } = render(<App bridge={fakeBridge()} />)
+    await openAddCustomForm(stdin)
+    const lines = (lastFrame() ?? '').split('\n')
+    const carousel = lines.findIndex(line => line.includes('API Protocol:'))
+    const submit = lines.findIndex(line => line.includes('Submit'))
+    expect(carousel).toBeGreaterThanOrEqual(0)
+    expect(submit).toBe(carousel + 2)
   })
 })

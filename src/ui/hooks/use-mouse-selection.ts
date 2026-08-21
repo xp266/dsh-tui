@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 import type { ScreenCapture } from '../../terminal/screen.ts'
 import { createMouseController } from '../../terminal/mouse.ts'
 import { clampFocusRow, toScreenSelection } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
 import { rowInfoAt } from '../message/layout.ts'
+import type { InputBarHandle } from '../input/input-bar.tsx'
 import type { CommandHintState } from '../input/commands.ts'
 import type { Message } from '../../model/message.ts'
 
@@ -31,6 +33,9 @@ export interface MouseSelectionOptions {
   dialogOpen: boolean
   hint: CommandHintState | null
   screen?: ScreenCapture
+  inputHandle?: RefObject<InputBarHandle | null>
+  onHintClick?(y: number): void
+  onDialogWheel?(y: number, dir: -1 | 1): boolean
   onScroll(next: number): void
   onToggleMessage(id: string): void
   onDialogClick(y: number, x: number): void
@@ -44,7 +49,7 @@ export interface MouseSelectionState {
 }
 
 export function useMouseSelection(options: MouseSelectionOptions): MouseSelectionState {
-  const { messages, columns, rows, scrollTop, messageHeight, inputHeight, dialogOpen, hint, screen, onScroll, onToggleMessage, onDialogClick } = options
+  const { messages, columns, rows, scrollTop, messageHeight, inputHeight, dialogOpen, hint, screen, inputHandle, onHintClick, onDialogWheel, onScroll, onToggleMessage, onDialogClick } = options
   const [selection, setSelection] = useState<LineSelection | null>(null)
   const messagesRef = useRef(messages)
   const widthRef = useRef(columns)
@@ -55,6 +60,9 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
   const dialogOpenRef = useRef(dialogOpen)
   const hintStateRef = useRef<CommandHintState | null>(null)
   const screenRef = useRef<ScreenCapture | undefined>(screen)
+  const inputHandleRef = useRef(inputHandle)
+  const onHintClickRef = useRef(onHintClick)
+  const onDialogWheelRef = useRef(onDialogWheel)
   const clickCandidateRef = useRef<{ messageId: string; y: number; x: number; moved: boolean } | null>(null)
   const dialogClickCandidateRef = useRef<{ x: number; y: number } | null>(null)
   const onScrollRef = useRef(onScroll)
@@ -69,10 +77,17 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
   dialogOpenRef.current = dialogOpen
   hintStateRef.current = hint
   screenRef.current = screen
+  inputHandleRef.current = inputHandle
+  onHintClickRef.current = onHintClick
+  onDialogWheelRef.current = onDialogWheel
   onScrollRef.current = onScroll
   onToggleMessageRef.current = onToggleMessage
   onDialogClickRef.current = onDialogClick
   useEffect(() => {
+    const inInputContent = (y: number): boolean => {
+      const top = rowsRef.current - inputHeightRef.current
+      return y >= top && y <= top + inputHeightRef.current - 4
+    }
     const inMessageArea = (screenRow: number): boolean => {
       if (screenRow >= messageHeightRef.current) return false
       if (dialogOpenRef.current) return false
@@ -99,17 +114,18 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
           clickCandidateRef.current = null
           dialogClickCandidateRef.current = null
           setSelection(null)
+          const region = activeHintRegion()
+          if (!dialogOpenRef.current && region !== null && event.y >= region.top && event.y <= region.bottom) {
+            onHintClickRef.current?.(event.y)
+            return
+          }
+          if (!dialogOpenRef.current && inInputContent(event.y)) {
+            inputHandleRef.current?.current?.clickAt(event.y, event.x)
+            return
+          }
           const contentRow = toContentRow(event.y)
           const hit = rowInfoAt(messagesRef.current, widthRef.current, contentRow)
           const anchorable = screenRef.current?.rowHasText(event.y) ?? false
-          const region = activeHintRegion()
-          if (region !== null && event.y >= region.top && event.y <= region.bottom) {
-            if (anchorable) {
-              setSelection({ anchorRow: event.y, anchorCol: event.x, focusRow: event.y, focusCol: event.x, inMessage: false })
-            }
-            return
-          }
-          const anchorInMessage = inMessageArea(event.y)
           if (dialogOpenRef.current) {
             dialogClickCandidateRef.current = { x: event.x, y: event.y }
             if (anchorable) {
@@ -122,6 +138,7 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
             return
           }
           if (anchorable) {
+            const anchorInMessage = inMessageArea(event.y)
             setSelection({ anchorRow: contentRow, anchorCol: event.x, focusRow: contentRow, focusCol: event.x, inMessage: anchorInMessage })
           }
           return
@@ -175,6 +192,17 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
           return
         }
         case 'scroll': {
+          const dir: -1 | 1 = event.scrollDirection === 'up' ? -1 : 1
+          if (dialogOpenRef.current && onDialogWheelRef.current?.(event.y, dir) === true) return
+          const region = activeHintRegion()
+          if (!dialogOpenRef.current && region !== null && event.y >= region.top && event.y <= region.bottom) {
+            inputHandleRef.current?.current?.hintWheel(dir)
+            return
+          }
+          if (!dialogOpenRef.current && inInputContent(event.y)) {
+            inputHandleRef.current?.current?.wheel(dir)
+            return
+          }
           const delta = event.scrollDirection === 'up' ? -WHEEL_SCROLL_LINES : WHEEL_SCROLL_LINES
           onScrollRef.current(scrollTopRef.current + delta)
           return

@@ -1,14 +1,20 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Ref } from 'react'
 import { colors } from '../../theme.ts'
 import { errorText } from '../../utils/text.ts'
 import type { SessionSummary } from '../../chat/session-list.ts'
-import { ListDialog } from './list-dialog.tsx'
-import type { DialogFooterLine, DialogHandle } from './dialog.tsx'
+import { groupSessions } from '../../chat/session-groups.ts'
+import type { SessionSectionKind } from '../../chat/session-groups.ts'
+import { useAsyncList } from '../hooks/use-async-list.ts'
+import { Dialog } from './dialog.tsx'
+import type { DialogFooterLine, DialogHandle, DialogItem, DialogRow } from './dialog.tsx'
 
 export interface SessionsApi {
   listSessions(): Promise<SessionSummary[]>
   openSession(id: string): Promise<void>
+  archiveSession(id: string): Promise<void>
+  activeSessionId(): string
+  newSession(): Promise<void>
 }
 
 export interface SessionsDialogProps {
@@ -16,14 +22,31 @@ export interface SessionsDialogProps {
   onClose: () => void
   onBeforeSessionSelected?: () => void
   onSessionSelected: (session: SessionSummary) => void
+  onNewSession?: () => void
   ref?: Ref<DialogHandle>
 }
 
 const DIALOG_WIDTH = 70
 const DIALOG_MAX_HEIGHT = 18
+const ARM_TIMEOUT_MS = 3000
 
-export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessionSelected, ref }: SessionsDialogProps) {
+const SECTION_LABELS: Record<SessionSectionKind, string> = {
+  recent: 'Recent',
+  today: 'Today',
+  week: 'This Week',
+  older: 'Other',
+}
+
+const ARCHIVE_HINT: DialogFooterLine[] = [
+  { text: 'Ctrl+D to archive the session', color: colors.dialogHintText },
+]
+
+export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessionSelected, onNewSession, ref }: SessionsDialogProps) {
   const [error, setError] = useState<string | null>(null)
+  const [armedId, setArmedId] = useState<string | null>(null)
+  const armedRef = useRef<string | null>(null)
+  const armTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const itemIds = useRef(new Map<DialogItem, string>())
   const selectSession = async (session: SessionSummary) => {
     try {
       onBeforeSessionSelected?.()
@@ -34,21 +57,83 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
       setError(errorText(cause))
     }
   }
-  const footerLines: DialogFooterLine[] = error === null ? [] : [{ text: error, color: colors.errorText }]
+  const { items, loading, error: loadError, reload } = useAsyncList(api.listSessions)
+  const sections = useMemo(() => groupSessions(items), [items])
+  const disarm = () => {
+    clearTimeout(armTimer.current)
+    if (armedRef.current !== null) {
+      armedRef.current = null
+      setArmedId(null)
+    }
+  }
+  useEffect(() => () => clearTimeout(armTimer.current), [])
+  const archive = async (id: string) => {
+    try {
+      await api.archiveSession(id)
+      setError(null)
+      if (api.activeSessionId() === id) {
+        onBeforeSessionSelected?.()
+        onNewSession?.()
+      }
+      reload()
+    } catch (cause) {
+      setError(errorText(cause))
+    }
+  }
+  const handleCtrlD = (focused: DialogItem | undefined): boolean => {
+    if (focused?.type !== 'button') return false
+    const id = itemIds.current.get(focused)
+    if (id === undefined) return false
+    if (armedRef.current === id) {
+      disarm()
+      void archive(id)
+      return true
+    }
+    clearTimeout(armTimer.current)
+    armedRef.current = id
+    setArmedId(id)
+    armTimer.current = setTimeout(disarm, ARM_TIMEOUT_MS)
+    return true
+  }
+  const rows: DialogRow[] = []
+  const ids = new Map<DialogItem, string>()
+  sections.forEach((section, sectionIndex) => {
+    rows.push({ items: [{ type: 'header', label: SECTION_LABELS[section.kind], leadingBlank: sectionIndex > 0 }] })
+    for (const session of section.items) {
+      const armed = armedId === session.id
+      const item: DialogItem = {
+        type: 'button',
+        label: session.name || session.id,
+        right: armed ? 'Press Ctrl+D again to archive' : session.ungrouped ? 'Ungrouped' : session.directory,
+        onPress: () => void selectSession(session),
+        ...(armed ? { rightColor: colors.errorText } : {}),
+      }
+      ids.set(item, session.id)
+      rows.push({ items: [item] })
+    }
+  })
+  itemIds.current = ids
+  const statusLine: DialogFooterLine | undefined = loading
+    ? { text: 'loading…', color: colors.dialogHintText }
+    : loadError !== null
+      ? { text: loadError, color: colors.errorText }
+      : error !== null
+        ? { text: error, color: colors.errorText }
+        : undefined
+  const footer: DialogFooterLine[] = [...(statusLine === undefined ? [] : [statusLine]), ...ARCHIVE_HINT]
   return (
-    <ListDialog
+    <Dialog
       ref={ref}
       title="sessions"
       width={DIALOG_WIDTH}
       maxHeight={DIALOG_MAX_HEIGHT}
-      load={api.listSessions}
+      rows={rows}
+      footer={footer}
+      onClose={onClose}
       search
       searchRight
-      labelOf={session => session.name || session.id}
-      rightOf={session => (session.ungrouped ? 'Ungrouped' : session.directory)}
-      onSelect={session => void selectSession(session)}
-      onClose={onClose}
-      footerLines={footerLines}
+      onCtrlD={handleCtrlD}
+      onActivity={disarm}
     />
   )
 }

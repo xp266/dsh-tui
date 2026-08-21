@@ -102,6 +102,8 @@ export interface ChatBridge {
   listSessions(): Promise<SessionSummary[]>
   openSession(id: string): Promise<void>
   newSession(): Promise<void>
+  archiveSession(id: string): Promise<void>
+  activeSessionId(): string
   listModels(): Promise<ConfiguredModel[]>
   selectModel(provider: string, model: string): Promise<void>
   addDeepSeekKey(apiKey: string): Promise<void>
@@ -371,6 +373,13 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     efforts.invalidate()
   }
 
+  async function archiveSession(id: string): Promise<void> {
+    const workspace = ctx.get('workspaceRegistry') as { archiveSession?(sessionId: SessionId): Promise<void> } | undefined
+    if (workspace?.archiveSession === undefined) throw new Error('workspace registry is not configured')
+    await workspace.archiveSession(SessionId(id))
+    sessionList.invalidate()
+  }
+
   async function repairEffortSelection(): Promise<void> {
     const selection = currentSelection()
     if (selection === undefined || selection.reasoningEffort === undefined) return
@@ -593,6 +602,8 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     listSessions,
     openSession,
     newSession,
+    archiveSession,
+    activeSessionId: () => String(activeAgent.id),
     listModels: () => listConfiguredModels(llm),
     selectModel,
     addDeepSeekKey: key => addDeepSeekKey(ctx.credentials, key),

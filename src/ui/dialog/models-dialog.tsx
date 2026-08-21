@@ -116,7 +116,12 @@ export function ModelsDialog({ api, onClose, onModelSelected, ref }: ModelsDialo
   const deepSeekRows: DialogRow[] = [
     {
       items: [
-        { type: 'input', label: 'API Key', value: deepSeekKey, onChange: setDeepSeekKey, onEnter: () => void submitDeepSeek() },
+        { type: 'input', label: 'API Key', value: deepSeekKey, onChange: setDeepSeekKey },
+      ],
+    },
+    {
+      items: [
+        { type: 'actions', confirmLabel: 'Submit', cancelLabel: 'Cancel', onConfirm: () => void submitDeepSeek(), onCancel: onClose },
       ],
     },
   ]
@@ -131,7 +136,6 @@ export function ModelsDialog({ api, onClose, onModelSelected, ref }: ModelsDialo
           label: 'API Key',
           value: form.apiKey,
           onChange: value => setField('apiKey', value),
-          onEnter: () => void submitCustom(),
         },
       ],
     },
@@ -143,7 +147,13 @@ export function ModelsDialog({ api, onClose, onModelSelected, ref }: ModelsDialo
           value: form.apiProtocol,
           options: API_PROTOCOLS,
           onChange: value => setField('apiProtocol', value),
+          spaced: true,
         },
+      ],
+    },
+    {
+      items: [
+        { type: 'actions', confirmLabel: 'Submit', cancelLabel: 'Cancel', onConfirm: () => void submitCustom(), onCancel: onClose },
       ],
     },
   ]
@@ -197,7 +207,6 @@ export function ModelsDialog({ api, onClose, onModelSelected, ref }: ModelsDialo
       rows={rows}
       footer={footerLines}
       onClose={onClose}
-      onConfirmLast={window.kind === 'add-custom' ? () => void submitCustom() : undefined}
       search={window.kind === 'select-models'}
     />
   )

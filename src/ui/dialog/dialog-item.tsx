@@ -32,6 +32,13 @@ export function selectBlock(contentWidth: number, value: string): SelectBlock {
   }
 }
 
+export function actionPositions(contentWidth: number, confirmLabel: string, cancelLabel: string): { confirmX: number; cancelX: number } {
+  const edge = Math.floor(contentWidth * 0.2)
+  const confirmX = Math.min(edge, Math.max(0, contentWidth - textWidth(confirmLabel)))
+  const cancelX = Math.max(confirmX + textWidth(confirmLabel), contentWidth - edge - textWidth(cancelLabel))
+  return { confirmX, cancelX }
+}
+
 export function renderRow(
   row: DialogRow,
   focused: boolean,
@@ -39,12 +46,13 @@ export function renderRow(
   baseY: number,
   left: number,
   pressed: 'left' | 'right' | null = null,
+  subCol = 0,
 ): ReactNode {
   let col = left + 1
   return (
     <Box flexDirection="row">
       {row.items.map((item, index) => {
-        const next = renderItem(item, focused, contentWidth, baseY, col, pressed)
+        const next = renderItem(item, focused, contentWidth, baseY, col, pressed, subCol)
         col += textWidth(itemText(item)) + 1
         return (
           <Box key={index} flexDirection="row">
@@ -69,6 +77,10 @@ function itemText(item: DialogItem): string {
       return item.label + (item.right ?? '')
     case 'checkbox':
       return item.label
+    case 'header':
+      return item.label
+    case 'actions':
+      return ''
   }
 }
 
@@ -79,6 +91,7 @@ function renderItem(
   baseY: number,
   left: number,
   pressed: 'left' | 'right' | null,
+  subCol = 0,
 ): ReactNode {
   switch (item.type) {
     case 'search': {
@@ -153,14 +166,14 @@ function renderItem(
           return (
             <Box>
               <SelectableText y={baseY} col={left} text={label} inverse />
-              <SelectableText y={baseY} col={left + leftWidth} text={right} inverse />
+              <SelectableText y={baseY} col={left + leftWidth} text={right} inverse color={item.rightColor} />
             </Box>
           )
         }
         return (
           <Box width={contentWidth} justifyContent="space-between">
             <SelectableText y={baseY} col={left} text={item.label} />
-            <SelectableText y={baseY} col={left + contentWidth - textWidth(right)} text={right} />
+            <SelectableText y={baseY} col={left + contentWidth - textWidth(right)} text={right} color={item.rightColor} />
           </Box>
         )
       }
@@ -184,6 +197,43 @@ function renderItem(
           {item.checked && (
             <SelectableText y={baseY} col={left + contentWidth - 2} text={' \u2713'} color={colors.success} />
           )}
+        </Box>
+      )
+    }
+    case 'header': {
+      const lead = item.leadingBlank === true ? 1 : 0
+      const label = (
+        <SelectableText y={baseY + lead} col={left} text={item.label} color={colors.sectionHeader} bold />
+      )
+      if (lead === 0) return label
+      return (
+        <Box flexDirection="column">
+          <Box height={1}>
+            <Text> </Text>
+          </Box>
+          {label}
+        </Box>
+      )
+    }
+    case 'actions': {
+      const positions = actionPositions(contentWidth, item.confirmLabel, item.cancelLabel)
+      const mid = positions.cancelX - (positions.confirmX + textWidth(item.confirmLabel))
+      return (
+        <Box flexDirection="row">
+          <Text>{' '.repeat(positions.confirmX)}</Text>
+          <SelectableText
+            y={baseY}
+            col={left + positions.confirmX}
+            text={item.confirmLabel}
+            inverse={focused && subCol === 0}
+          />
+          <Text>{' '.repeat(Math.max(0, mid))}</Text>
+          <SelectableText
+            y={baseY}
+            col={left + positions.cancelX}
+            text={item.cancelLabel}
+            inverse={focused && subCol === 1}
+          />
         </Box>
       )
     }

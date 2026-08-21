@@ -17,6 +17,8 @@ function fakeBridge(): ChatBridge {
     listSessions: vi.fn(async () => []),
     openSession: vi.fn(async () => {}),
     newSession: vi.fn(async () => {}),
+    archiveSession: vi.fn(async () => {}),
+    activeSessionId: () => '',
     listModels: vi.fn(async () => []),
     selectModel: vi.fn(async () => {}),
     addDeepSeekKey: vi.fn(async () => {}),
@@ -44,10 +46,18 @@ function fakeBridge(): ChatBridge {
 }
 
 describe('App layout', () => {
-  it('renders the empty shell with model name and cwd', () => {
+  it('withholds the bottom info until the bridge is ready', () => {
     const { lastFrame } = render(<App />)
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('deepseek-v4-flash')
+    expect(frame).not.toContain('deepseek-v4-flash')
+    expect(frame).not.toContain('/ts/dsh-tui')
+  })
+
+  it('renders model name and cwd once the bridge is ready', async () => {
+    const { lastFrame } = render(<App bridge={fakeBridge()} />)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('glm-4.7-flash')
     expect(frame).toContain('/ts/dsh-tui')
   })
 

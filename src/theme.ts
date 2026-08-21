@@ -14,6 +14,8 @@ export const colors = {
   carouselButtonBg: '#1a1a1a',
   carouselButtonPressedBg: '#3a3a3a',
 
+  sectionHeader: '#cc7e25',
+
   modelText: '#ffffff',
   effortText: '#ffd900',
   statusSeparator: '#aaaaaa',

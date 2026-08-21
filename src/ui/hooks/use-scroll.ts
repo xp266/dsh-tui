@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { Message } from '../../model/message.ts'
 
 export interface ScrollState {
@@ -22,7 +22,7 @@ export function useScroll(total: number, messageHeight: number, messages: Messag
     setStickToBottom(atBottom)
     stickToBottomRef.current = atBottom
   }, [])
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (stickToBottomRef.current) {
       applyScroll(Infinity)
     } else {
@@ -30,7 +30,7 @@ export function useScroll(total: number, messageHeight: number, messages: Messag
       scrollTopRef.current = Math.min(scrollTopRef.current, maxScroll)
     }
   }, [maxScroll])
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (stickToBottomRef.current) applyScroll(Infinity)
   }, [messages])
   return { scrollTop, applyScroll }

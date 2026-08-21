@@ -6,7 +6,7 @@ import { colors } from '../../theme.ts'
 import { isMouseResidue } from '../../terminal/mouse.ts'
 import { locToPoint, textWidth, truncate, wrapLines } from '../../utils/text.ts'
 import { SelectableText } from '../selection.tsx'
-import { renderRow, selectBlock, CAROUSEL_BUTTON_WIDTH } from './dialog-item.tsx'
+import { actionPositions, renderRow, selectBlock, CAROUSEL_BUTTON_WIDTH } from './dialog-item.tsx'
 
 export interface DialogRow {
   items: DialogItem[]
@@ -16,31 +16,77 @@ export type DialogItem =
   | { type: 'input'; label: string; value: string; onChange: (value: string) => void; onEnter?: () => void }
   | { type: 'select'; label: string; value: string; options: string[]; onChange: (value: string) => void; onEnter?: () => void; spaced?: boolean }
   | { type: 'search'; value: string; onChange: (value: string) => void }
-  | { type: 'button'; label: string; right?: string; onPress: () => void }
+  | { type: 'button'; label: string; right?: string; rightColor?: string; onPress: () => void }
   | { type: 'checkbox'; label: string; checked: boolean; onToggle: () => void; onConfirm: () => void }
+  | { type: 'header'; label: string; leadingBlank?: boolean }
+  | { type: 'actions'; confirmLabel: string; cancelLabel: string; onConfirm: () => void; onCancel: () => void }
 
 export interface DialogFocus {
   row: number
   col: number
 }
 
+export function isSelectableRow(row: DialogRow | undefined): boolean {
+  return !(row?.items.every(item => item.type === 'header') ?? true)
+}
+
+export function selectableSpan(row: DialogRow | undefined): number {
+  if (row === undefined) return 0
+  const only = row.items.length === 1 ? row.items[0] : undefined
+  if (only?.type === 'actions') return 1
+  return Math.max(0, row.items.length - 1)
+}
+
+export function snapRow(rows: DialogRow[], row: number): number {
+  const count = rows.length
+  if (count === 0) return 0
+  const index = Math.min(Math.max(row, 0), count - 1)
+  if (isSelectableRow(rows[index])) return index
+  for (let down = index + 1; down < count; down++) {
+    if (isSelectableRow(rows[down])) return down
+  }
+  for (let up = index - 1; up >= 0; up--) {
+    if (isSelectableRow(rows[up])) return up
+  }
+  return index
+}
+
+function stepRow(rows: DialogRow[], from: number, delta: -1 | 1): number {
+  let row = from + delta
+  while (row >= 0 && row < rows.length && !isSelectableRow(rows[row])) row += delta
+  return row >= 0 && row < rows.length ? row : from
+}
+
+function focusedItem(row: DialogRow | undefined, col: number): DialogItem | undefined {
+  if (row === undefined) return undefined
+  if (row.items.length === 1 && row.items[0]?.type === 'actions') return row.items[0]
+  return row.items[col]
+}
+
 export function moveFocus(rows: DialogRow[], focus: DialogFocus, key: 'up' | 'down' | 'left' | 'right'): DialogFocus {
   switch (key) {
     case 'up':
-      return { row: Math.max(0, focus.row - 1), col: 0 }
+      return { row: stepRow(rows, focus.row, -1), col: 0 }
     case 'down':
-      return { row: Math.max(0, Math.min(rows.length - 1, focus.row + 1)), col: 0 }
+      return { row: stepRow(rows, focus.row, 1), col: 0 }
     case 'left':
       return { row: focus.row, col: Math.max(0, focus.col - 1) }
     case 'right': {
-      const rowSpec = rows[focus.row]
-      const max = rowSpec === undefined ? 0 : rowSpec.items.length - 1
+      const max = selectableSpan(rows[focus.row])
       return { row: focus.row, col: Math.max(0, Math.min(max, focus.col + 1)) }
     }
   }
 }
 
+export function clampFocus(rows: DialogRow[], focus: DialogFocus, minRow: number, maxRow: number): DialogFocus {
+  const row = snapRow(rows, Math.min(Math.max(focus.row, minRow), maxRow))
+  return { row, col: Math.min(focus.col, selectableSpan(rows[row])) }
+}
+
 export function rowHeight(row: DialogRow, width: number): number {
+  const only = row.items.length === 1 ? row.items[0] : undefined
+  if (only?.type === 'header') return only.leadingBlank === true ? 2 : 1
+  if (only?.type === 'actions') return 1
   const input = row.items.find((item): item is Extract<DialogItem, { type: 'input' }> => item.type === 'input')
   if (input !== undefined) return 2 + wrapLines(input.value, width).length
   if (row.items.some(item => item.type === 'select' && item.spaced)) return 2
@@ -54,9 +100,17 @@ export function rowTopOffset(rows: DialogRow[], rowIndex: number, width: number)
   return offset
 }
 
+export function rowBlockSpan(rows: DialogRow[], rowIndex: number, width: number): { top: number; bottom: number } {
+  const top = rowTopOffset(rows, rowIndex, width)
+  let blockTop = top
+  let bottom = top + rowHeight(rows[rowIndex] ?? { items: [] }, width) - 1
+  for (let i = rowIndex - 1; i >= 0 && !isSelectableRow(rows[i]); i--) blockTop -= rowHeight(rows[i]!, width)
+  for (let i = rowIndex + 1; i < rows.length && !isSelectableRow(rows[i]); i++) bottom += rowHeight(rows[i]!, width)
+  return { top: blockTop, bottom }
+}
+
 export function adjustScroll(rows: DialogRow[], focus: DialogFocus, scrollTop: number, contentHeight: number, width: number): number {
-  const top = rowTopOffset(rows, focus.row, width)
-  const bottom = top + rowHeight(rows[focus.row] ?? { items: [] }, width) - 1
+  const { top, bottom } = rowBlockSpan(rows, focus.row, width)
   if (top < scrollTop) return top
   if (bottom >= scrollTop + contentHeight) return Math.max(0, bottom - contentHeight + 1)
   return scrollTop
@@ -94,14 +148,44 @@ export interface DialogProps {
   rows: DialogRow[]
   footer?: DialogFooterLine[]
   onClose: () => void
-  onConfirmLast?: () => void
   search?: boolean
   searchRight?: boolean
+  onCtrlD?(focused: DialogItem | undefined): boolean
+  onActivity?(): void
   ref?: Ref<DialogHandle>
+}
+
+export function filterRowsWithHeaders(rows: DialogRow[], query: string, searchRight: boolean): DialogRow[] {
+  const q = query.trim().toLowerCase()
+  if (q === '') return rows
+  const matches = (item: DialogItem): boolean =>
+    (item.type === 'button' || item.type === 'checkbox' || item.type === 'select') &&
+    (item.label.toLowerCase().includes(q) ||
+      (searchRight && item.type === 'button' && item.right !== undefined && item.right.toLowerCase().includes(q)))
+  const out: DialogRow[] = []
+  let pendingHeader: DialogRow | undefined
+  for (const row of rows) {
+    if (!isSelectableRow(row)) {
+      pendingHeader = row
+      continue
+    }
+    if (!row.items.some(matches)) continue
+    if (pendingHeader !== undefined) {
+      out.push(pendingHeader)
+      pendingHeader = undefined
+    }
+    out.push(row)
+  }
+  const first = out[0]
+  if (first !== undefined && first.items.length === 1 && first.items[0]?.type === 'header') {
+    out[0] = { items: [{ ...first.items[0], leadingBlank: false }] }
+  }
+  return out
 }
 
 export interface DialogHandle {
   clickAt(y: number, x: number): void
+  wheelAt(y: number, dir: -1 | 1): boolean
 }
 
 export const CloseGuardContext = createContext(false)
@@ -131,9 +215,10 @@ export function Dialog({
   rows,
   footer,
   onClose,
-  onConfirmLast,
   search = false,
   searchRight = false,
+  onCtrlD,
+  onActivity,
   ref,
 }: DialogProps) {
   const { stdout } = useStdout()
@@ -141,7 +226,6 @@ export function Dialog({
   const closeGuarded = useContext(CloseGuardContext)
   const columns = stdout?.columns ?? 80
   const totalRows = stdout?.rows ?? 24
-  const [focus, setFocus] = useState<DialogFocus>({ row: search ? 1 : 0, col: 0 })
   const [scrollTop, setScrollTop] = useState(0)
   const [cursor, setCursor] = useState(0)
   const [searchValue, setSearchValue] = useState('')
@@ -152,31 +236,20 @@ export function Dialog({
     setScrollTop(0)
   }
   const searchRow: DialogRow = { items: [{ type: 'search', value: searchValue, onChange: handleSearch }] }
-  const query = searchValue.trim().toLowerCase()
-  const filteredRows =
-    search && query !== ''
-      ? rows.filter(row =>
-          row.items.some(
-            item =>
-              (item.type === 'button' || item.type === 'checkbox' || item.type === 'select') &&
-              (item.label.toLowerCase().includes(query) ||
-                (searchRight && item.type === 'button' && item.right !== undefined && item.right.toLowerCase().includes(query))),
-          ),
-        )
-      : rows
+  const filteredRows = search ? filterRowsWithHeaders(rows, searchValue, searchRight) : rows
   const displayRows = search ? [searchRow, ...filteredRows] : rows
   const contentRows = search ? filteredRows : rows
+  const [focus, setFocus] = useState<DialogFocus>(() => ({ row: snapRow(search ? [searchRow, ...rows] : rows, search ? 1 : 0), col: 0 }))
   const windowWidth = Math.min(width + 2, columns)
   const contentWidth = Math.max(1, windowWidth - 2)
   const fixedHeight = search ? rowHeight(searchRow, contentWidth) : 0
   const focusMinRow = search ? 1 : 0
   const focusMaxRow = Math.max(focusMinRow, displayRows.length - 1)
   useEffect(() => {
-    setFocus(current =>
-      current.row < focusMinRow ? { row: focusMinRow, col: 0 }
-        : current.row > focusMaxRow ? { row: focusMaxRow, col: 0 }
-          : current,
-    )
+    setFocus(current => {
+      const next = clampFocus(displayRows, current, focusMinRow, focusMaxRow)
+      return next.row === current.row && next.col === current.col ? current : next
+    })
   }, [displayRows, focusMinRow, focusMaxRow])
   const titleLines = title === undefined ? 0 : 2
   const footerRows = wrapFooter(footer, contentWidth)
@@ -199,6 +272,8 @@ export function Dialog({
     focusMinRow,
     focusMaxRow,
     contentWidth,
+    top,
+    windowHeight,
   })
   live.current.rows = displayRows
   live.current.contentRows = contentRows
@@ -210,11 +285,13 @@ export function Dialog({
   live.current.focusMinRow = focusMinRow
   live.current.focusMaxRow = focusMaxRow
   live.current.contentWidth = contentWidth
+  live.current.top = top
+  live.current.windowHeight = windowHeight
   const safeFocus: DialogFocus = {
     row: Math.min(Math.max(focus.row, focusMinRow), focusMaxRow),
-    col: Math.min(focus.col, Math.max(0, (displayRows[focus.row]?.items.length ?? 1) - 1)),
+    col: Math.min(Math.max(focus.col, 0), selectableSpan(displayRows[focus.row])),
   }
-  const current = displayRows[safeFocus.row]?.items[safeFocus.col]
+  const current = focusedItem(displayRows[safeFocus.row], safeFocus.col)
   live.current.value = current?.type === 'input' || current?.type === 'search' ? current.value : ''
   useEffect(() => {
     const item = displayRows[safeFocus.row]?.items[safeFocus.col]
@@ -253,6 +330,7 @@ export function Dialog({
     }
   }, [])
   usePaste(text => {
+    onActivity?.()
     const liveCurrent = live.current.rows[live.current.focus.row]?.items[live.current.focus.col]
     if (liveCurrent?.type !== 'input' && liveCurrent?.type !== 'search') return
     const normalized = text.replace(/\r\n?/g, '\n')
@@ -271,17 +349,19 @@ export function Dialog({
     const liveContentHeight = live.current.viewportHeight
     const liveNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
       const next = moveFocus(liveRows, liveFocus, direction)
-      const clamped = { ...next, row: Math.min(Math.max(next.row, live.current.focusMinRow), live.current.focusMaxRow) }
+      const clamped = clampFocus(liveRows, next, live.current.focusMinRow, live.current.focusMaxRow)
       setFocus(clamped)
       const contentRow = Math.max(0, clamped.row - (search ? 1 : 0))
       setScrollTop(adjustScroll(live.current.contentRows, { row: contentRow, col: clamped.col }, liveScroll, liveContentHeight, live.current.contentWidth))
     }
-    const liveCurrent = liveRows[liveFocus.row]?.items[liveFocus.col]
+    const liveCurrent = focusedItem(liveRows[liveFocus.row], liveFocus.col)
     const rawArrow = arrowFromRaw(input)
     const isUp = key.upArrow || rawArrow === 'up'
     const isDown = key.downArrow || rawArrow === 'down'
     const isLeft = key.leftArrow || rawArrow === 'left'
     const isRight = key.rightArrow || rawArrow === 'right'
+    if (key.ctrl && input === 'd' && onCtrlD !== undefined && onCtrlD(liveCurrent)) return
+    onActivity?.()
     if (key.escape || (key.ctrl && input === 'c')) {
       if (!(key.ctrl && closeGuarded)) onClose()
       return
@@ -307,17 +387,19 @@ export function Dialog({
       }
       return
     }
+    if ((isLeft || isRight) && liveCurrent?.type === 'actions') {
+      liveNavigate(isRight ? 'right' : 'left')
+      return
+    }
     if (isUp || isDown) {
       liveNavigate(isUp ? 'up' : 'down')
       return
     }
     if (key.return) {
       if (liveCurrent === undefined) return
-      const onLastRow = liveFocus.row === liveRows.length - 1
       switch (liveCurrent.type) {
         case 'input':
           if (liveCurrent.onEnter) liveCurrent.onEnter()
-          else if (onLastRow && onConfirmLast !== undefined) onConfirmLast()
           else liveNavigate('down')
           break
         case 'search':
@@ -325,7 +407,6 @@ export function Dialog({
           break
         case 'select':
           if (liveCurrent.onEnter) liveCurrent.onEnter()
-          else if (onLastRow && onConfirmLast !== undefined) onConfirmLast()
           else liveNavigate('down')
           break
         case 'button':
@@ -333,6 +414,12 @@ export function Dialog({
           break
         case 'checkbox':
           liveCurrent.onConfirm()
+          break
+        case 'actions':
+          if (liveFocus.col === 1) liveCurrent.onCancel()
+          else liveCurrent.onConfirm()
+          break
+        case 'header':
           break
       }
       return
@@ -390,11 +477,24 @@ export function Dialog({
     carouselPressTimer.current = setTimeout(() => setCarouselPress(null), 120)
   }
   useImperativeHandle(ref, () => ({
-    clickAt(y: number, x: number) {
+    wheelAt(y, dir) {
+      onActivity?.()
+      if (y < top || y >= top + windowHeight) return false
+      const state = live.current
+      const next = moveFocus(state.rows, state.focus, dir === -1 ? 'up' : 'down')
+      const clamped = clampFocus(state.rows, next, state.focusMinRow, state.focusMaxRow)
+      setFocus(clamped)
+      const contentRow = Math.max(0, clamped.row - (search ? 1 : 0))
+      setScrollTop(adjustScroll(state.contentRows, { row: contentRow, col: clamped.col }, state.scrollTop, state.viewportHeight, state.contentWidth))
+      return true
+    },
+    clickAt(y, x) {
+      onActivity?.()
       if (y < top || y >= top + windowHeight || x < left || x >= left + windowWidth) return
       const rowIndex = hitRowIndex(y, top + fixedHeight, titleLines, contentRows, scrollTop, contentWidth)
       if (rowIndex === null) return
       const rowSpec = contentRows[rowIndex]
+      if (!isSelectableRow(rowSpec)) return
       const selectItem = rowSpec?.items.find(item => item.type === 'select')
       if (selectItem?.type === 'select' && selectItem.options.length > 1) {
         const block = selectBlock(contentWidth, selectItem.value)
@@ -414,7 +514,39 @@ export function Dialog({
           }
         }
       }
-      const next = { row: Math.min(Math.max(rowIndex + (search ? 1 : 0), focusMinRow), focusMaxRow), col: 0 }
+      const displayRow = Math.min(Math.max(rowIndex + (search ? 1 : 0), focusMinRow), focusMaxRow)
+      const actionsItem = rowSpec?.items.find(item => item.type === 'actions')
+      if (actionsItem?.type === 'actions') {
+        const rowOffset = rowTopOffset(contentRows, rowIndex, contentWidth)
+        const rowY = top + 1 + titleLines + fixedHeight + rowOffset - scrollTop
+        setFocus({ row: displayRow, col: 0 })
+        if (y !== rowY) return
+        const positions = actionPositions(contentWidth, actionsItem.confirmLabel, actionsItem.cancelLabel)
+        const confirmStart = left + 1 + positions.confirmX
+        const cancelStart = left + 1 + positions.cancelX
+        if (x >= confirmStart && x < confirmStart + textWidth(actionsItem.confirmLabel)) {
+          actionsItem.onConfirm()
+          return
+        }
+        if (x >= cancelStart && x < cancelStart + textWidth(actionsItem.cancelLabel)) {
+          setFocus({ row: displayRow, col: 1 })
+          actionsItem.onCancel()
+          return
+        }
+        return
+      }
+      if (safeFocus.row === displayRow && rowSpec !== undefined) {
+        const item = rowSpec.items[0]
+        if (item?.type === 'button') {
+          item.onPress()
+          return
+        }
+        if (item?.type === 'checkbox') {
+          item.onConfirm()
+          return
+        }
+      }
+      const next = { row: displayRow, col: 0 }
       setFocus(next)
       const contentRow = Math.max(0, Math.min(rowIndex, contentRows.length - 1))
       setScrollTop(adjustScroll(contentRows, { row: contentRow, col: 0 }, scrollTop, viewportHeight, contentWidth))
@@ -430,9 +562,10 @@ export function Dialog({
     }
     if (offset >= scrollTop + viewportHeight) break
     const baseY = top + 1 + titleLines + fixedHeight + offset - scrollTop
+    const focused = safeFocus.row === i + (search ? 1 : 0)
     visibleRows.push(
       <Box key={`row-${i}`} flexDirection="column">
-        {renderRow(contentRows[i], safeFocus.row === i + (search ? 1 : 0), contentWidth, baseY, left, carouselPress)}
+        {renderRow(contentRows[i], focused, contentWidth, baseY, left, carouselPress, focused ? safeFocus.col : 0)}
       </Box>,
     )
     offset += height

@@ -2,19 +2,31 @@ import { act } from 'react'
 import { render } from 'ink-testing-library'
 import { Box } from 'ink'
 import { describe, expect, it, vi } from 'vitest'
-import { InputBar } from '../src/ui/input/input-bar.tsx'
+import { InputBar, inputLayout } from '../src/ui/input/input-bar.tsx'
+import { useComposer } from '../src/ui/input/use-composer.ts'
 
-function renderBar(onHeightChange: (height: number) => void) {
+function Harness({ onLayout }: { onLayout: (height: number) => void }) {
+  const { value, cursor, api } = useComposer(() => {}, true, 72, () => {})
+  const layout = inputLayout(value, cursor, 80)
+  onLayout(layout.barHeight)
+  return (
+    <InputBar
+      width={80}
+      columns={80}
+      rows={24}
+      value={value}
+      cursor={cursor}
+      api={api}
+      modelName="model"
+      permissionMode="workspace-write"
+    />
+  )
+}
+
+function renderBar(onLayout: (height: number) => void) {
   return render(
     <Box width={80} height={24}>
-      <InputBar
-        width={80}
-        modelName="model"
-        permissionMode="workspace-write"
-        onCyclePermission={() => {}}
-        onSend={() => {}}
-        onHeightChange={onHeightChange}
-      />
+      <Harness onLayout={onLayout} />
     </Box>,
   )
 }
@@ -28,24 +40,22 @@ async function type(stdin: { write(data: string): void }, data: string) {
 
 describe('input bar dynamic height', () => {
   it('stays at the minimum for short input', async () => {
-    const onHeightChange = vi.fn()
-    const { stdin } = renderBar(onHeightChange)
+    const onLayout = vi.fn()
+    const { stdin } = renderBar(onLayout)
     await type(stdin, 'hello')
-    expect(onHeightChange).not.toHaveBeenCalled()
+    expect(onLayout).toHaveBeenLastCalledWith(5)
   })
 
   it('grows as content wraps and caps at eight content rows', async () => {
     const heights: number[] = []
-    const onHeightChange = vi.fn((height: number) => {
-      heights.push(height)
-    })
-    const { lastFrame, stdin } = renderBar(onHeightChange)
+    const record = (height: number) => {
+      if (heights[heights.length - 1] !== height) heights.push(height)
+    }
+    const { stdin } = renderBar(record)
     await type(stdin, 'a'.repeat(150))
-    expect(heights).toEqual([6])
+    expect(heights).toEqual([5, 7])
     await type(stdin, 'a'.repeat(400))
     expect(heights[heights.length - 1]).toBe(11)
-    expect(heights.every(h => h >= 6 && h <= 11)).toBe(true)
-    const frame = lastFrame() ?? ''
-    expect(frame).toContain('a')
+    expect(heights.every(h => h >= 5 && h <= 11)).toBe(true)
   })
 })

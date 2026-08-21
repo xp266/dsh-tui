@@ -20,7 +20,7 @@ export function apply(ctx: Context) {
       stdout: capture.stream,
       alternateScreen: true,
       exitOnCtrlC: false,
-      incrementalRendering: true,
+      incrementalRendering: false,
       maxFps: 60,
     })
     capture.stream.write('\x1b[?25h')

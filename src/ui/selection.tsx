@@ -17,13 +17,14 @@ export interface SelectableTextProps {
   text?: string
   segments?: Segment[]
   color?: string
+  bold?: boolean
   inverse?: boolean
   backgroundColor?: string
   messageLayer?: boolean
   flow?: boolean
 }
 
-export const SelectableText = memo(function SelectableText({ y, col, text, segments, color, inverse = false, backgroundColor, messageLayer = false, flow = false }: SelectableTextProps) {
+export const SelectableText = memo(function SelectableText({ y, col, text, segments, color, bold = false, inverse = false, backgroundColor, messageLayer = false, flow = false }: SelectableTextProps) {
   const selection = useContext(SelectionContext)
   const content = text ?? (segments?.map(segment => segment.text).join('') ?? '')
   const pieceId = useRef({})
@@ -55,7 +56,7 @@ export const SelectableText = memo(function SelectableText({ y, col, text, segme
         )
       }
       return (
-        <Text backgroundColor={backgroundColor} inverse={inverse} color={color}>
+        <Text backgroundColor={backgroundColor} inverse={inverse} color={color} bold={bold}>
           {content.slice(0, startIndex)}
           {highlight}
           {content.slice(endIndex)}
@@ -67,7 +68,7 @@ export const SelectableText = memo(function SelectableText({ y, col, text, segme
     return <Text backgroundColor={backgroundColor}>{renderSegments(segments, 0, content.length, color)}</Text>
   }
   return (
-    <Text backgroundColor={backgroundColor} inverse={inverse} color={color}>
+    <Text backgroundColor={backgroundColor} inverse={inverse} color={color} bold={bold}>
       {content}
     </Text>
   )

@@ -21,4 +21,5 @@ export function filterCommands(value: string): CommandDef[] {
 export interface CommandHintState {
   commands: CommandDef[]
   selectedIndex: number
+  startIndex?: number
 }

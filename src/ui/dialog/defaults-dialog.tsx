@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { Ref } from 'react'
 import { colors, permissionModeInfo } from '../../theme.ts'
 import type { PresetSummary } from '../../chat/presets.ts'
@@ -65,6 +65,16 @@ export function DefaultsDialog({ api, onClose, ref }: DefaultsDialogProps) {
   const presetValue = presetNames[presetIds.indexOf(presetDefault)] ?? presetDefault
   const permissionNames = permissionIds.map(id => permissionModeInfo(id).name)
   const permissionValue = permissionNames[permissionIds.indexOf(permissionDefault)] ?? permissionDefault
+  const originalRef = useRef({ preset: api.defaultPresetId(), permission: api.defaultPermission() })
+  const revertAndClose = async () => {
+    const original = originalRef.current
+    try {
+      if (presetDefault !== original.preset) await api.setDefaultPreset(original.preset)
+      if (permissionDefault !== original.permission) await api.setDefaultPermission(original.permission)
+    } catch {
+    }
+    onClose()
+  }
   const rows: DialogRow[] = [
     {
       items: [
@@ -96,6 +106,17 @@ export function DefaultsDialog({ api, onClose, ref }: DefaultsDialogProps) {
         },
       ],
     },
+    {
+      items: [
+        {
+          type: 'actions',
+          confirmLabel: 'Submit',
+          cancelLabel: 'Cancel',
+          onConfirm: onClose,
+          onCancel: () => void revertAndClose(),
+        },
+      ],
+    },
   ]
   const footer: DialogFooterLine[] = [
     ...(loading ? [{ text: 'loading…', color: colors.dialogHintText }] : []),
@@ -111,7 +132,6 @@ export function DefaultsDialog({ api, onClose, ref }: DefaultsDialogProps) {
       rows={rows}
       footer={footer}
       onClose={onClose}
-      onConfirmLast={onClose}
     />
   )
 }

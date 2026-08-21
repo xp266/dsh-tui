@@ -9,6 +9,16 @@ export interface ComposerState {
   cursor: number
   hintOpen: boolean
   commandIndex: number
+  api: ComposerApi
+}
+
+export interface ComposerApi {
+  moveLineBy(delta: -1 | 1): void
+  placeCursor(charIndex: number): void
+  selectHint(absoluteIndex: number): void
+  confirmHint(): void
+  hintMove(delta: -1 | 1): void
+  hintClickAt(absoluteIndex: number): void
 }
 
 export function useComposer(
@@ -25,10 +35,59 @@ export function useComposer(
   const cursorRef = useRef(0)
   const hintOpenRef = useRef(false)
   const commandIndexRef = useRef(0)
+  const widthRef = useRef(contentWidth)
+  widthRef.current = contentWidth
   valueRef.current = value
   cursorRef.current = cursor
   hintOpenRef.current = hintOpen
   commandIndexRef.current = commandIndex
+  const apiRef = useRef<ComposerApi>({
+    moveLineBy(delta) {
+      const next = moveLine(valueRef.current, widthRef.current, cursorRef.current, delta)
+      cursorRef.current = next
+      setCursor(next)
+    },
+    placeCursor(charIndex) {
+      const clamped = Math.max(0, Math.min(charIndex, valueRef.current.length))
+      cursorRef.current = clamped
+      setCursor(clamped)
+    },
+    selectHint(absoluteIndex) {
+      const commands = filterCommands(valueRef.current)
+      const clamped = Math.max(0, Math.min(absoluteIndex, commands.length - 1))
+      commandIndexRef.current = clamped
+      setCommandIndex(clamped)
+    },
+    confirmHint() {
+      const commands = filterCommands(valueRef.current)
+      if (commands.length === 0) return
+      const command = commands[Math.min(commandIndexRef.current, commands.length - 1)]?.command
+      if (command === undefined) return
+      valueRef.current = command
+      cursorRef.current = command.length
+      setValue(command)
+      setCursor(command.length)
+      setHintOpen(false)
+      hintOpenRef.current = false
+      setCommandIndex(0)
+      commandIndexRef.current = 0
+    },
+    hintMove(delta) {
+      const commands = filterCommands(valueRef.current)
+      if (commands.length === 0) return
+      const next = (commandIndexRef.current + delta + commands.length) % commands.length
+      commandIndexRef.current = next
+      setCommandIndex(next)
+    },
+    hintClickAt(absoluteIndex) {
+      if (!hintOpenRef.current) return
+      if (absoluteIndex === commandIndexRef.current) {
+        apiRef.current.confirmHint()
+        return
+      }
+      apiRef.current.selectHint(absoluteIndex)
+    },
+  })
   usePaste(text => {
     if (!interactive) return
     const normalized = text.replace(/\r\n?/g, '\n')
@@ -65,18 +124,8 @@ export function useComposer(
     const commands = filterCommands(v)
     const showHint = hintOpenRef.current && commands.length > 0
     if (key.return && !key.shift && showHint) {
-      const command = commands[Math.min(commandIndexRef.current, commands.length - 1)]?.command
-      if (command !== undefined) {
-        valueRef.current = command
-        cursorRef.current = command.length
-        setValue(command)
-        setCursor(command.length)
-        setHintOpen(false)
-        hintOpenRef.current = false
-        setCommandIndex(0)
-        commandIndexRef.current = 0
-        return
-      }
+      apiRef.current.confirmHint()
+      return
     }
     if (key.escape && showHint) {
       setHintOpen(false)
@@ -194,7 +243,7 @@ export function useComposer(
       return
     }
   })
-  return { value, cursor, hintOpen, commandIndex }
+  return { value, cursor, hintOpen, commandIndex, api: apiRef.current }
 }
 
 function moveLine(value: string, width: number, cursor: number, delta: -1 | 1): number {

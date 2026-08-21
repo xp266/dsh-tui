@@ -14,6 +14,8 @@ function fakeBridge(): ChatBridge {
     listSessions: vi.fn(async () => []),
     openSession: vi.fn(async () => {}),
     newSession: vi.fn(async () => {}),
+    archiveSession: vi.fn(async () => {}),
+    activeSessionId: () => '',
     listModels: vi.fn(async () => []),
     selectModel: vi.fn(async () => {}),
     addDeepSeekKey: vi.fn(async () => {}),

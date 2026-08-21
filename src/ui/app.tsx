@@ -1,6 +1,6 @@
 import { Box, Text, useInput } from 'ink'
 import type { ReactNode } from 'react'
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { colors } from '../theme.ts'
 import { writeOsc52 } from '../terminal/clipboard.ts'
@@ -13,8 +13,11 @@ import { SelectableText } from './selection.tsx'
 import { useTerminalSize } from './hooks/use-terminal-size.ts'
 import { useChatEvents } from './hooks/use-chat-events.ts'
 import { useScroll } from './hooks/use-scroll.ts'
-import { useMouseSelection } from './hooks/use-mouse-selection.ts'
-import { InputBar, INPUT_BAR_MIN_HEIGHT } from './input/input-bar.tsx'
+import { useMouseSelection, hintRegion } from './hooks/use-mouse-selection.ts'
+import { InputBar, inputLayout, INPUT_WIDTH_OFFSET, HINT_MAX_ROWS } from './input/input-bar.tsx'
+import type { InputBarHandle } from './input/input-bar.tsx'
+import { useComposer } from './input/use-composer.ts'
+import { filterCommands } from './input/commands.ts'
 import { MessageList } from './message/message-list.tsx'
 import { CloseGuardContext } from './dialog/dialog.tsx'
 import { ModelsDialog } from './dialog/models-dialog.tsx'
@@ -24,7 +27,6 @@ import { EffortDialog } from './dialog/effort-dialog.tsx'
 import { DefaultsDialog } from './dialog/defaults-dialog.tsx'
 import type { DialogHandle } from './dialog/dialog.tsx'
 import { padToWidth, textWidth, truncate } from '../utils/text.ts'
-import type { CommandHintState } from './input/commands.ts'
 import type { TokenStats } from '../chat/bridge.ts'
 
 const FORCE_EXIT_DELAY_MS = 6000
@@ -40,36 +42,24 @@ interface AppProps {
 export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const { columns, rows } = useTerminalSize()
   const [dialog, setDialog] = useState<DialogKind | null>(null)
-  const [hintState, setHintState] = useState<CommandHintState | null>(null)
-  const [inputHeight, setInputHeight] = useState(INPUT_BAR_MIN_HEIGHT)
   const [, setSessionTick] = useState(0)
   const { messages, modelName, setModelName, updateMessages, resetChat } = useChatEvents(bridge, dialog !== null)
+  const dialogRef = useRef<DialogHandle | null>(null)
+  const inputRef = useRef<InputBarHandle | null>(null)
+  const exiting = useRef(false)
+  const sendRef = useRef<(text: string) => void>(() => {})
+  const contentWidth = columns - INPUT_WIDTH_OFFSET
+  const { value, cursor, hintOpen, commandIndex, api } = useComposer(
+    text => sendRef.current(text),
+    dialog === null,
+    contentWidth,
+    () => bridge?.cyclePermission(),
+  )
+  const layout = inputLayout(value, cursor, columns)
+  const inputHeight = layout.barHeight
   const messageHeight = Math.max(1, rows - inputHeight - 1)
   const total = rowIndexFor(messages, columns).total
   const { scrollTop, applyScroll } = useScroll(total, messageHeight, messages)
-  const dialogRef = useRef<DialogHandle | null>(null)
-  const exiting = useRef(false)
-  const handleToggle = (id: string) => {
-    updateMessages(current => current.map(message =>
-      message.kind === 'collapsible' && message.id === id
-        ? { ...message, collapsed: !message.collapsed }
-        : message,
-    ))
-  }
-  const { selection, messageAreaSelection, chromeSelection, clearSelection } = useMouseSelection({
-    messages,
-    columns,
-    rows,
-    scrollTop,
-    messageHeight,
-    inputHeight,
-    dialogOpen: dialog !== null,
-    hint: hintState,
-    screen,
-    onScroll: applyScroll,
-    onToggleMessage: handleToggle,
-    onDialogClick: (y, x) => dialogRef.current?.clickAt(y, x),
-  })
   const handleSend = (text: string) => {
     if (text === '/models') {
       if (bridge) setDialog('models')
@@ -92,18 +82,72 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
       return
     }
     if (text === '/new') {
-      if (!bridge) return
-      resetChat()
-      clearSelection()
-      applyScroll(Infinity)
-      void Promise.resolve(bridge.newSession())
-        .then(() => setSessionTick(tick => tick + 1))
-        .catch(() => {})
+      startNewSession()
       return
     }
     bridge?.send(text)
     applyScroll(Infinity)
   }
+  const startNewSession = () => {
+    if (!bridge) return
+    resetChat()
+    clearSelection()
+    applyScroll(Infinity)
+    void Promise.resolve(bridge.newSession())
+      .then(() => setSessionTick(tick => tick + 1))
+      .catch(() => {})
+  }
+  sendRef.current = handleSend
+  const commands = useMemo(() => filterCommands(value), [value])
+  const showHint = dialog === null && hintOpen && commands.length > 0
+  const maxVisible = Math.max(1, Math.min(HINT_MAX_ROWS, rows - inputHeight - 1))
+  const hintStartRef = useRef(0)
+  let hintVisibleStart = hintStartRef.current
+  if (commandIndex < hintVisibleStart) {
+    hintVisibleStart = commandIndex
+  } else if (commandIndex >= hintVisibleStart + maxVisible) {
+    hintVisibleStart = commandIndex - maxVisible + 1
+  }
+  hintVisibleStart = Math.max(0, Math.min(hintVisibleStart, Math.max(0, commands.length - maxVisible)))
+  hintStartRef.current = hintVisibleStart
+  const hintState = showHint
+    ? {
+        commands: commands.slice(hintVisibleStart, hintVisibleStart + maxVisible),
+        selectedIndex: commandIndex - hintVisibleStart,
+        startIndex: hintVisibleStart,
+      }
+    : null
+  const handleToggle = (id: string) => {
+    updateMessages(current => current.map(message =>
+      message.kind === 'collapsible' && message.id === id
+        ? { ...message, collapsed: !message.collapsed }
+        : message,
+    ))
+  }
+  const handleHintClick = (y: number) => {
+    const region = hintRegion(rows, hintState, dialog !== null, inputHeight)
+    if (region === null || hintState === null) return
+    const rel = y - region.top
+    if (rel < 0 || rel >= hintState.commands.length) return
+    inputRef.current?.hintClick((hintState.startIndex ?? 0) + rel)
+  }
+  const { selection, messageAreaSelection, chromeSelection, clearSelection } = useMouseSelection({
+    messages,
+    columns,
+    rows,
+    scrollTop,
+    messageHeight,
+    inputHeight,
+    dialogOpen: dialog !== null,
+    hint: hintState,
+    screen,
+    inputHandle: inputRef,
+    onHintClick: handleHintClick,
+    onDialogWheel: (y, dir) => dialogRef.current?.wheelAt(y, dir) === true,
+    onScroll: applyScroll,
+    onToggleMessage: handleToggle,
+    onDialogClick: (y, x) => dialogRef.current?.clickAt(y, x),
+  })
   useInput((input, key) => {
     if (dialog !== null && !selection) return
     if (key.ctrl && input === 'c') {
@@ -136,16 +180,19 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
         />
         <SelectionContext.Provider value={chromeSelection}>
           <InputBar
+            ref={inputRef}
             width={columns}
+            columns={columns}
+            rows={rows}
+            value={value}
+            cursor={cursor}
+            api={api}
+            statusReady={bridge !== undefined}
             modelName={bridge?.modelName() ?? modelName}
             permissionMode={bridge?.permissionMode() ?? 'workspace-write'}
-            onCyclePermission={() => bridge?.cyclePermission()}
             effortName={bridge?.effortName()}
             presetName={bridge?.presetName()}
-            onSend={handleSend}
             interactive={dialog === null}
-            onHintChange={setHintState}
-            onHeightChange={setInputHeight}
           />
           {hintState !== null && dialog === null && (
             <Box
@@ -169,30 +216,29 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
               })}
             </Box>
           )}
-          <Box width={columns} paddingLeft={4} paddingRight={4} justifyContent="space-between">
-            {bridge === undefined ? (
-              <SelectableText y={rows - 1} col={4} text={cwdLabel(undefined)} color={colors.cwdText} />
-            ) : (
-              <>
-                {(() => {
-                  const cwd = cwdLabel(bridge)
-                  const rightCol = Math.max(4, columns - 4 - textWidth(cwd))
-                  const leftMax = Math.max(1, rightCol - 4 - 2)
-                  return (
-                    <>
-                      <SelectableText
-                        y={rows - 1}
-                        col={4}
-                        text={truncate(statsText(bridge.tokenStats()), leftMax)}
-                        color={colors.statsText}
-                      />
-                      <SelectableText y={rows - 1} col={rightCol} text={cwd} color={colors.cwdText} />
-                    </>
-                  )
-                })()}
-              </>
-            )}
-          </Box>
+          {bridge !== undefined && (
+            <Box
+              position="absolute"
+              top={rows - 1}
+              left={0}
+              width={columns}
+              paddingLeft={4}
+              paddingRight={4}
+              justifyContent="space-between"
+            >
+              {(() => {
+                const cwd = cwdLabel(bridge)
+                const rightCol = Math.max(4, columns - 4 - textWidth(cwd))
+                const stats = truncate(statsText(bridge.tokenStats()), Math.max(1, rightCol - 4 - 2))
+                return (
+                  <>
+                    <SelectableText y={rows - 1} col={4} text={stats} color={colors.statsText} />
+                    <SelectableText y={rows - 1} col={rightCol} text={cwd} color={colors.cwdText} />
+                  </>
+                )
+              })()}
+            </Box>
+          )}
         </SelectionContext.Provider>
       {dialog !== null && bridge !== undefined && (
         <CloseGuardContext.Provider value={selection !== null}>
@@ -209,6 +255,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
                 setSessionTick(tick => tick + 1)
                 applyScroll(Infinity)
               },
+              onNewSession: startNewSession,
             })}
           </SelectionContext.Provider>
         </CloseGuardContext.Provider>
@@ -224,6 +271,7 @@ interface DialogCallbacks {
   onModelSelected(provider: string, model: string): void
   onBeforeSessionSelected(): void
   onSessionSelected(): void
+  onNewSession(): void
 }
 
 function dialogView(kind: DialogKind, bridge: ChatBridge, cbs: DialogCallbacks): ReactNode {
@@ -238,6 +286,7 @@ function dialogView(kind: DialogKind, bridge: ChatBridge, cbs: DialogCallbacks):
           onClose={cbs.onClose}
           onBeforeSessionSelected={cbs.onBeforeSessionSelected}
           onSessionSelected={cbs.onSessionSelected}
+          onNewSession={cbs.onNewSession}
         />
       )
     case 'presets':

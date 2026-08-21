@@ -6,70 +6,142 @@ import { Dialog } from '../src/ui/dialog/dialog.tsx'
 import type { DialogRow } from '../src/ui/dialog/dialog.tsx'
 import { DefaultsDialog } from '../src/ui/dialog/defaults-dialog.tsx'
 
-function carouselRows(): DialogRow[] {
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function formRows(onConfirm: () => void, onCancel: () => void): DialogRow[] {
   return [
-    { items: [{ type: 'select', label: 'A', value: 'a', options: ['a', 'b'], onChange: () => {} }] },
-    { items: [{ type: 'select', label: 'B', value: 'b', options: ['a', 'b'], onChange: () => {} }] },
+    { items: [{ type: 'input', label: 'API Key', value: '', onChange: () => {} }] },
+    { items: [{ type: 'actions', confirmLabel: 'Submit', cancelLabel: 'Cancel', onConfirm, onCancel }] },
   ]
 }
 
-function renderDialog(onConfirmLast: () => void, onClose: () => void) {
+function renderForm(onConfirm: () => void, onCancel: () => void) {
   return render(
     <Box width={100} height={24}>
-      <Dialog width={60} maxHeight={22} title="t" rows={carouselRows()} onClose={onClose} onConfirmLast={onConfirmLast} />
+      <Dialog width={60} maxHeight={22} title="t" rows={formRows(onConfirm, onCancel)} onClose={() => {}} />
     </Box>,
   )
 }
 
-describe('dialog last-row confirm', () => {
-  it('confirms with enter on the last carousel row', () => {
-    const onConfirmLast = vi.fn()
-    const onClose = vi.fn()
-    const { stdin } = renderDialog(onConfirmLast, onClose)
+describe('actions row keyboard', () => {
+  it('navigates from the input instead of confirming', () => {
+    const onConfirm = vi.fn()
+    const onCancel = vi.fn()
+    const { stdin } = renderForm(onConfirm, onCancel)
+    act(() => {
+      stdin.write('\r')
+    })
+    expect(onConfirm).not.toHaveBeenCalled()
+    expect(onCancel).not.toHaveBeenCalled()
+  })
+
+  it('presses Submit with enter on the focused confirm button', () => {
+    const onConfirm = vi.fn()
+    const onCancel = vi.fn()
+    const { stdin } = renderForm(onConfirm, onCancel)
     act(() => {
       stdin.write('\u001b[B')
     })
     act(() => {
       stdin.write('\r')
     })
-    expect(onConfirmLast).toHaveBeenCalledTimes(1)
-    expect(onClose).not.toHaveBeenCalled()
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+    expect(onCancel).not.toHaveBeenCalled()
   })
 
-  it('navigates instead of confirming above the last row', () => {
-    const onConfirmLast = vi.fn()
-    const { stdin } = renderDialog(onConfirmLast, () => {})
+  it('switches to Cancel with right arrow and presses it', () => {
+    const onConfirm = vi.fn()
+    const onCancel = vi.fn()
+    const { stdin } = renderForm(onConfirm, onCancel)
+    act(() => {
+      stdin.write('\u001b[B')
+    })
+    act(() => {
+      stdin.write('\u001b[C')
+    })
     act(() => {
       stdin.write('\r')
     })
-    expect(onConfirmLast).not.toHaveBeenCalled()
+    expect(onCancel).toHaveBeenCalledTimes(1)
+    expect(onConfirm).not.toHaveBeenCalled()
   })
 
-  it('closes the defaults dialog with enter on the last carousel', async () => {
+  it('renders both labels without a background row', () => {
+    const { lastFrame } = renderForm(() => {}, () => {})
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('Submit')
+    expect(frame).toContain('Cancel')
+  })
+})
+
+function defaultsApi() {
+  return {
+    listPresets: vi.fn(async () => [
+      { id: 'standard', name: 'Standard mode' },
+      { id: 'code', name: 'Code mode' },
+    ]),
+    defaultPresetId: () => 'standard',
+    setDefaultPreset: vi.fn(async () => {}),
+    listPermissionPresets: vi.fn(async () => ['workspace-write', 'read-only']),
+    defaultPermission: () => 'workspace-write',
+    setDefaultPermission: vi.fn(async () => {}),
+  }
+}
+
+describe('defaults dialog submit and cancel', () => {
+  it('closes with enter on Submit without extra saves', async () => {
+    const api = defaultsApi()
     const onClose = vi.fn()
-    const api = {
-      listPresets: vi.fn(async () => [
-        { id: 'standard', name: 'Standard mode' },
-        { id: 'code', name: 'Code mode' },
-      ]),
-      defaultPresetId: () => 'standard',
-      setDefaultPreset: vi.fn(async () => {}),
-      listPermissionPresets: vi.fn(async () => ['workspace-write', 'read-only']),
-      defaultPermission: () => 'workspace-write',
-      setDefaultPermission: vi.fn(async () => {}),
-    }
     const { stdin } = render(
       <Box width={100} height={24}>
         <DefaultsDialog api={api} onClose={onClose} />
       </Box>,
     )
-    await new Promise(resolve => setTimeout(resolve, 20))
+    await sleep(20)
+    act(() => {
+      stdin.write('\u001b[B')
+    })
     act(() => {
       stdin.write('\u001b[B')
     })
     act(() => {
       stdin.write('\r')
     })
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(api.setDefaultPreset).not.toHaveBeenCalled()
+    expect(api.setDefaultPermission).not.toHaveBeenCalled()
+  })
+
+  it('reverts unsaved changes when Cancel is pressed', async () => {
+    const api = defaultsApi()
+    const onClose = vi.fn()
+    const { stdin } = render(
+      <Box width={100} height={24}>
+        <DefaultsDialog api={api} onClose={onClose} />
+      </Box>,
+    )
+    await sleep(20)
+    act(() => {
+      stdin.write('\u001b[C')
+    })
+    await sleep(20)
+    expect(api.setDefaultPreset).toHaveBeenCalledWith('code')
+    act(() => {
+      stdin.write('\u001b[B')
+    })
+    act(() => {
+      stdin.write('\u001b[B')
+    })
+    act(() => {
+      stdin.write('\u001b[C')
+    })
+    act(() => {
+      stdin.write('\r')
+    })
+    await sleep(20)
+    expect(api.setDefaultPreset).toHaveBeenLastCalledWith('standard')
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
