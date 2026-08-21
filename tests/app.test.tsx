@@ -105,7 +105,7 @@ describe('App layout', () => {
       time: 0,
       data: { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'answer' } },
     })
-    await new Promise(resolve => setTimeout(resolve, 50))
+    await new Promise(resolve => setTimeout(resolve, 200))
     const frame = lastFrame() ?? ''
     expect(frame).toContain('hello tui')
     expect(frame).toContain('Thinking')

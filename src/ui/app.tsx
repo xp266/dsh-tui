@@ -6,6 +6,7 @@ import { colors } from '../theme.ts'
 import { writeOsc52 } from '../terminal/clipboard.ts'
 import type { ChatBridge } from '../chat/bridge.ts'
 import { rowIndexFor, selectionText } from './message/layout.ts'
+import { chromeSelectionText } from './selection-registry.ts'
 import type { ScreenCapture } from '../terminal/screen.ts'
 import { SelectionContext } from './selection.tsx'
 import { SelectableText } from './selection.tsx'
@@ -109,7 +110,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
       if (selection) {
         const text = selection.inMessage
           ? selectionText(messages, columns, selection)
-          : (screen?.extractSelection(selection) ?? '')
+          : chromeSelectionText(selection)
         if (text) writeOsc52(text)
         clearSelection()
         return

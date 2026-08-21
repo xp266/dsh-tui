@@ -18,6 +18,10 @@ describe('spinner animation', () => {
   it('advances the running header spinner every 100ms', () => {
     vi.useFakeTimers()
     const { lastFrame } = render(<MessageList messages={[runningTool()]} height={10} width={80} scrollTop={0} onScroll={() => {}} />)
+    const frame = (lastFrame() ?? '').replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+    const headerLine = frame.split('\n').find(line => line.includes(SPINNER_FRAMES[0]))
+    expect(headerLine).toBeDefined()
+    expect(headerLine).toContain('Bash')
     expect(lastFrame() ?? '').toContain(SPINNER_FRAMES[0])
     act(() => {
       vi.advanceTimersByTime(100)

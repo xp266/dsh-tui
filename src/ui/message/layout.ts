@@ -2,10 +2,13 @@ import type { Message } from '../../model/message.ts'
 import { colToCharIndex, textWidth, truncate, wrapLines } from '../../utils/text.ts'
 import { selectedRange } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
+import { sliceByColumns } from '../selection-registry.ts'
 import { createMarkdownTokenizer, createThinkingTokenizer, createSegmentWrapper, segmentsKey, wrapSegments } from './markdown.ts'
 import type { Segment, SegmentWrapper } from './markdown.ts'
 
 const BUBBLE_WIDTH_OFFSET = 8
+
+export const HEADER_LABEL_COL = 4
 
 export const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
@@ -184,7 +187,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
         return {
           ...base,
           kind: 'header',
-          colStart: 2,
+          colStart: HEADER_LABEL_COL,
           clickable: true,
           label: fitLabel(message.label, width),
           running: message.running,
@@ -239,15 +242,38 @@ export function selectionText(messages: Message[], width: number, selection: Lin
   const total = index.total
   const top = Math.max(0, Math.min(selection.anchorRow, selection.focusRow))
   const bottom = Math.min(Math.max(selection.anchorRow, selection.focusRow), total - 1)
+  const envStart = Math.min(selection.anchorCol, selection.focusCol)
+  const envEnd = Math.max(selection.anchorCol, selection.focusCol)
   const lines: string[] = []
   for (let row = top; row <= bottom; row++) {
     const info = index.rowAt(row)
     if (info === null) continue
-    const line = info.kind === 'header'
-      ? `  ${headerSymbol(info.running, info.collapsed)} ${info.label}`
-      : info.text
+    if (info.kind === 'pad') continue
     const range = selectedRange(selection, row)
     if (range === null) continue
+    if (info.kind === 'header') {
+      let line = ''
+      let prevEnd = -1
+      const pieces: Array<{ text: string; col: number }> = [
+        { text: `  ${headerSymbol(info.running, info.collapsed)} `, col: 0 },
+        { text: info.label, col: HEADER_LABEL_COL },
+      ]
+      for (const piece of pieces) {
+        const pieceWidth = textWidth(piece.text)
+        if (!(envEnd > piece.col && envStart < piece.col + pieceWidth)) continue
+        const start = Math.max(range.start, piece.col)
+        const end = Math.min(range.end, piece.col + pieceWidth)
+        if (start >= end) continue
+        const text = sliceByColumns(piece.text, start - piece.col, end - piece.col)
+        if (text === '') continue
+        if (line !== '') line += prevEnd === piece.col ? '' : ' '
+        line += text
+        prevEnd = piece.col + pieceWidth
+      }
+      lines.push(line)
+      continue
+    }
+    const line = info.text
     const lineWidth = textWidth(line)
     const left = Math.max(range.start, info.colStart)
     const right = Math.min(range.end, info.colStart + lineWidth)

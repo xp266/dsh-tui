@@ -19,7 +19,7 @@ export const MessageRow = memo(
     case 'pad':
       return (
         <Box marginLeft={2} width={info.backgroundWidth} backgroundColor={backgroundFor(info.role)}>
-          <SelectableText y={screenRow} col={2} text={' '.repeat(info.backgroundWidth)} />
+          <Text>{' '.repeat(info.backgroundWidth)}</Text>
         </Box>
       )
     case 'text': {
@@ -36,13 +36,15 @@ export const MessageRow = memo(
           backgroundColor={info.background ? backgroundFor(info.role) : undefined}
         >
           {info.segments !== undefined && info.segments.length > 0 ? (
-            <SelectableText y={screenRow} col={col} segments={info.segments} color={baseColor} />
+            <SelectableText y={screenRow} col={col} segments={info.segments} color={baseColor} messageLayer flow />
           ) : (
             <SelectableText
               text={info.text || ' '}
               y={screenRow}
               col={col}
               color={baseColor}
+              messageLayer
+              flow
             />
           )}
         </Box>
@@ -50,7 +52,13 @@ export const MessageRow = memo(
     }
     case 'header': {
       const symbol = info.running ? SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length] : headerSymbol(info.running, info.collapsed)
-      return <SelectableText y={screenRow} col={0} text={`  ${symbol} ${info.label}`} color={info.thinking ? colors.thinkingLabel : colors.toolLabel} />
+      const color = info.thinking ? colors.thinkingLabel : colors.toolLabel
+      return (
+        <Box>
+          <SelectableText y={screenRow} col={0} text={`  ${symbol} `} color={color} messageLayer />
+          <SelectableText y={screenRow} col={4} text={info.label} color={color} messageLayer />
+        </Box>
+      )
     }
     case 'blank':
       return <Text> </Text>

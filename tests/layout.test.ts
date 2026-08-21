@@ -138,15 +138,15 @@ describe('selection text extraction', () => {
   }
 
   it('extracts full middle rows between the anchor rows', () => {
-    expect(selectionText(twoColumn, WIDTH, msgSel(1, 4, 5, 16))).toBe('111    11111\n\n\n\n222    22222')
+    expect(selectionText(twoColumn, WIDTH, msgSel(1, 4, 5, 16))).toBe('111    11111\n\n222    22222')
   })
 
   it('slices the focus row by column range', () => {
-    expect(selectionText(twoColumn, WIDTH, msgSel(1, 4, 5, 7))).toBe('111    11111\n\n\n\n222')
+    expect(selectionText(twoColumn, WIDTH, msgSel(1, 4, 5, 7))).toBe('111    11111\n\n222')
   })
 
   it('does not include background rows in the result text', () => {
-    expect(selectionText(twoColumn, WIDTH, msgSel(0, 4, 4, 16))).toBe('\n111    11111')
+    expect(selectionText(twoColumn, WIDTH, msgSel(0, 4, 4, 16))).toBe('111    11111')
   })
 
   it('extracts a single-line column range', () => {
@@ -160,14 +160,37 @@ describe('selection text extraction', () => {
       { kind: 'bubble', id: 'c', role: 'user', content: 'third line' },
     ]
     const selection = msgSel(1, 4, 9, 14)
-    expect(selectionText(messages, WIDTH, selection)).toBe('user line\n\n\n\nassistant line\n\n\n\nthird line')
+    expect(selectionText(messages, WIDTH, selection)).toBe('user line\n\nassistant line\n\nthird line')
   })
 
   it('includes header rows in the extraction', () => {
     const messages: Message[] = [
       { kind: 'collapsible', id: 'b', label: 'Bash', body: 'ls', running: false, collapsed: false },
     ]
-    expect(selectionText(messages, WIDTH, msgSel(0, 2, 2, 5))).toBe('  ↓ Bash\n\nl')
+    expect(selectionText(messages, WIDTH, msgSel(0, 2, 2, 5))).toBe('↓ Bash\n\nl')
+  })
+
+  it('excludes the header symbol when the envelope stays inside the label columns', () => {
+    const messages: Message[] = [
+      { kind: 'collapsible', id: 'b', label: 'Bash', body: 'ls', running: false, collapsed: false },
+    ]
+    expect(selectionText(messages, WIDTH, msgSel(0, 6, 2, 8))).toBe('sh\n\nls')
+  })
+
+  it('keeps short flowing lines outside the horizontal envelope', () => {
+    const messages: Message[] = [
+      { kind: 'bubble', id: 'a', role: 'assistant', content: 'first long line aaaaaaaa\nshort\nsecond long line bbbbbbbb' },
+    ]
+    expect(selectionText(messages, WIDTH, msgSel(1, 10, 5, 12))).toBe(
+      'long line aaaaaaaa\nshort\nsecond long line bbbbbbbb',
+    )
+  })
+
+  it('keeps the header symbol when the envelope crosses into it', () => {
+    const messages: Message[] = [
+      { kind: 'collapsible', id: 'b', label: 'Bash', body: '', running: false, collapsed: true },
+    ]
+    expect(selectionText(messages, WIDTH, msgSel(0, 1, 1, 10))).toBe(' - Bash')
   })
 
   it('caches the row index per messages and width and rebuilds on change', () => {

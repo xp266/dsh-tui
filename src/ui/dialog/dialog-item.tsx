@@ -146,12 +146,17 @@ function renderItem(
     }
     case 'button':
       if (item.right !== undefined) {
+        const right = truncate(item.right, Math.floor(contentWidth / 2))
+        const leftWidth = Math.max(1, contentWidth - textWidth(right))
+        const label = padToWidth(truncate(item.label, leftWidth), leftWidth)
         if (focused) {
-          const right = truncate(item.right, Math.floor(contentWidth / 2))
-          const leftWidth = Math.max(1, contentWidth - textWidth(right))
-          return <SelectableText y={baseY} col={left} text={padToWidth(truncate(item.label, leftWidth), leftWidth) + right} inverse />
+          return (
+            <Box>
+              <SelectableText y={baseY} col={left} text={label} inverse />
+              <SelectableText y={baseY} col={left + leftWidth} text={right} inverse />
+            </Box>
+          )
         }
-        const right = item.right
         return (
           <Box width={contentWidth} justifyContent="space-between">
             <SelectableText y={baseY} col={left} text={item.label} />

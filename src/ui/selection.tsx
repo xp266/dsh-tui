@@ -1,9 +1,11 @@
 import { createContext, useContext, memo } from 'react'
 import type { ReactNode } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import { Text } from 'ink'
 import { colToCharIndex, textWidth } from '../utils/text.ts'
 import { selectedRange } from '../model/selection.ts'
 import type { LineSelection } from '../model/selection.ts'
+import { envelopeOverlaps, registerRowPiece } from './selection-registry.ts'
 import type { Segment } from './message/markdown.ts'
 import { colors } from '../theme.ts'
 
@@ -17,13 +19,21 @@ export interface SelectableTextProps {
   color?: string
   inverse?: boolean
   backgroundColor?: string
+  messageLayer?: boolean
+  flow?: boolean
 }
 
-export const SelectableText = memo(function SelectableText({ y, col, text, segments, color, inverse = false, backgroundColor }: SelectableTextProps) {
+export const SelectableText = memo(function SelectableText({ y, col, text, segments, color, inverse = false, backgroundColor, messageLayer = false, flow = false }: SelectableTextProps) {
   const selection = useContext(SelectionContext)
   const content = text ?? (segments?.map(segment => segment.text).join('') ?? '')
+  const pieceId = useRef({})
+  useLayoutEffect(() => {
+    registerRowPiece(pieceId.current, y, { col, text: content, ...(messageLayer ? { layer: 'message' as const } : {}) })
+    return () => registerRowPiece(pieceId.current, y, null)
+  }, [y, col, content, messageLayer])
   const range = selection === null ? null : selectedRange(selection, y)
-  if (range !== null) {
+  const gated = !flow && selection !== null && range !== null && !envelopeOverlaps(selection, col, textWidth(content))
+  if (selection !== null && range !== null && !gated) {
     const lineWidth = textWidth(content)
     const start = Math.max(range.start, col)
     const end = Math.min(range.end, col + lineWidth)
