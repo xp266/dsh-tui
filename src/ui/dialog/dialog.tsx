@@ -215,13 +215,13 @@ export function Dialog({
   }, [current?.type, safeFocus.row, safeFocus.col, displayRows.length])
   if (search) {
     const x = left + 1 + textWidth(searchValue)
-    const y = top + 2 + titleLines
+    const y = top + 1 + titleLines
     setCursorPosition({ x, y })
   } else if (current?.type === 'input' || current?.type === 'select' || current?.type === 'search') {
     const contentIndex = Math.max(0, safeFocus.row - (search ? 1 : 0))
     const rowOffset = rowTopOffset(contentRows, contentIndex)
     const valueLine = current.type === 'select' || current.type === 'search' ? rowOffset : rowOffset + 1
-    const y = top + 2 + titleLines + fixedHeight + valueLine - scrollTop
+    const y = top + 1 + titleLines + fixedHeight + valueLine - scrollTop
     const block = current.type === 'select' ? selectBlock(contentWidth, current.value) : undefined
     const prefix = current.type === 'select' ? undefined : current.value.slice(0, cursor)
     const x = block !== undefined

@@ -5,6 +5,10 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ChatBridge } from '../src/chat/bridge.ts'
 import { App } from '../src/ui/app.tsx'
 
+function stripAnsi(text: string): string {
+  return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+}
+
 function fakeBridge(): ChatBridge {
   return {
     modelName: () => 'glm-4.7-flash',
@@ -265,7 +269,7 @@ describe('App layout', () => {
     bridge.presetName = () => 'Creator mode'
     const { lastFrame } = render(<App bridge={bridge} />)
     await new Promise(resolve => setTimeout(resolve, 20))
-    const frame = lastFrame() ?? ''
+    const frame = stripAnsi(lastFrame() ?? '')
     expect(frame).toContain('Workspace Write · glm-4.7-flash · High')
     expect(frame).toContain('Creator mode')
   })

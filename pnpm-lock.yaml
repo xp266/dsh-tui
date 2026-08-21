@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  ink: def03f53e45dc12d71a33f6014f6898eb54fc1b163019214b407621980275304
+  ink@7.1.1: 0d05a8d000b1ae7c6c72aba3f0af6edb95d081972583311e9890850a5d5552d3
 
 importers:
 
@@ -16,7 +16,7 @@ importers:
         version: 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
       ink:
         specifier: ^7.1.1
-        version: 7.1.1(patch_hash=def03f53e45dc12d71a33f6014f6898eb54fc1b163019214b407621980275304)(@types/react@19.2.18)(react@19.2.8)
+        version: 7.1.1(patch_hash=0d05a8d000b1ae7c6c72aba3f0af6edb95d081972583311e9890850a5d5552d3)(@types/react@19.2.18)(react@19.2.8)
       prismjs:
         specifier: ^1.30.0
         version: 1.30.0
@@ -1664,7 +1664,7 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.18
 
-  ink@7.1.1(patch_hash=def03f53e45dc12d71a33f6014f6898eb54fc1b163019214b407621980275304)(@types/react@19.2.18)(react@19.2.8):
+  ink@7.1.1(patch_hash=0d05a8d000b1ae7c6c72aba3f0af6edb95d081972583311e9890850a5d5552d3)(@types/react@19.2.18)(react@19.2.8):
     dependencies:
       '@alcalzone/ansi-tokenize': 0.3.0
       ansi-escapes: 7.3.0

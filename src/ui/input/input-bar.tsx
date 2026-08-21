@@ -65,7 +65,7 @@ export function InputBar({
     const index = colToCharIndex(visibleLines[cursorRow] ?? '', point.col)
     setCursorPosition({
       x: 4 + textWidth((visibleLines[cursorRow] ?? '').slice(0, index)),
-      y: totalRows - INPUT_BAR_HEIGHT + 1 + cursorRow,
+      y: totalRows - INPUT_BAR_HEIGHT + cursorRow,
     })
   } else {
     setCursorPosition(undefined)

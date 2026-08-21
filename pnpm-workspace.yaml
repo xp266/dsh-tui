@@ -1,2 +1,2 @@
 patchedDependencies:
-  ink: patches/ink.patch
+  ink@7.1.1: patches/ink@7.1.1.patch
