@@ -1,5 +1,5 @@
 import { Box, Text, useCursor, useStdout } from 'ink'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { colors, permissionModeInfo } from '../../theme.ts'
 import { colToCharIndex, locToPoint, textWidth, truncate, wrapLines } from '../../utils/text.ts'
 import { filterCommands } from './commands.ts'
@@ -11,6 +11,7 @@ export const INPUT_BAR_HEIGHT = 5
 
 const CONTENT_ROWS = 2
 const INPUT_WIDTH_OFFSET = 8
+const HINT_MAX_ROWS = 7
 
 interface InputBarProps {
   width: number
@@ -51,11 +52,25 @@ export function InputBar({
     }
   }, [])
   const commands = useMemo(() => filterCommands(value), [value])
-  const hintCommands = useMemo(() => commands.slice(0, 5), [commands])
+  const maxVisible = Math.max(1, Math.min(HINT_MAX_ROWS, totalRows - INPUT_BAR_HEIGHT - 1))
+  const hintStartRef = useRef(0)
+  let hintVisibleStart = hintStartRef.current
+  if (commandIndex < hintVisibleStart) {
+    hintVisibleStart = commandIndex
+  } else if (commandIndex >= hintVisibleStart + maxVisible) {
+    hintVisibleStart = commandIndex - maxVisible + 1
+  }
+  hintVisibleStart = Math.max(0, Math.min(hintVisibleStart, Math.max(0, commands.length - maxVisible)))
+  hintStartRef.current = hintVisibleStart
+  const hintCommands = useMemo(
+    () => commands.slice(hintVisibleStart, hintVisibleStart + maxVisible),
+    [commands, hintVisibleStart, maxVisible],
+  )
   const showHint = interactive && hintOpen && commands.length > 0
+  const hintSelected = commandIndex - hintVisibleStart
   useEffect(() => {
-    onHintChange?.(showHint ? { commands: hintCommands, selectedIndex: commandIndex } : null)
-  }, [onHintChange, showHint, hintCommands, commandIndex])
+    onHintChange?.(showHint ? { commands: hintCommands, selectedIndex: hintSelected } : null)
+  }, [onHintChange, showHint, hintCommands, hintSelected])
   const lines = wrapLines(value, contentWidth)
   const point = locToPoint(value, contentWidth, cursor)
   const visibleStart = Math.max(0, Math.min(point.row, Math.max(0, lines.length - CONTENT_ROWS)))
