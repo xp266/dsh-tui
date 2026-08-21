@@ -1,7 +1,7 @@
 import { Box, Text } from 'ink'
 import type { ReactNode } from 'react'
 import { colors } from '../../theme.ts'
-import { padToWidth, textWidth, truncate } from '../../utils/text.ts'
+import { padToWidth, textWidth, truncate, wrapLines } from '../../utils/text.ts'
 import { SelectableText } from '../selection.tsx'
 import type { DialogItem, DialogRow } from './dialog.tsx'
 
@@ -95,20 +95,24 @@ function renderItem(
         </Box>
       )
     }
-    case 'input':
+    case 'input': {
+      const lines = wrapLines(item.value, contentWidth)
       return (
         <Box flexDirection="column">
           <Box height={1}>
             <SelectableText y={baseY} col={left} text={item.label} />
           </Box>
-          <Box width={contentWidth} height={1} backgroundColor={colors.dialogInputBackground}>
-            <SelectableText y={baseY + 1} col={left} text={truncate(item.value, contentWidth)} />
-          </Box>
+          {lines.map((line, index) => (
+            <Box key={index} width={contentWidth} height={1} backgroundColor={colors.dialogInputBackground}>
+              <SelectableText y={baseY + 1 + index} col={left} text={line} />
+            </Box>
+          ))}
           <Box height={1}>
             <Text> </Text>
           </Box>
         </Box>
       )
+    }
     case 'select': {
       const block = selectBlock(contentWidth, item.value)
       const hasArrows = item.options.length > 1
@@ -157,11 +161,12 @@ function renderItem(
       }
       if (focused) return <SelectableText y={baseY} col={left} text={padToWidth(truncate(item.label, contentWidth), contentWidth)} inverse />
       return <SelectableText y={baseY} col={left} text={item.label} />
-    case 'checkbox':
+    case 'checkbox': {
+      const label = padToWidth(truncate(item.label, contentWidth - 2), contentWidth - 2)
       if (focused) {
         return (
           <Box>
-            <SelectableText y={baseY} col={left} text={padToWidth(truncate(item.label, contentWidth - 2), contentWidth - 2)} inverse />
+            <SelectableText y={baseY} col={left} text={label} inverse />
             {item.checked && (
               <SelectableText y={baseY} col={left + contentWidth - 2} text={' \u2713'} color={colors.success} inverse />
             )}
@@ -170,9 +175,12 @@ function renderItem(
       }
       return (
         <Box>
-          <SelectableText y={baseY} col={left} text={item.label} />
-          {item.checked && <SelectableText y={baseY} col={left + textWidth(item.label)} text={' \u2713'} color={colors.success} />}
+          <SelectableText y={baseY} col={left} text={label} />
+          {item.checked && (
+            <SelectableText y={baseY} col={left + contentWidth - 2} text={' \u2713'} color={colors.success} />
+          )}
         </Box>
       )
+    }
   }
 }

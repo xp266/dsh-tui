@@ -33,34 +33,42 @@ describe('dialog focus navigation', () => {
 })
 
 describe('dialog row heights', () => {
+  const WIDTH = 40
   const inputRow: DialogRow = {
     items: [{ type: 'input', label: 'L', value: '', onChange: () => {} }],
   }
 
   it('measures input rows as three lines, select and others as one', () => {
-    expect(rowHeight(rows(1)[0])).toBe(1)
-    expect(rowHeight(inputRow)).toBe(3)
-    expect(rowHeight({ items: [{ type: 'select', label: 'S', value: 'a', options: ['a'], onChange: () => {} }] })).toBe(1)
+    expect(rowHeight(rows(1)[0]!, WIDTH)).toBe(1)
+    expect(rowHeight(inputRow, WIDTH)).toBe(3)
+    expect(rowHeight({ items: [{ type: 'select', label: 'S', value: 'a', options: ['a'], onChange: () => {} }] }, WIDTH)).toBe(1)
   })
 
   it('measures spaced select rows as two lines', () => {
-    expect(rowHeight({ items: [{ type: 'select', label: 'S', value: 'a', options: ['a'], onChange: () => {}, spaced: true }] })).toBe(2)
+    expect(rowHeight({ items: [{ type: 'select', label: 'S', value: 'a', options: ['a'], onChange: () => {}, spaced: true }] }, WIDTH)).toBe(2)
+  })
+
+  it('grows input rows by one line per wrapped value line', () => {
+    const long: DialogRow = { items: [{ type: 'input', label: 'L', value: 'x'.repeat(100), onChange: () => {} }] }
+    expect(rowHeight(long, WIDTH)).toBe(2 + Math.ceil(100 / WIDTH))
+    expect(rowHeight(long, 10)).toBe(12)
   })
 
   it('accumulates row offsets', () => {
-    expect(rowTopOffset([rows(1)[0], inputRow, rows(1)[0]], 0)).toBe(0)
-    expect(rowTopOffset([rows(1)[0], inputRow, rows(1)[0]], 1)).toBe(1)
-    expect(rowTopOffset([rows(1)[0], inputRow, rows(1)[0]], 2)).toBe(4)
+    expect(rowTopOffset([rows(1)[0]!, inputRow, rows(1)[0]!], 0, WIDTH)).toBe(0)
+    expect(rowTopOffset([rows(1)[0]!, inputRow, rows(1)[0]!], 1, WIDTH)).toBe(1)
+    expect(rowTopOffset([rows(1)[0]!, inputRow, rows(1)[0]!], 2, WIDTH)).toBe(4)
   })
 })
 
 describe('modal scroll adjustment', () => {
+  const WIDTH = 40
   it('keeps the focused row visible in the content window', () => {
     const flat = rows(20)
-    expect(adjustScroll(flat, { row: 0, col: 0 }, 5, 5)).toBe(0)
-    expect(adjustScroll(flat, { row: 4, col: 0 }, 5, 5)).toBe(4)
-    expect(adjustScroll(flat, { row: 9, col: 0 }, 5, 5)).toBe(5)
-    expect(adjustScroll(flat, { row: 10, col: 0 }, 5, 5)).toBe(6)
+    expect(adjustScroll(flat, { row: 0, col: 0 }, 5, 5, WIDTH)).toBe(0)
+    expect(adjustScroll(flat, { row: 4, col: 0 }, 5, 5, WIDTH)).toBe(4)
+    expect(adjustScroll(flat, { row: 9, col: 0 }, 5, 5, WIDTH)).toBe(5)
+    expect(adjustScroll(flat, { row: 10, col: 0 }, 5, 5, WIDTH)).toBe(6)
   })
 
   it('accounts for three-line input rows', () => {
@@ -68,16 +76,24 @@ describe('modal scroll adjustment', () => {
       { items: [{ type: 'button', label: 'b', onPress: () => {} }] },
       { items: [{ type: 'input', label: 'i', value: '', onChange: () => {} }] },
     ]
-    expect(adjustScroll(mixed, { row: 1, col: 0 }, 0, 2)).toBe(2)
-    expect(adjustScroll(mixed, { row: 0, col: 0 }, 4, 2)).toBe(0)
+    expect(adjustScroll(mixed, { row: 1, col: 0 }, 0, 2, WIDTH)).toBe(2)
+    expect(adjustScroll(mixed, { row: 0, col: 0 }, 4, 2, WIDTH)).toBe(0)
+  })
+
+  it('accounts for grown wrapped input rows', () => {
+    const mixed: DialogRow[] = [
+      { items: [{ type: 'button', label: 'b', onPress: () => {} }] },
+      { items: [{ type: 'input', label: 'i', value: 'x'.repeat(80), onChange: () => {} }] },
+    ]
+    expect(adjustScroll(mixed, { row: 1, col: 0 }, 0, 2, WIDTH)).toBe(3)
   })
 
   it('scrolls content rows only, so the fixed search row never strands the list', () => {
     const flat = rows(20)
     const viewport = 5
-    const scrolled = adjustScroll(flat, { row: 19, col: 0 }, 0, viewport)
+    const scrolled = adjustScroll(flat, { row: 19, col: 0 }, 0, viewport, WIDTH)
     expect(scrolled).toBe(15)
-    expect(adjustScroll(flat, { row: 0, col: 0 }, scrolled, viewport)).toBe(0)
+    expect(adjustScroll(flat, { row: 0, col: 0 }, scrolled, viewport, WIDTH)).toBe(0)
   })
 })
 

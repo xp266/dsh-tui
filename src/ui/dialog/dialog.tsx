@@ -3,7 +3,7 @@ import type { ReactNode, Ref } from 'react'
 import { useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { colors } from '../../theme.ts'
 import { isMouseResidue } from '../../terminal/mouse.ts'
-import { textWidth, truncate, wrapLines } from '../../utils/text.ts'
+import { locToPoint, textWidth, truncate, wrapLines } from '../../utils/text.ts'
 import { SelectableText } from '../selection.tsx'
 import { renderRow, selectBlock, CAROUSEL_BUTTON_WIDTH } from './dialog-item.tsx'
 
@@ -39,22 +39,23 @@ export function moveFocus(rows: DialogRow[], focus: DialogFocus, key: 'up' | 'do
   }
 }
 
-export function rowHeight(row: DialogRow): number {
-  if (row.items.some(item => item.type === 'input')) return 3
+export function rowHeight(row: DialogRow, width: number): number {
+  const input = row.items.find((item): item is Extract<DialogItem, { type: 'input' }> => item.type === 'input')
+  if (input !== undefined) return 2 + wrapLines(input.value, width).length
   if (row.items.some(item => item.type === 'select' && item.spaced)) return 2
   if (row.items.some(item => item.type === 'search')) return 2
   return 1
 }
 
-export function rowTopOffset(rows: DialogRow[], rowIndex: number): number {
+export function rowTopOffset(rows: DialogRow[], rowIndex: number, width: number): number {
   let offset = 0
-  for (let i = 0; i < rowIndex; i++) offset += rowHeight(rows[i])
+  for (let i = 0; i < rowIndex; i++) offset += rowHeight(rows[i]!, width)
   return offset
 }
 
-export function adjustScroll(rows: DialogRow[], focus: DialogFocus, scrollTop: number, contentHeight: number): number {
-  const top = rowTopOffset(rows, focus.row)
-  const bottom = top + rowHeight(rows[focus.row] ?? { items: [] }) - 1
+export function adjustScroll(rows: DialogRow[], focus: DialogFocus, scrollTop: number, contentHeight: number, width: number): number {
+  const top = rowTopOffset(rows, focus.row, width)
+  const bottom = top + rowHeight(rows[focus.row] ?? { items: [] }, width) - 1
   if (top < scrollTop) return top
   if (bottom >= scrollTop + contentHeight) return Math.max(0, bottom - contentHeight + 1)
   return scrollTop
@@ -102,11 +103,11 @@ export interface DialogHandle {
   clickAt(y: number, x: number): void
 }
 
-export function hitRowIndex(y: number, top: number, titleLines: number, rows: DialogRow[], scrollTop = 0): number | null {
+export function hitRowIndex(y: number, top: number, titleLines: number, rows: DialogRow[], scrollTop = 0, width = Number.POSITIVE_INFINITY): number | null {
   const localY = y - top - 1 - titleLines + scrollTop
   let offset = 0
   for (let i = 0; i < rows.length; i++) {
-    const height = rowHeight(rows[i])
+    const height = rowHeight(rows[i]!, width)
     if (localY >= offset && localY < offset + height) return i
     offset += height
   }
@@ -161,7 +162,9 @@ export function Dialog({
       : rows
   const displayRows = search ? [searchRow, ...filteredRows] : rows
   const contentRows = search ? filteredRows : rows
-  const fixedHeight = search ? rowHeight(searchRow) : 0
+  const windowWidth = Math.min(width + 2, columns)
+  const contentWidth = Math.max(1, windowWidth - 2)
+  const fixedHeight = search ? rowHeight(searchRow, contentWidth) : 0
   const focusMinRow = search ? 1 : 0
   const focusMaxRow = Math.max(focusMinRow, displayRows.length - 1)
   useEffect(() => {
@@ -172,11 +175,9 @@ export function Dialog({
     )
   }, [displayRows, focusMinRow, focusMaxRow])
   const titleLines = title === undefined ? 0 : 2
-  const windowWidth = Math.min(width + 2, columns)
-  const contentWidth = Math.max(1, windowWidth - 2)
   const footerRows = wrapFooter(footer, contentWidth)
   const extraHeight = footerRows.length > 0 ? 1 + footerRows.length : 0
-  const desired = displayRows.reduce((sum, row) => sum + rowHeight(row), 0) + titleLines + extraHeight + 2
+  const desired = displayRows.reduce((sum, row) => sum + rowHeight(row, contentWidth), 0) + titleLines + extraHeight + 2
   const windowHeight = Math.min(desired, maxHeight, totalRows)
   const contentHeight = Math.max(1, windowHeight - 2 - titleLines - extraHeight)
   const viewportHeight = Math.max(1, contentHeight - fixedHeight)
@@ -193,6 +194,7 @@ export function Dialog({
     viewportHeight,
     focusMinRow,
     focusMaxRow,
+    contentWidth,
   })
   live.current.rows = displayRows
   live.current.contentRows = contentRows
@@ -203,6 +205,7 @@ export function Dialog({
   live.current.viewportHeight = viewportHeight
   live.current.focusMinRow = focusMinRow
   live.current.focusMaxRow = focusMaxRow
+  live.current.contentWidth = contentWidth
   const safeFocus: DialogFocus = {
     row: Math.min(Math.max(focus.row, focusMinRow), focusMaxRow),
     col: Math.min(focus.col, Math.max(0, (displayRows[focus.row]?.items.length ?? 1) - 1)),
@@ -219,14 +222,18 @@ export function Dialog({
     setCursorPosition({ x, y })
   } else if (current?.type === 'input' || current?.type === 'select' || current?.type === 'search') {
     const contentIndex = Math.max(0, safeFocus.row - (search ? 1 : 0))
-    const rowOffset = rowTopOffset(contentRows, contentIndex)
-    const valueLine = current.type === 'select' || current.type === 'search' ? rowOffset : rowOffset + 1
+    const rowOffset = rowTopOffset(contentRows, contentIndex, contentWidth)
+    const point = current.type === 'input' ? locToPoint(current.value, contentWidth, cursor) : undefined
+    const valueLine = current.type === 'select' || current.type === 'search'
+      ? rowOffset
+      : rowOffset + 1 + (point?.row ?? 0)
     const y = top + 1 + titleLines + fixedHeight + valueLine - scrollTop
     const block = current.type === 'select' ? selectBlock(contentWidth, current.value) : undefined
-    const prefix = current.type === 'select' ? undefined : current.value.slice(0, cursor)
     const x = block !== undefined
       ? left + 1 + block.blockStart + block.cursorX
-      : left + 1 + textWidth(prefix ?? '')
+      : point !== undefined
+        ? left + 1 + point.col
+        : left + 1 + textWidth(current.value.slice(0, cursor))
     setCursorPosition({ x, y })
   } else {
     setCursorPosition(undefined)
@@ -251,7 +258,7 @@ export function Dialog({
       const clamped = { ...next, row: Math.min(Math.max(next.row, live.current.focusMinRow), live.current.focusMaxRow) }
       setFocus(clamped)
       const contentRow = Math.max(0, clamped.row - (search ? 1 : 0))
-      setScrollTop(adjustScroll(live.current.contentRows, { row: contentRow, col: clamped.col }, liveScroll, liveContentHeight))
+      setScrollTop(adjustScroll(live.current.contentRows, { row: contentRow, col: clamped.col }, liveScroll, liveContentHeight, live.current.contentWidth))
     }
     const liveCurrent = liveRows[liveFocus.row]?.items[liveFocus.col]
     const rawArrow = arrowFromRaw(input)
@@ -369,14 +376,14 @@ export function Dialog({
   useImperativeHandle(ref, () => ({
     clickAt(y: number, x: number) {
       if (y < top || y >= top + windowHeight || x < left || x >= left + windowWidth) return
-      const rowIndex = hitRowIndex(y, top + fixedHeight, titleLines, contentRows, scrollTop)
+      const rowIndex = hitRowIndex(y, top + fixedHeight, titleLines, contentRows, scrollTop, contentWidth)
       if (rowIndex === null) return
       const rowSpec = contentRows[rowIndex]
       const selectItem = rowSpec?.items.find(item => item.type === 'select')
       if (selectItem?.type === 'select' && selectItem.options.length > 1) {
         const block = selectBlock(contentWidth, selectItem.value)
         const blockStartX = left + 1 + block.blockStart
-        const rowOffset = rowTopOffset(contentRows, rowIndex)
+        const rowOffset = rowTopOffset(contentRows, rowIndex, contentWidth)
         const rowY = top + 1 + titleLines + fixedHeight + rowOffset - scrollTop
         if (y === rowY) {
           if (x >= blockStartX && x < blockStartX + CAROUSEL_BUTTON_WIDTH) {
@@ -394,13 +401,13 @@ export function Dialog({
       const next = { row: Math.min(Math.max(rowIndex + (search ? 1 : 0), focusMinRow), focusMaxRow), col: 0 }
       setFocus(next)
       const contentRow = Math.max(0, Math.min(rowIndex, contentRows.length - 1))
-      setScrollTop(adjustScroll(contentRows, { row: contentRow, col: 0 }, scrollTop, viewportHeight))
+      setScrollTop(adjustScroll(contentRows, { row: contentRow, col: 0 }, scrollTop, viewportHeight, contentWidth))
     },
   }))
   const visibleRows: ReactNode[] = []
   let offset = 0
   for (let i = 0; i < contentRows.length; i++) {
-    const height = rowHeight(contentRows[i])
+    const height = rowHeight(contentRows[i]!, contentWidth)
     if (offset + height <= scrollTop) {
       offset += height
       continue

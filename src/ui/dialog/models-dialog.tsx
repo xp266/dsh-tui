@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { Ref } from 'react'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import type { ConfiguredModel, CustomProviderForm } from '../../chat/models.ts'
@@ -44,6 +44,8 @@ export function ModelsDialog({ api, onClose, onModelSelected, ref }: ModelsDialo
   const [form, setForm] = useState<CustomProviderForm>(EMPTY_FORM)
   const [discovered, setDiscovered] = useState<LlmDiscoveredModel[]>([])
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set())
+  const [fetching, setFetching] = useState(false)
+  const fetchingRef = useRef(false)
   const selectModel = async (model: ConfiguredModel) => {
     try {
       await api.selectModel(model.provider, model.id)
@@ -67,6 +69,10 @@ export function ModelsDialog({ api, onClose, onModelSelected, ref }: ModelsDialo
     setForm(current => ({ ...current, [key]: value }))
   }
   const submitCustom = async () => {
+    if (fetchingRef.current) return
+    fetchingRef.current = true
+    setError(null)
+    setFetching(true)
     try {
       const found = await api.fetchCustomModels(form)
       if (found.length === 0) {
@@ -79,6 +85,9 @@ export function ModelsDialog({ api, onClose, onModelSelected, ref }: ModelsDialo
       setWindow({ kind: 'select-models' })
     } catch (cause) {
       setError(errorText(cause))
+    } finally {
+      fetchingRef.current = false
+      setFetching(false)
     }
   }
   const toggleModel = (id: string) => {
@@ -151,6 +160,7 @@ export function ModelsDialog({ api, onClose, onModelSelected, ref }: ModelsDialo
   }))
   const footerLines: DialogFooterLine[] = [
     ...(window.kind === 'select-models' ? [{ text: 'Press Space to toggle, Enter to confirm', color: colors.dialogHintText }] : []),
+    ...(fetching && window.kind === 'add-custom' ? [{ text: 'Fetching models...' }] : []),
     ...(error !== null ? [{ text: error, color: colors.errorText }] : []),
   ]
   if (window.kind === 'list') {

@@ -1,6 +1,7 @@
 import { act } from 'react'
 import { render } from 'ink-testing-library'
 import { describe, expect, it, vi } from 'vitest'
+import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import type { ChatBridge } from '../src/chat/bridge.ts'
 import { App } from '../src/ui/app.tsx'
 
@@ -67,5 +68,87 @@ describe('App dialog keyboard', () => {
     })
     const after = lastFrame() ?? ''
     expect(focusedSegment(after)).toContain('+Add Custom Model')
+  })
+
+  it('shows fetching feedback while discovering custom models and ignores repeated enter', async () => {
+    const bridge = fakeBridge()
+    let resolveFetch: ((models: LlmDiscoveredModel[]) => void) | undefined
+    bridge.fetchCustomModels = vi.fn(
+      () =>
+        new Promise<LlmDiscoveredModel[]>(resolve => {
+          resolveFetch = resolve
+        }),
+    )
+    const { lastFrame, stdin } = render(<App bridge={bridge} />)
+    await openModelsDialog(stdin)
+    act(() => {
+      stdin.write('\u001b[B')
+    })
+    act(() => {
+      stdin.write('\r')
+    })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    for (let i = 0; i < 3; i++) {
+      act(() => {
+        stdin.write('\u001b[B')
+      })
+    }
+    await new Promise(resolve => setTimeout(resolve, 20))
+    act(() => {
+      stdin.write('\r')
+    })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(lastFrame() ?? '').toContain('Fetching models...')
+    expect(bridge.fetchCustomModels).toHaveBeenCalledTimes(1)
+    act(() => {
+      stdin.write('\r')
+    })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(bridge.fetchCustomModels).toHaveBeenCalledTimes(1)
+    act(() => {
+      resolveFetch?.([{ id: 'm1', name: 'Model One' } as LlmDiscoveredModel])
+    })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('Select Models')
+    expect(frame).toContain('Model One')
+    expect(frame).not.toContain('Fetching models...')
+  })
+
+  it('reports fetch errors in the footer after the fetching hint clears', async () => {
+    const bridge = fakeBridge()
+    let rejectFetch: ((cause: Error) => void) | undefined
+    bridge.fetchCustomModels = vi.fn(
+      () =>
+        new Promise<LlmDiscoveredModel[]>((_resolve, reject) => {
+          rejectFetch = reject
+        }),
+    )
+    const { lastFrame, stdin } = render(<App bridge={bridge} />)
+    await openModelsDialog(stdin)
+    act(() => {
+      stdin.write('\u001b[B')
+    })
+    act(() => {
+      stdin.write('\r')
+    })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    for (let i = 0; i < 3; i++) {
+      act(() => {
+        stdin.write('\u001b[B')
+      })
+    }
+    await new Promise(resolve => setTimeout(resolve, 20))
+    act(() => {
+      stdin.write('\r')
+    })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    act(() => {
+      rejectFetch?.(new Error('network unreachable'))
+    })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('network unreachable')
+    expect(frame).not.toContain('Fetching models...')
   })
 })

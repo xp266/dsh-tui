@@ -57,4 +57,16 @@ describe('dialog hitRowIndex', () => {
     expect(hitRowIndex(TOP + 1 + TITLE_LINES + fixedHeight + 2, TOP + fixedHeight, TITLE_LINES, list, 0)).toBe(1)
     expect(hitRowIndex(TOP + 1 + TITLE_LINES + fixedHeight + 4, TOP + fixedHeight, TITLE_LINES, list, 0)).toBeNull()
   })
+
+  it('maps clicks onto wrapped input rows using the dialog width', () => {
+    const list: DialogRow[] = [
+      { items: [{ type: 'input', label: 'URL', value: 'x'.repeat(80), onChange: () => {} }] },
+      { items: [{ type: 'button', label: 'save', onPress: () => {} }] },
+    ]
+    expect(hitRowIndex(TOP + 1 + TITLE_LINES, TOP, TITLE_LINES, list, 0, 40)).toBe(0)
+    expect(hitRowIndex(TOP + 1 + TITLE_LINES + 2, TOP, TITLE_LINES, list, 0, 40)).toBe(0)
+    expect(hitRowIndex(TOP + 1 + TITLE_LINES + 3, TOP, TITLE_LINES, list, 0, 40)).toBe(0)
+    expect(hitRowIndex(TOP + 1 + TITLE_LINES + 4, TOP, TITLE_LINES, list, 0, 40)).toBe(1)
+    expect(hitRowIndex(TOP + 1 + TITLE_LINES + 5, TOP, TITLE_LINES, list, 0, 40)).toBeNull()
+  })
 })
