@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { colToCharIndex } from '../utils/text.ts'
+import { charWidth } from '../utils/text.ts'
 import { selectedRange } from '../model/selection.ts'
 import type { LineSelection } from '../model/selection.ts'
 
@@ -19,20 +19,22 @@ export interface ScreenCapture {
 
 export function createScreenCapture(): ScreenCapture {
   const real = process.stdout
-  let grid: string[] = []
+  let grid: string[][] = []
   let cursorX = 0
   let cursorY = 0
   let pending = ''
 
   function ensureRow(y: number): void {
-    while (grid.length <= y) grid.push('')
+    while (grid.length <= y) grid.push([])
   }
 
   function setCell(y: number, x: number, ch: string): void {
     ensureRow(y)
-    let row = grid[y]!
-    if (x > row.length) row = row + ' '.repeat(x - row.length)
-    grid[y] = x < row.length ? row.slice(0, x) + ch + row.slice(x + 1) : row + ch
+    const row = grid[y]!
+    while (row.length < x) row.push(' ')
+    row[x] = ch
+    const width = charWidth(ch)
+    for (let k = 1; k < width; k++) row[x + k] = ''
   }
 
   function eraseLine(y: number, mode: number): void {
@@ -41,7 +43,7 @@ export function createScreenCapture(): ScreenCapture {
     const x = Math.max(0, Math.min(cursorX, row.length))
     if (mode === 0) grid[y] = row.slice(0, x)
     else if (mode === 1) grid[y] = row.slice(x)
-    else grid[y] = ''
+    else grid[y] = []
   }
 
   function writeText(text: string): void {
@@ -62,7 +64,7 @@ export function createScreenCapture(): ScreenCapture {
       if (cursorY < 0) cursorY = 0
       if (cursorX < 0) cursorX = 0
       setCell(cursorY, cursorX, ch)
-      cursorX += 1
+      cursorX += charWidth(ch)
     }
   }
 
@@ -105,7 +107,7 @@ export function createScreenCapture(): ScreenCapture {
         } else if (mode === 0) {
           if (grid.length > cursorY + 1) grid = grid.slice(0, cursorY + 1)
         } else {
-          for (let y = 0; y <= cursorY && y < grid.length; y++) grid[y] = ''
+          for (let y = 0; y <= cursorY && y < grid.length; y++) grid[y] = []
         }
         break
       }
@@ -188,10 +190,7 @@ export function createScreenCapture(): ScreenCapture {
     const right = Math.max(left, rect.right)
     const lines: string[] = []
     for (let y = top; y <= bottom; y++) {
-      const row = grid[y] ?? ''
-      const startIndex = colToCharIndex(row, left)
-      const endIndex = colToCharIndex(row, right)
-      lines.push(row.slice(startIndex, endIndex))
+      lines.push((grid[y] ?? []).slice(left, right).join(''))
     }
     return lines.join('\n').replace(/[ \t]+$/gm, '').replace(/\n+$/, '')
   }
@@ -206,24 +205,24 @@ export function createScreenCapture(): ScreenCapture {
     const bottom = Math.min(Math.max(selection.anchorRow, selection.focusRow), grid.length - 1)
     const lines: string[] = []
     for (let y = top; y <= bottom; y++) {
-      const row = grid[y] ?? ''
-      if (isBlockOnly(row)) {
+      const row = grid[y] ?? []
+      if (isBlockOnly(row.join(''))) {
         lines.push('')
         continue
       }
       const range = selectedRange(selection, y)
       if (range === null) continue
-      const endCol = Math.min(range.end, colToCharIndex(row, row.length))
-      const startIndex = colToCharIndex(row, Math.max(0, range.start))
-      const endIndex = colToCharIndex(row, Math.max(0, endCol))
-      if (startIndex < endIndex) lines.push(row.slice(startIndex, endIndex))
+      const start = Math.max(0, range.start)
+      const end = range.end === Infinity ? undefined : Math.max(start, range.end)
+      const text = row.slice(start, end).join('')
+      if (text.length > 0) lines.push(text)
     }
     return lines.join('\n').replace(/[ \t]+$/gm, '').replace(/\n+$/, '')
   }
 
   function rowHasText(y: number): boolean {
     if (y < 0 || y >= grid.length) return false
-    const row = grid[y] ?? ''
+    const row = (grid[y] ?? []).join('')
     return !isBlockOnly(row) && row.trim() !== ''
   }
 

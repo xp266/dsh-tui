@@ -21,6 +21,22 @@ describe('screen capture', () => {
     expect(capture.extract({ top: 0, bottom: 0, left: 2, right: 6 })).toBe('中文')
   })
 
+  it('keeps capture columns aligned with the terminal after wide characters', () => {
+    const capture = createScreenCapture()
+    capture.stream.write('\x1b[G你好\x1b[13G/home/xp\x1b[K')
+    const selection = { anchorRow: 0, anchorCol: 12, focusRow: 0, focusCol: 20, inMessage: true }
+    expect(capture.extractSelection(selection)).toBe('/home/xp')
+  })
+
+  it('copies full right-aligned paths on rows with CJK titles', () => {
+    const capture = createScreenCapture()
+    capture.stream.write('\x1b[G列出你的全部工具的名称\x1b[34G/home/xp266/github/deepseek-harness\x1b[K')
+    const selection = { anchorRow: 0, anchorCol: 0, focusRow: 0, focusCol: 80, inMessage: true }
+    expect(capture.extractSelection(selection)).toBe(
+      '列出你的全部工具的名称' + ' '.repeat(11) + '/home/xp266/github/deepseek-harness',
+    )
+  })
+
   it('applies cursor positioning sequences', () => {
     const capture = createScreenCapture()
     capture.stream.write('\x1b[Gline one\nline two\x1b[K')

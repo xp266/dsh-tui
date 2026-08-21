@@ -10,6 +10,18 @@ import type { Message } from '../../model/message.ts'
 
 const WHEEL_SCROLL_LINES = 3
 
+export interface HintRegion {
+  top: number
+  bottom: number
+}
+
+export function hintRegion(rows: number, hint: CommandHintState | null, dialogOpen: boolean): HintRegion | null {
+  if (hint === null || dialogOpen) return null
+  const bottom = rows - INPUT_BAR_HEIGHT - 2
+  const top = Math.max(0, bottom - hint.commands.length + 1)
+  return { top, bottom }
+}
+
 export interface MouseSelectionOptions {
   messages: Message[]
   columns: number
@@ -71,6 +83,16 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
     }
     const toContentRow = (screenRow: number) =>
       inMessageArea(screenRow) ? screenRow + scrollTopRef.current : screenRow
+    const activeHintRegion = () => hintRegion(rowsRef.current, hintStateRef.current, dialogOpenRef.current)
+    const focusRowFor = (current: LineSelection, eventY: number): number => {
+      if (!current.inMessage) {
+        const region = activeHintRegion()
+        if (region !== null && current.anchorRow >= region.top && current.anchorRow <= region.bottom) {
+          return Math.max(region.top, Math.min(eventY, region.bottom))
+        }
+      }
+      return clampFocusRow(current.inMessage, eventY, scrollTopRef.current, messageHeightRef.current, rowsRef.current, dialogOpenRef.current)
+    }
     const controller = createMouseController(event => {
       switch (event.type) {
         case 'down': {
@@ -81,6 +103,13 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
           const contentRow = toContentRow(event.y)
           const hit = rowInfoAt(messagesRef.current, widthRef.current, contentRow)
           const anchorable = screenRef.current?.rowHasText(event.y) ?? false
+          const region = activeHintRegion()
+          if (region !== null && event.y >= region.top && event.y <= region.bottom) {
+            if (anchorable) {
+              setSelection({ anchorRow: event.y, anchorCol: event.x, focusRow: event.y, focusCol: event.x, inMessage: false })
+            }
+            return
+          }
           const anchorInMessage = inMessageArea(event.y)
           if (dialogOpenRef.current) {
             dialogClickCandidateRef.current = { x: event.x, y: event.y }
@@ -127,7 +156,7 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
           }
           setSelection(current => (current === null ? current : {
             ...current,
-            focusRow: clampFocusRow(current.inMessage, event.y, scrollTopRef.current, messageHeightRef.current, rowsRef.current, dialogOpenRef.current),
+            focusRow: focusRowFor(current, event.y),
             focusCol: event.x,
           }))
           return

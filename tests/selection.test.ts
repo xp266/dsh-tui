@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { clampFocusRow, toScreenSelection } from '../src/model/selection.ts'
 import type { LineSelection } from '../src/model/selection.ts'
+import { hintRegion } from '../src/ui/hooks/use-mouse-selection.ts'
 
 const MESSAGE_HEIGHT = 18
 
@@ -89,5 +90,21 @@ describe('clampFocusRow', () => {
   it('keeps a dialog-anchored focus anywhere on screen', () => {
     expect(clampFocusRow(false, 5, 0, MESSAGE_HEIGHT, 24, true)).toBe(5)
     expect(clampFocusRow(false, 23, 0, MESSAGE_HEIGHT, 24, true)).toBe(23)
+  })
+})
+describe('hintRegion', () => {
+  const hint = { commands: [1, 2, 3].map(i => ({ command: `/c${i}`, description: 'd' })), selectedIndex: 0 }
+
+  it('spans the rows directly above the input bar', () => {
+    expect(hintRegion(24, hint, false)).toEqual({ top: 15, bottom: 17 })
+  })
+
+  it('returns null while a dialog is open or no hints are shown', () => {
+    expect(hintRegion(24, hint, true)).toBeNull()
+    expect(hintRegion(24, null, false)).toBeNull()
+  })
+
+  it('clamps the top at the screen edge for tiny terminals', () => {
+    expect(hintRegion(9, { commands: Array.from({ length: 6 }, (_, i) => ({ command: `/c${i}`, description: 'd' })), selectedIndex: 0 }, false)).toEqual({ top: 0, bottom: 2 })
   })
 })

@@ -15,6 +15,7 @@ import { useScroll } from './hooks/use-scroll.ts'
 import { useMouseSelection } from './hooks/use-mouse-selection.ts'
 import { InputBar, INPUT_BAR_HEIGHT } from './input/input-bar.tsx'
 import { MessageList } from './message/message-list.tsx'
+import { CloseGuardContext } from './dialog/dialog.tsx'
 import { ModelsDialog } from './dialog/models-dialog.tsx'
 import { SessionsDialog } from './dialog/sessions-dialog.tsx'
 import { PresetsDialog } from './dialog/presets-dialog.tsx'
@@ -190,21 +191,23 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
           </Box>
         </SelectionContext.Provider>
       {dialog !== null && bridge !== undefined && (
-        <SelectionContext.Provider value={chromeSelection}>
-          {dialogView(dialog, bridge, {
-            dialogRef,
-            onClose: () => setDialog(null),
-            onModelSelected: (_provider, model) => setModelName(model),
-            onBeforeSessionSelected: () => {
-              resetChat()
-              clearSelection()
-            },
-            onSessionSelected: () => {
-              setSessionTick(tick => tick + 1)
-              applyScroll(Infinity)
-            },
-          })}
-        </SelectionContext.Provider>
+        <CloseGuardContext.Provider value={selection !== null}>
+          <SelectionContext.Provider value={chromeSelection}>
+            {dialogView(dialog, bridge, {
+              dialogRef,
+              onClose: () => setDialog(null),
+              onModelSelected: (_provider, model) => setModelName(model),
+              onBeforeSessionSelected: () => {
+                resetChat()
+                clearSelection()
+              },
+              onSessionSelected: () => {
+                setSessionTick(tick => tick + 1)
+                applyScroll(Infinity)
+              },
+            })}
+          </SelectionContext.Provider>
+        </CloseGuardContext.Provider>
       )}
       </Box>
     </SelectionContext.Provider>

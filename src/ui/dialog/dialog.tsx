@@ -1,4 +1,5 @@
 import { Box, Text, useCursor, useInput, useStdout } from 'ink'
+import { createContext, useContext } from 'react'
 import type { ReactNode, Ref } from 'react'
 import { useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { colors } from '../../theme.ts'
@@ -103,6 +104,8 @@ export interface DialogHandle {
   clickAt(y: number, x: number): void
 }
 
+export const CloseGuardContext = createContext(false)
+
 export function hitRowIndex(y: number, top: number, titleLines: number, rows: DialogRow[], scrollTop = 0, width = Number.POSITIVE_INFINITY): number | null {
   const localY = y - top - 1 - titleLines + scrollTop
   let offset = 0
@@ -135,6 +138,7 @@ export function Dialog({
 }: DialogProps) {
   const { stdout } = useStdout()
   const { setCursorPosition } = useCursor()
+  const closeGuarded = useContext(CloseGuardContext)
   const columns = stdout?.columns ?? 80
   const totalRows = stdout?.rows ?? 24
   const [focus, setFocus] = useState<DialogFocus>({ row: search ? 1 : 0, col: 0 })
@@ -267,7 +271,7 @@ export function Dialog({
     const isLeft = key.leftArrow || rawArrow === 'left'
     const isRight = key.rightArrow || rawArrow === 'right'
     if (key.escape || (key.ctrl && input === 'c')) {
-      onClose()
+      if (!(key.ctrl && closeGuarded)) onClose()
       return
     }
     if ((isLeft || isRight) && liveCurrent?.type === 'select' && liveCurrent.options.length > 1) {
