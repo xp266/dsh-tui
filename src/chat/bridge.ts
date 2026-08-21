@@ -179,7 +179,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   let activeHandle: AgentHandle | undefined = await createAgent(currentCwd)
   let activeAgent = activeHandle.agent
   const llm = ctx.llm
-  const sessionList = cachedList(() => computeSessionList(ctx, String(activeAgent.id)), SESSION_LIST_TTL_MS)
+  const sessionList = cachedList(() => computeSessionList(ctx), SESSION_LIST_TTL_MS)
   const efforts = cachedList(() => resolveEffortSummaries(currentSelection()), EFFORT_LIST_TTL_MS)
   const presetsList = cachedList(
     async () => {
@@ -380,10 +380,19 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
         model: selection.model,
         reasoningEffort: selection.reasoningEffort,
       })
+      efforts.invalidate()
+      return
     } catch {
+    }
+    try {
       const resolved = await llm.resolveCallConfig({ provider: selection.provider, model: selection.model })
       selectionFor(activeAgent).current = resolved
+      efforts.invalidate()
+      return
+    } catch {
     }
+    const fallback = ctx.get('agentDefaultModel')?.currentSelection()
+    if (fallback !== undefined) selectionFor(activeAgent).current = fallback
     efforts.invalidate()
   }
 

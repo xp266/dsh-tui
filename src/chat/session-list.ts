@@ -18,11 +18,12 @@ export function sessionTime(session: SessionSummary): number {
 }
 
 /**
- * Session picker data, mirroring the Host's `listVisibleSessionSummaries`:
- * all live sessions plus persisted cold sessions with a cwd, newest-first,
+ * Session picker data, mirroring the Host's `listVisibleSessionSummaries`
+ * with the client-side visibility rules: live sessions plus persisted cold
+ * sessions with a cwd, blank and subagent-origin rows hidden, newest-first,
  * without any workspace filtering (the picker labels ungrouped sessions).
  */
-export async function computeSessionList(ctx: Context, currentId?: string): Promise<SessionSummary[]> {
+export async function computeSessionList(ctx: Context): Promise<SessionSummary[]> {
   const workspacePaths = collectWorkspacePaths(ctx)
   const archived = collectArchivedIds(ctx)
   const summaries: SessionSummary[] = []
@@ -35,7 +36,7 @@ export async function computeSessionList(ctx: Context, currentId?: string): Prom
     attached.add(id)
     if (session.header.origin === 'subagent') continue
     if (archived.has(id)) continue
-    if (isBlankSession(session.events) && id !== currentId) continue
+    if (isBlankSession(session.events)) continue
     const title = titleService?.get?.(session)?.title ?? firstUserText(session.events)
     summaries.push(toSummary(id, title, session.header.cwd, session.header.createdAt, lastPromptAt(session.events), workspacePaths))
   }
