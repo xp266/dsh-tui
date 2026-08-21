@@ -13,7 +13,7 @@ import { useTerminalSize } from './hooks/use-terminal-size.ts'
 import { useChatEvents } from './hooks/use-chat-events.ts'
 import { useScroll } from './hooks/use-scroll.ts'
 import { useMouseSelection } from './hooks/use-mouse-selection.ts'
-import { InputBar, INPUT_BAR_HEIGHT } from './input/input-bar.tsx'
+import { InputBar, INPUT_BAR_MIN_HEIGHT } from './input/input-bar.tsx'
 import { MessageList } from './message/message-list.tsx'
 import { CloseGuardContext } from './dialog/dialog.tsx'
 import { ModelsDialog } from './dialog/models-dialog.tsx'
@@ -40,9 +40,10 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const { columns, rows } = useTerminalSize()
   const [dialog, setDialog] = useState<DialogKind | null>(null)
   const [hintState, setHintState] = useState<CommandHintState | null>(null)
+  const [inputHeight, setInputHeight] = useState(INPUT_BAR_MIN_HEIGHT)
   const [, setSessionTick] = useState(0)
   const { messages, modelName, setModelName, updateMessages, resetChat } = useChatEvents(bridge, dialog !== null)
-  const messageHeight = Math.max(1, rows - INPUT_BAR_HEIGHT - 1)
+  const messageHeight = Math.max(1, rows - inputHeight - 1)
   const total = useMemo(() => rowCount(messages, columns), [messages, columns])
   const { scrollTop, applyScroll } = useScroll(total, messageHeight, messages)
   const dialogRef = useRef<DialogHandle | null>(null)
@@ -60,6 +61,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     rows,
     scrollTop,
     messageHeight,
+    inputHeight,
     dialogOpen: dialog !== null,
     hint: hintState,
     screen,
@@ -142,11 +144,12 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
             onSend={handleSend}
             interactive={dialog === null}
             onHintChange={setHintState}
+            onHeightChange={setInputHeight}
           />
           {hintState !== null && dialog === null && (
             <Box
               position="absolute"
-              top={Math.max(0, rows - INPUT_BAR_HEIGHT - 1 - hintState.commands.length)}
+              top={Math.max(0, rows - inputHeight - 1 - hintState.commands.length)}
               left={2}
               width={Math.max(1, columns - 4)}
               flexDirection="column"
@@ -156,7 +159,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
                 const blockWidth = Math.max(1, columns - 4)
                 const line = '  ' + padToWidth(command.command, 20) + command.description
                 const filled = padToWidth(truncate(line, blockWidth), blockWidth)
-                const hintY = Math.max(0, rows - INPUT_BAR_HEIGHT - 1 - hintState.commands.length) + index
+                const hintY = Math.max(0, rows - inputHeight - 1 - hintState.commands.length) + index
                 return (
                   <Box key={command.command} width={blockWidth} backgroundColor={colors.dialogBackground}>
                     <SelectableText y={hintY} col={0} text={filled} inverse={selected} />

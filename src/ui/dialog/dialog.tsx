@@ -1,4 +1,4 @@
-import { Box, Text, useCursor, useInput, useStdout } from 'ink'
+import { Box, Text, useCursor, useInput, usePaste, useStdout } from 'ink'
 import { createContext, useContext } from 'react'
 import type { ReactNode, Ref } from 'react'
 import { useEffect, useImperativeHandle, useRef, useState } from 'react'
@@ -252,6 +252,18 @@ export function Dialog({
       clearTimeout(carouselPressTimer.current)
     }
   }, [])
+  usePaste(text => {
+    const liveCurrent = live.current.rows[live.current.focus.row]?.items[live.current.focus.col]
+    if (liveCurrent?.type !== 'input' && liveCurrent?.type !== 'search') return
+    const normalized = text.replace(/\r\n?/g, '\n')
+    if (normalized === '') return
+    const c = live.current.cursor
+    const next = liveCurrent.value.slice(0, c) + normalized + liveCurrent.value.slice(c)
+    liveCurrent.onChange(next)
+    live.current.value = next
+    live.current.cursor = c + normalized.length
+    setCursor(c + normalized.length)
+  })
   useInput((input, key) => {
     const liveRows = live.current.rows
     const liveFocus = live.current.focus

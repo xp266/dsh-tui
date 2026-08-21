@@ -7,9 +7,10 @@ import type { CommandHintState } from './commands.ts'
 import { useComposer } from './use-composer.ts'
 import { SelectableText } from '../selection.tsx'
 
-export const INPUT_BAR_HEIGHT = 5
+export const INPUT_BAR_MIN_HEIGHT = 5
 
-const CONTENT_ROWS = 2
+const INPUT_MIN_CONTENT_ROWS = 2
+const INPUT_MAX_CONTENT_ROWS = 8
 const INPUT_WIDTH_OFFSET = 8
 const HINT_MAX_ROWS = 7
 
@@ -23,6 +24,7 @@ interface InputBarProps {
   onSend: (text: string) => void
   interactive?: boolean
   onHintChange?: (hint: CommandHintState | null) => void
+  onHeightChange?: (height: number) => void
 }
 
 export function InputBar({
@@ -35,6 +37,7 @@ export function InputBar({
   onSend,
   interactive = true,
   onHintChange,
+  onHeightChange,
 }: InputBarProps) {
   const { stdout } = useStdout()
   const { setCursorPosition } = useCursor()
@@ -52,7 +55,18 @@ export function InputBar({
     }
   }, [])
   const commands = useMemo(() => filterCommands(value), [value])
-  const maxVisible = Math.max(1, Math.min(HINT_MAX_ROWS, totalRows - INPUT_BAR_HEIGHT - 1))
+  const lines = wrapLines(value, contentWidth)
+  const point = locToPoint(value, contentWidth, cursor)
+  const contentRows = Math.min(INPUT_MAX_CONTENT_ROWS, Math.max(INPUT_MIN_CONTENT_ROWS, lines.length))
+  const barHeight = contentRows + 3
+  const reportedHeightRef = useRef(INPUT_BAR_MIN_HEIGHT)
+  useEffect(() => {
+    if (reportedHeightRef.current !== barHeight) {
+      reportedHeightRef.current = barHeight
+      onHeightChange?.(barHeight)
+    }
+  }, [barHeight, onHeightChange])
+  const maxVisible = Math.max(1, Math.min(HINT_MAX_ROWS, totalRows - barHeight - 1))
   const hintStartRef = useRef(0)
   let hintVisibleStart = hintStartRef.current
   if (commandIndex < hintVisibleStart) {
@@ -71,16 +85,14 @@ export function InputBar({
   useEffect(() => {
     onHintChange?.(showHint ? { commands: hintCommands, selectedIndex: hintSelected } : null)
   }, [onHintChange, showHint, hintCommands, hintSelected])
-  const lines = wrapLines(value, contentWidth)
-  const point = locToPoint(value, contentWidth, cursor)
-  const visibleStart = Math.max(0, Math.min(point.row, Math.max(0, lines.length - CONTENT_ROWS)))
-  const visibleLines = Array.from({ length: CONTENT_ROWS }, (_, i) => lines[visibleStart + i] ?? '')
+  const visibleStart = Math.max(0, Math.min(point.row, Math.max(0, lines.length - contentRows)))
+  const visibleLines = Array.from({ length: contentRows }, (_, i) => lines[visibleStart + i] ?? '')
   const cursorRow = point.row - visibleStart
   if (interactive) {
     const index = colToCharIndex(visibleLines[cursorRow] ?? '', point.col)
     setCursorPosition({
       x: 4 + textWidth((visibleLines[cursorRow] ?? '').slice(0, index)),
-      y: totalRows - INPUT_BAR_HEIGHT + cursorRow,
+      y: totalRows - barHeight + cursorRow,
     })
   } else {
     setCursorPosition(undefined)
@@ -89,7 +101,7 @@ export function InputBar({
     <Box flexDirection="column">
       <EdgeBlock width={blockWidth} color={permission.color} />
       <Box
-        height={CONTENT_ROWS + 1}
+        height={contentRows + 1}
         marginLeft={2}
         width={blockWidth}
         paddingLeft={2}
@@ -99,11 +111,11 @@ export function InputBar({
       >
         {visibleLines.map((line, row) => (
           <Box key={row}>
-            <SelectableText y={totalRows - INPUT_BAR_HEIGHT + row} col={4} text={line || ' '} />
+            <SelectableText y={totalRows - barHeight + row} col={4} text={line || ' '} />
           </Box>
         ))}
         {(() => {
-          const y = totalRows - INPUT_BAR_HEIGHT + CONTENT_ROWS
+          const y = totalRows - barHeight + contentRows
           const leftMax = presetName === undefined
             ? contentWidth
             : Math.max(1, contentWidth - textWidth(presetName) - 2)

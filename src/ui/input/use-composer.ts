@@ -1,4 +1,4 @@
-import { useInput } from 'ink'
+import { useInput, usePaste } from 'ink'
 import { useRef, useState } from 'react'
 import { isMouseResidue } from '../../terminal/mouse.ts'
 import { colToCharIndex, lineBreaks, locToPoint } from '../../utils/text.ts'
@@ -29,8 +29,37 @@ export function useComposer(
   cursorRef.current = cursor
   hintOpenRef.current = hintOpen
   commandIndexRef.current = commandIndex
+  usePaste(text => {
+    if (!interactive) return
+    const normalized = text.replace(/\r\n?/g, '\n')
+    if (normalized === '') return
+    const v = valueRef.current
+    const c = cursorRef.current
+    const next = v.slice(0, c) + normalized + v.slice(c)
+    valueRef.current = next
+    cursorRef.current = c + normalized.length
+    setValue(next)
+    setCursor(c + normalized.length)
+    const open = next.startsWith('/')
+    setHintOpen(open)
+    hintOpenRef.current = open
+    if (open) {
+      setCommandIndex(0)
+      commandIndexRef.current = 0
+    }
+  }, { isActive: interactive })
   useInput((input, key) => {
     if (!interactive) return
+    if (input === '\n') {
+      const v = valueRef.current
+      const c = cursorRef.current
+      const next = v.slice(0, c) + '\n' + v.slice(c)
+      valueRef.current = next
+      cursorRef.current = c + 1
+      setValue(next)
+      setCursor(c + 1)
+      return
+    }
     const v = valueRef.current
     const c = cursorRef.current
     const commands = filterCommands(v)

@@ -96,15 +96,19 @@ describe('hintRegion', () => {
   const hint = { commands: [1, 2, 3].map(i => ({ command: `/c${i}`, description: 'd' })), selectedIndex: 0 }
 
   it('spans the rows directly above the input bar', () => {
-    expect(hintRegion(24, hint, false)).toEqual({ top: 15, bottom: 17 })
+    expect(hintRegion(24, hint, false, 5)).toEqual({ top: 15, bottom: 17 })
+  })
+
+  it('rides above a grown input bar', () => {
+    expect(hintRegion(24, hint, false, 8)).toEqual({ top: 12, bottom: 14 })
   })
 
   it('returns null while a dialog is open or no hints are shown', () => {
-    expect(hintRegion(24, hint, true)).toBeNull()
-    expect(hintRegion(24, null, false)).toBeNull()
+    expect(hintRegion(24, hint, true, 5)).toBeNull()
+    expect(hintRegion(24, null, false, 5)).toBeNull()
   })
 
   it('clamps the top at the screen edge for tiny terminals', () => {
-    expect(hintRegion(9, { commands: Array.from({ length: 6 }, (_, i) => ({ command: `/c${i}`, description: 'd' })), selectedIndex: 0 }, false)).toEqual({ top: 0, bottom: 2 })
+    expect(hintRegion(9, { commands: Array.from({ length: 6 }, (_, i) => ({ command: `/c${i}`, description: 'd' })), selectedIndex: 0 }, false, 5)).toEqual({ top: 0, bottom: 2 })
   })
 })

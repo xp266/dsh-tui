@@ -4,7 +4,6 @@ import { createMouseController } from '../../terminal/mouse.ts'
 import { clampFocusRow, toScreenSelection } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
 import { rowInfoAt } from '../message/layout.ts'
-import { INPUT_BAR_HEIGHT } from '../input/input-bar.tsx'
 import type { CommandHintState } from '../input/commands.ts'
 import type { Message } from '../../model/message.ts'
 
@@ -15,9 +14,9 @@ export interface HintRegion {
   bottom: number
 }
 
-export function hintRegion(rows: number, hint: CommandHintState | null, dialogOpen: boolean): HintRegion | null {
+export function hintRegion(rows: number, hint: CommandHintState | null, dialogOpen: boolean, inputHeight: number): HintRegion | null {
   if (hint === null || dialogOpen) return null
-  const bottom = rows - INPUT_BAR_HEIGHT - 2
+  const bottom = rows - inputHeight - 2
   const top = Math.max(0, bottom - hint.commands.length + 1)
   return { top, bottom }
 }
@@ -28,6 +27,7 @@ export interface MouseSelectionOptions {
   rows: number
   scrollTop: number
   messageHeight: number
+  inputHeight: number
   dialogOpen: boolean
   hint: CommandHintState | null
   screen?: ScreenCapture
@@ -44,13 +44,14 @@ export interface MouseSelectionState {
 }
 
 export function useMouseSelection(options: MouseSelectionOptions): MouseSelectionState {
-  const { messages, columns, rows, scrollTop, messageHeight, dialogOpen, hint, screen, onScroll, onToggleMessage, onDialogClick } = options
+  const { messages, columns, rows, scrollTop, messageHeight, inputHeight, dialogOpen, hint, screen, onScroll, onToggleMessage, onDialogClick } = options
   const [selection, setSelection] = useState<LineSelection | null>(null)
   const messagesRef = useRef(messages)
   const widthRef = useRef(columns)
   const rowsRef = useRef(rows)
   const scrollTopRef = useRef(scrollTop)
   const messageHeightRef = useRef(messageHeight)
+  const inputHeightRef = useRef(inputHeight)
   const dialogOpenRef = useRef(dialogOpen)
   const hintStateRef = useRef<CommandHintState | null>(null)
   const screenRef = useRef<ScreenCapture | undefined>(screen)
@@ -64,6 +65,7 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
   rowsRef.current = rows
   scrollTopRef.current = scrollTop
   messageHeightRef.current = messageHeight
+  inputHeightRef.current = inputHeight
   dialogOpenRef.current = dialogOpen
   hintStateRef.current = hint
   screenRef.current = screen
@@ -74,16 +76,13 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
     const inMessageArea = (screenRow: number): boolean => {
       if (screenRow >= messageHeightRef.current) return false
       if (dialogOpenRef.current) return false
-      const hint = hintStateRef.current
-      if (hint !== null) {
-        const hintTop = rowsRef.current - INPUT_BAR_HEIGHT - 1 - hint.commands.length
-        if (screenRow >= hintTop) return false
-      }
+      const region = hintRegion(rowsRef.current, hintStateRef.current, dialogOpenRef.current, inputHeightRef.current)
+      if (region !== null && screenRow >= region.top) return false
       return true
     }
     const toContentRow = (screenRow: number) =>
       inMessageArea(screenRow) ? screenRow + scrollTopRef.current : screenRow
-    const activeHintRegion = () => hintRegion(rowsRef.current, hintStateRef.current, dialogOpenRef.current)
+    const activeHintRegion = () => hintRegion(rowsRef.current, hintStateRef.current, dialogOpenRef.current, inputHeightRef.current)
     const focusRowFor = (current: LineSelection, eventY: number): number => {
       if (!current.inMessage) {
         const region = activeHintRegion()
