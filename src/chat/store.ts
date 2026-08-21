@@ -8,10 +8,11 @@ export interface TurnState {
   thinkingIds: Map<number, string>
   assistantIds: Map<number, string>
   toolIds: Map<string, string>
+  pendingText: Map<number, string>
 }
 
 export function initialTurnState(): TurnState {
-  return { thinkingIds: new Map(), assistantIds: new Map(), toolIds: new Map() }
+  return { thinkingIds: new Map(), assistantIds: new Map(), toolIds: new Map(), pendingText: new Map() }
 }
 
 let messageCounter = 0
@@ -143,13 +144,21 @@ function appendChunk(
   const ids = kind === 'thinking' ? turn.thinkingIds : turn.assistantIds
   const id = ids.get(step)
   if (id === undefined) {
-    const fresh = nextId(kind === 'thinking' ? 'think' : 'ai')
-    ids.set(step, fresh)
-    if (kind === 'thinking') {
-      messages.push({ kind: 'collapsible', id: fresh, label: 'Thinking', body: text, running: true, collapsed: true, thinking: true })
-    } else {
-      messages.push({ kind: 'bubble', id: fresh, role: 'assistant', content: text })
+    if (kind === 'assistant') {
+      const pending = (turn.pendingText.get(step) ?? '') + text
+      if (pending.trim() === '') {
+        turn.pendingText.set(step, pending)
+        return { messages, turn }
+      }
+      turn.pendingText.delete(step)
+      const fresh = nextId('ai')
+      ids.set(step, fresh)
+      messages.push({ kind: 'bubble', id: fresh, role: 'assistant', content: pending })
+      return { messages, turn }
     }
+    const fresh = nextId('think')
+    ids.set(step, fresh)
+    messages.push({ kind: 'collapsible', id: fresh, label: 'Thinking', body: text, running: true, collapsed: true, thinking: true })
     return { messages, turn }
   }
   if (kind === 'thinking') {

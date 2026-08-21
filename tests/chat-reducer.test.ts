@@ -256,6 +256,32 @@ describe('chat event reducer', () => {
     expect(messages[1]).toMatchObject({ kind: 'bubble', role: 'assistant', content: 'B' })
   })
 
+  it('does not create a bubble for a whitespace-only step', () => {
+    const { messages } = apply([], [textDelta('\n\n', 1)])
+    expect(messages).toHaveLength(0)
+  })
+
+  it('creates the bubble once accumulated text has content', () => {
+    const { messages } = apply([], [textDelta('\n\n', 1), textDelta('Hello', 1)])
+    expect(messages).toHaveLength(1)
+    expect(messages[0]).toMatchObject({ kind: 'bubble', role: 'assistant', content: '\n\nHello' })
+  })
+
+  it('skips a whitespace-only step before a real step in the same turn', () => {
+    const { messages } = apply([], [textDelta('\n\n', 1), toolCall('c1'), toolResult('c1', 'o'), textDelta('A', 2)])
+    expect(messages).toHaveLength(2)
+    expect(messages[0]).toMatchObject({ label: 'bash', body: 'o' })
+    expect(messages[1]).toMatchObject({ role: 'assistant', content: 'A' })
+  })
+
+  it('does not carry pending whitespace into the next turn', () => {
+    let state = apply([], [textDelta('\n\n', 1)])
+    state = reduceChatEvent(state.messages, turnEnd(), state.turn)
+    const next = reduceChatEvent(state.messages, textDelta('A', 1), state.turn)
+    expect(next.messages).toHaveLength(1)
+    expect(next.messages[0]).toMatchObject({ role: 'assistant', content: 'A' })
+  })
+
   it('finalizes every Thinking row at turn end', () => {
     let state = apply([], [reasoning('r1', 1), reasoning('r2', 2)])
     const next = reduceChatEvent(state.messages, turnEnd(), state.turn)
