@@ -1,11 +1,11 @@
 import { Box, Text, useInput } from 'ink'
 import type { ReactNode } from 'react'
-import { useMemo, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { colors } from '../theme.ts'
 import { writeOsc52 } from '../terminal/clipboard.ts'
 import type { ChatBridge } from '../chat/bridge.ts'
-import { rowCount, selectionText } from './message/layout.ts'
+import { rowIndexFor, selectionText } from './message/layout.ts'
 import type { ScreenCapture } from '../terminal/screen.ts'
 import { SelectionContext } from './selection.tsx'
 import { SelectableText } from './selection.tsx'
@@ -44,7 +44,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const [, setSessionTick] = useState(0)
   const { messages, modelName, setModelName, updateMessages, resetChat } = useChatEvents(bridge, dialog !== null)
   const messageHeight = Math.max(1, rows - inputHeight - 1)
-  const total = useMemo(() => rowCount(messages, columns), [messages, columns])
+  const total = rowIndexFor(messages, columns).total
   const { scrollTop, applyScroll } = useScroll(total, messageHeight, messages)
   const dialogRef = useRef<DialogHandle | null>(null)
   const exiting = useRef(false)

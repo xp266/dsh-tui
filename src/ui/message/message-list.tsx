@@ -1,7 +1,7 @@
 import { Box, useInput } from 'ink'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Message } from '../../model/message.ts'
-import { buildRowIndex } from './layout.ts'
+import { rowIndexFor } from './layout.ts'
 import { MessageRow } from './message-row.tsx'
 
 interface MessageListProps {
@@ -16,7 +16,7 @@ interface MessageListProps {
 
 export function MessageList({ messages, height, width, scrollTop, onScroll, interactive = true, themeTick = 0 }: MessageListProps) {
   const [spinnerFrame, setSpinnerFrame] = useState(0)
-  const index = useMemo(() => buildRowIndex(messages, width), [messages, width])
+  const index = rowIndexFor(messages, width)
   const total = index.total
   const halfPage = Math.max(1, Math.ceil(height / 2))
   const hasRunning = messages.some(m => m.kind === 'collapsible' && m.running)

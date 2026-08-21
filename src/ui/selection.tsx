@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react'
+import { createContext, useContext, memo } from 'react'
 import type { ReactNode } from 'react'
 import { Text } from 'ink'
 import { colToCharIndex, textWidth } from '../utils/text.ts'
@@ -19,7 +19,7 @@ export interface SelectableTextProps {
   backgroundColor?: string
 }
 
-export function SelectableText({ y, col, text, segments, color, inverse = false, backgroundColor }: SelectableTextProps) {
+export const SelectableText = memo(function SelectableText({ y, col, text, segments, color, inverse = false, backgroundColor }: SelectableTextProps) {
   const selection = useContext(SelectionContext)
   const content = text ?? (segments?.map(segment => segment.text).join('') ?? '')
   const range = selection === null ? null : selectedRange(selection, y)
@@ -61,7 +61,7 @@ export function SelectableText({ y, col, text, segments, color, inverse = false,
       {content}
     </Text>
   )
-}
+})
 
 function renderSegments(segments: Segment[], start: number, end: number, baseColor?: string): ReactNode[] {
   const out: ReactNode[] = []

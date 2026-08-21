@@ -309,7 +309,10 @@ export function highlightCode(line: string, lang: string, dark = false): Segment
       result = null
     }
   }
-  if (highlightCache.size >= 4000) highlightCache.clear()
+  if (highlightCache.size >= 4000) {
+    const oldest = highlightCache.keys().next()
+    if (!oldest.done) highlightCache.delete(oldest.value)
+  }
   highlightCache.set(key, result)
   return result
 }

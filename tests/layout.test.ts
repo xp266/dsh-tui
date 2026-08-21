@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Message } from '../src/model/message.ts'
-import { fitLabel, rowCount, rowInfoAt, selectionText } from '../src/ui/message/layout.ts'
+import { fitLabel, rowCount, rowInfoAt, rowIndexFor, selectionText } from '../src/ui/message/layout.ts'
 import type { LineSelection } from '../src/model/selection.ts'
 import { textWidth } from '../src/utils/text.ts'
 import { mdStyles } from '../src/ui/message/markdown.ts'
@@ -168,5 +168,18 @@ describe('selection text extraction', () => {
       { kind: 'collapsible', id: 'b', label: 'Bash', body: 'ls', running: false, collapsed: false },
     ]
     expect(selectionText(messages, WIDTH, msgSel(0, 2, 2, 5))).toBe('  ↓ Bash\n\nl')
+  })
+
+  it('caches the row index per messages and width and rebuilds on change', () => {
+    const messages: Message[] = [
+      { kind: 'bubble', id: 'a', role: 'user', content: 'hello' },
+    ]
+    const first = rowIndexFor(messages, WIDTH)
+    expect(rowIndexFor(messages, WIDTH)).toBe(first)
+    expect(rowCount(messages, WIDTH)).toBe(first.total)
+    const next: Message[] = [...messages, { kind: 'bubble', id: 'b', role: 'assistant', content: 'hi' }]
+    expect(rowIndexFor(next, WIDTH)).not.toBe(first)
+    expect(rowIndexFor(messages, 40)).not.toBe(first)
+    expect(rowIndexFor(messages, WIDTH).total).toBe(first.total)
   })
 })

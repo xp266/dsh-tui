@@ -282,6 +282,27 @@ describe('chat event reducer', () => {
     expect(next.messages[0]).toMatchObject({ role: 'assistant', content: 'A' })
   })
 
+  it('reports changed only when messages visually change', () => {
+    const noise: SessionEvent = {
+      type: 'assistant/chunk',
+      seq: 1,
+      time: 0,
+      data: { turn: 1, step: 1, chunk: { type: 'usage', index: 0 } },
+    } as unknown as SessionEvent
+    expect(reduceChatEvent([], noise, initialTurnState()).changed).toBe(false)
+    let state = reduceChatEvent([], textDelta('\n\n', 1), initialTurnState())
+    expect(state.changed).toBe(false)
+    state = reduceChatEvent(state.messages, textDelta('A', 1), state.turn)
+    expect(state.changed).toBe(true)
+    const unhandled: SessionEvent = {
+      type: 'permission/preset',
+      seq: 1,
+      time: 0,
+      data: { preset: 'workspace-write' },
+    } as unknown as SessionEvent
+    expect(reduceChatEvent(state.messages, unhandled, state.turn).changed).toBe(true)
+  })
+
   it('finalizes every Thinking row at turn end', () => {
     let state = apply([], [reasoning('r1', 1), reasoning('r2', 2)])
     const next = reduceChatEvent(state.messages, turnEnd(), state.turn)

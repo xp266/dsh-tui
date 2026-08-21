@@ -2,8 +2,8 @@ import type { Message } from '../../model/message.ts'
 import { colToCharIndex, textWidth, truncate, wrapLines } from '../../utils/text.ts'
 import { selectedRange } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
-import { segmentsKey, tokenizeMarkdown, tokenizeThinking, wrapSegments } from './markdown.ts'
-import type { Segment } from './markdown.ts'
+import { createMarkdownTokenizer, createThinkingTokenizer, createSegmentWrapper, segmentsKey, wrapSegments } from './markdown.ts'
+import type { Segment, SegmentWrapper } from './markdown.ts'
 
 const BUBBLE_WIDTH_OFFSET = 8
 
@@ -36,6 +36,7 @@ interface WrapEntry {
   collapsed: boolean
   lines: string[]
   rows: Segment[][] | null
+  wrapper?: SegmentWrapper
 }
 
 const wrapCache = new Map<string, WrapEntry>()
@@ -52,18 +53,27 @@ function wrapFor(message: Message, width: number): WrapEntry {
   if (entry !== undefined && entry.content === content && entry.collapsed === collapsed) {
     return entry
   }
+  const incremental = message.kind === 'bubble' && message.role === 'assistant'
+    || message.kind === 'collapsible' && message.thinking === true
   let lines: string[]
   let rows: Segment[][] | null = null
-  if (message.kind === 'bubble' && message.role === 'assistant') {
-    rows = wrapSegments(tokenizeMarkdown(content), width - BUBBLE_WIDTH_OFFSET)
-    lines = rows.map(row => row.map(segment => segment.text).join(''))
-  } else if (message.kind === 'collapsible' && message.thinking === true) {
-    rows = wrapSegments(tokenizeThinking(content), width - BUBBLE_WIDTH_OFFSET)
-    lines = rows.map(row => row.map(segment => segment.text).join(''))
+  let wrapper: SegmentWrapper | undefined
+  if (incremental) {
+    const reusable = entry !== undefined && content.startsWith(entry.content) ? entry.wrapper : undefined
+    const active = reusable ?? createSegmentWrapper(
+      message.kind === 'collapsible' && message.thinking === true
+        ? createThinkingTokenizer()
+        : createMarkdownTokenizer(),
+      width - BUBBLE_WIDTH_OFFSET,
+    )
+    const wrapped = active.update(content)
+    rows = wrapped.rows
+    lines = wrapped.lines
+    wrapper = active
   } else {
     lines = wrapLines(content, width - BUBBLE_WIDTH_OFFSET)
   }
-  const next: WrapEntry = { content, collapsed, lines, rows }
+  const next: WrapEntry = { content, collapsed, lines, rows, wrapper }
   wrapCache.set(key, next)
   return next
 }
@@ -109,13 +119,25 @@ export function buildRowIndex(messages: Message[], width: number): RowIndex {
 }
 
 export function rowCount(messages: Message[], width: number): number {
-  let total = 0
-  for (let i = 0; i < messages.length; i++) total += lineCount(messages[i]!, width)
-  return total
+  return rowIndexFor(messages, width).total
+}
+
+let indexMessages: Message[] | undefined
+let indexWidth = -1
+let indexCache: RowIndex | undefined
+
+export function rowIndexFor(messages: Message[], width: number): RowIndex {
+  if (indexCache !== undefined && indexMessages === messages && indexWidth === width) {
+    return indexCache
+  }
+  indexMessages = messages
+  indexWidth = width
+  indexCache = buildRowIndex(messages, width)
+  return indexCache
 }
 
 export function rowInfoAt(messages: Message[], width: number, row: number): RowInfo | null {
-  return buildRowIndex(messages, width).rowAt(row)
+  return rowIndexFor(messages, width).rowAt(row)
 }
 
 function rowInfo(message: Message, index: number, offset: number, width: number, count: number): RowInfo {
@@ -213,7 +235,7 @@ export function headerSymbol(running: boolean, collapsed: boolean): string {
 }
 
 export function selectionText(messages: Message[], width: number, selection: LineSelection): string {
-  const index = buildRowIndex(messages, width)
+  const index = rowIndexFor(messages, width)
   const total = index.total
   const top = Math.max(0, Math.min(selection.anchorRow, selection.focusRow))
   const bottom = Math.min(Math.max(selection.anchorRow, selection.focusRow), total - 1)

@@ -41,11 +41,14 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
       if (events.length === 0) return
       pendingEventsRef.current = []
       let state = chatStateRef.current
+      let dirty = false
       for (const event of events) {
-        state = reduceChatEvent(state.messages, event, state.turn, presenterRef.current)
+        const next = reduceChatEvent(state.messages, event, state.turn, presenterRef.current)
+        dirty = dirty || next.changed
+        state = { messages: next.messages, turn: next.turn }
       }
       chatStateRef.current = state
-      setMessages([...state.messages])
+      if (dirty) setMessages([...state.messages])
     }, FRAME_MS)
     return () => clearInterval(timer)
   }, [])

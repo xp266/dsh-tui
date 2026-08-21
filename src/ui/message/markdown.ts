@@ -33,74 +33,101 @@ const FENCE_RE = /^```/
 const HEADING_RE = /^(#{1,6})\s+/
 const LIST_RE = /^(\s*)(-|\*|\+|\d+\.)\s/
 
-export function tokenizeMarkdown(content: string): Segment[] {
-  const lines = content.split('\n')
-  const styled: Segment[][] = []
-  let inCode = false
-  let codeLang = ''
-  for (const line of lines) {
-    if (inCode) {
+interface FenceState {
+  inCode: boolean
+  codeLang: string
+}
+
+export interface LineTokenizer {
+  tokenize(line: string): Segment[] | null
+  snapshot(): FenceState
+  restore(state: FenceState): void
+}
+
+function createFenceState(): FenceState {
+  return { inCode: false, codeLang: '' }
+}
+
+export function createMarkdownTokenizer(): LineTokenizer {
+  const state = createFenceState()
+  return {
+    tokenize(line) {
+      if (state.inCode) {
+        if (FENCE_RE.test(line)) {
+          state.inCode = false
+          return null
+        }
+        if (state.codeLang === '') {
+          return [{ text: line, style: mdStyles.codeNoLang }]
+        }
+        return highlightCode(line, state.codeLang) ?? [{ text: line, style: mdStyles.code }]
+      }
       if (FENCE_RE.test(line)) {
-        inCode = false
-        continue
+        state.inCode = true
+        state.codeLang = line.slice(3).trim()
+        return null
       }
-      if (codeLang === '') {
-        styled.push([{ text: line, style: mdStyles.codeNoLang }])
-        continue
-      }
-      const highlighted = highlightCode(line, codeLang)
-      styled.push(highlighted ?? [{ text: line, style: mdStyles.code }])
-      continue
-    }
-    if (FENCE_RE.test(line)) {
-      inCode = true
-      codeLang = line.slice(3).trim()
-      continue
-    }
-    styled.push(lineSegments(line))
+      return lineSegments(line)
+    },
+    snapshot: () => ({ inCode: state.inCode, codeLang: state.codeLang }),
+    restore: next => {
+      state.inCode = next.inCode
+      state.codeLang = next.codeLang
+    },
   }
+}
+
+export function createThinkingTokenizer(): LineTokenizer {
+  const state = createFenceState()
+  return {
+    tokenize(line) {
+      if (state.inCode) {
+        if (FENCE_RE.test(line)) {
+          state.inCode = false
+          return [{ text: line, style: mdStyles.plain }]
+        }
+        if (state.codeLang === '') {
+          return [{ text: line, style: mdStyles.codeNoLangDark }]
+        }
+        return highlightCode(line, state.codeLang, true) ?? [{ text: line, style: mdStyles.codeDark }]
+      }
+      if (FENCE_RE.test(line)) {
+        state.inCode = true
+        state.codeLang = line.slice(3).trim()
+        return [{ text: line, style: mdStyles.plain }]
+      }
+      return tokenizeInline(line, true)
+    },
+    snapshot: () => ({ inCode: state.inCode, codeLang: state.codeLang }),
+    restore: next => {
+      state.inCode = next.inCode
+      state.codeLang = next.codeLang
+    },
+  }
+}
+
+function collectLines(tokenizer: LineTokenizer, content: string): (Segment[] | null)[] {
+  return content.split('\n').map(line => tokenizer.tokenize(line))
+}
+
+function joinLineSegments(styled: (Segment[] | null)[]): Segment[] {
   const segments: Segment[] = []
-  for (let i = 0; i < styled.length; i++) {
-    segments.push(...styled[i]!)
-    if (i < styled.length - 1) segments.push({ text: '\n', style: mdStyles.plain })
+  let pending = false
+  for (const line of styled) {
+    if (line === null) continue
+    if (pending) segments.push({ text: '\n', style: mdStyles.plain })
+    segments.push(...line)
+    pending = true
   }
   return segments
 }
 
+export function tokenizeMarkdown(content: string): Segment[] {
+  return joinLineSegments(collectLines(createMarkdownTokenizer(), content))
+}
+
 export function tokenizeThinking(content: string): Segment[] {
-  const lines = content.split('\n')
-  const styled: Segment[][] = []
-  let inCode = false
-  let codeLang = ''
-  for (const line of lines) {
-    if (inCode) {
-      if (FENCE_RE.test(line)) {
-        inCode = false
-        styled.push([{ text: line, style: mdStyles.plain }])
-        continue
-      }
-      if (codeLang === '') {
-        styled.push([{ text: line, style: mdStyles.codeNoLangDark }])
-        continue
-      }
-      const highlighted = highlightCode(line, codeLang, true)
-      styled.push(highlighted ?? [{ text: line, style: mdStyles.codeDark }])
-      continue
-    }
-    if (FENCE_RE.test(line)) {
-      inCode = true
-      codeLang = line.slice(3).trim()
-      styled.push([{ text: line, style: mdStyles.plain }])
-      continue
-    }
-    styled.push(tokenizeInline(line, true))
-  }
-  const segments: Segment[] = []
-  for (let i = 0; i < styled.length; i++) {
-    segments.push(...styled[i]!)
-    if (i < styled.length - 1) segments.push({ text: '\n', style: mdStyles.plain })
-  }
-  return segments
+  return joinLineSegments(collectLines(createThinkingTokenizer(), content))
 }
 
 function tokenizeInline(line: string, keep: boolean): Segment[] {
@@ -189,26 +216,102 @@ export function wrapSegments(segments: Segment[], width: number): Segment[][] {
   const rows: Segment[][] = []
   let current: Segment[] = []
   let currentWidth = 0
-  for (const seg of segments) {
-    for (const ch of seg.text) {
+  const flush = () => {
+    rows.push(mergeRuns(current))
+    current = []
+    currentWidth = 0
+  }
+  const charLoop = (text: string, style: MarkStyle) => {
+    for (const ch of text) {
       if (ch === '\n') {
-        rows.push(mergeRuns(current))
-        current = []
-        currentWidth = 0
+        flush()
         continue
       }
       const w = charWidth(ch)
-      if (currentWidth + w > width) {
-        rows.push(mergeRuns(current))
-        current = []
-        currentWidth = 0
-      }
-      current.push({ text: ch, style: seg.style })
+      if (currentWidth + w > width) flush()
+      current.push({ text: ch, style })
       currentWidth += w
     }
   }
+  for (const seg of segments) {
+    const text = seg.text
+    if (text === '') continue
+    if (text.indexOf('\n') >= 0) {
+      charLoop(text, seg.style)
+      continue
+    }
+    let total = 0
+    let fits = true
+    for (const ch of text) {
+      const w = charWidth(ch)
+      if (currentWidth + total + w > width) {
+        fits = false
+        break
+      }
+      total += w
+    }
+    if (fits) {
+      current.push({ text, style: seg.style })
+      currentWidth += total
+      continue
+    }
+    charLoop(text, seg.style)
+  }
   rows.push(mergeRuns(current))
   return rows
+}
+
+export interface WrappedLines {
+  rows: Segment[][]
+  lines: string[]
+}
+
+export interface SegmentWrapper {
+  update(content: string): WrappedLines
+}
+
+export function createSegmentWrapper(tokenizer: LineTokenizer, width: number): SegmentWrapper {
+  let consumed = ''
+  let partial = ''
+  const doneRows: Segment[][] = []
+  const doneTexts: string[] = []
+  let tailRows: Segment[][] = [[]]
+  let tailTexts: string[] = ['']
+  const appendLine = (line: string): void => {
+    const segments = tokenizer.tokenize(line)
+    if (segments === null) return
+    const rows = wrapSegments(segments, width)
+    for (const row of rows) {
+      doneRows.push(row)
+      doneTexts.push(row.map(segment => segment.text).join(''))
+    }
+  }
+  const refreshTail = (): void => {
+    const segments = tokenizer.tokenize(partial)
+    tailRows = segments === null ? [] : wrapSegments(segments, width)
+    tailTexts = tailRows.map(row => row.map(segment => segment.text).join(''))
+  }
+  refreshTail()
+  return {
+    update(content) {
+      if (!content.startsWith(consumed)) {
+        tokenizer.restore(createFenceState())
+        doneRows.length = 0
+        doneTexts.length = 0
+        consumed = ''
+        partial = ''
+      }
+      const incoming = content.slice(consumed.length)
+      consumed = content
+      const parts = (partial + incoming).split('\n')
+      partial = parts.pop()!
+      for (const line of parts) appendLine(line)
+      const saved = tokenizer.snapshot()
+      refreshTail()
+      tokenizer.restore(saved)
+      return { rows: doneRows.concat(tailRows), lines: doneTexts.concat(tailTexts) }
+    },
+  }
 }
 
 function mergeRuns(segments: Segment[]): Segment[] {

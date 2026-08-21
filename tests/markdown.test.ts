@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { mdStyles, tokenizeMarkdown, tokenizeThinking, wrapSegments } from '../src/ui/message/markdown.ts'
+import { mdStyles, createMarkdownTokenizer, createThinkingTokenizer, createSegmentWrapper, tokenizeMarkdown, tokenizeThinking, wrapSegments } from '../src/ui/message/markdown.ts'
+import type { SegmentWrapper } from '../src/ui/message/markdown.ts'
 import type { MarkStyle, Segment } from '../src/ui/message/markdown.ts'
 import { codeStyles, codeStylesDark, highlightCode } from '../src/ui/message/highlight.ts'
 
@@ -279,5 +280,104 @@ describe('wrapSegments', () => {
 
   it('returns an empty row for a zero width', () => {
     expect(wrapSegments([seg('a')], 0)).toEqual([[]])
+  })
+})
+
+describe('createSegmentWrapper', () => {
+  function lcg(seed: number): () => number {
+    let state = seed
+    return () => {
+      state = (state * 1_102_352_477 + 12_345) % 2_147_483_648
+      return state / 2_147_483_648
+    }
+  }
+
+  const FRAGMENTS = [
+    'plain text ',
+    '中文段落测试',
+    '**bold** ',
+    '`code` ',
+    '# heading\n',
+    '- list item\n',
+    '```\ncode line\n```\n',
+    '```ts\nconst x = 1\n```\n',
+    '\n',
+    'partial fence ```\n',
+    'long word aaaaaaaaaaaaaaaaaaaaaa ',
+  ]
+
+  function randomContent(random: () => number): string {
+    let out = ''
+    const count = 4 + Math.floor(random() * 10)
+    for (let i = 0; i < count; i++) out += FRAGMENTS[Math.floor(random() * FRAGMENTS.length)]
+    return out
+  }
+
+  function chunked(content: string, random: () => number): string[] {
+    const chunks: string[] = []
+    let rest = content
+    while (rest.length > 0) {
+      const size = 1 + Math.floor(random() * 9)
+      chunks.push(rest.slice(0, size))
+      rest = rest.slice(size)
+    }
+    return chunks
+  }
+
+  function expectIncrementalMatchesBatch(make: () => SegmentWrapper, tokenize: (content: string) => Segment[], seed: number, width: number): void {
+    const random = lcg(seed)
+    const content = randomContent(random)
+    const wrapper = make()
+    const chunks = chunked(content, lcg(seed + 1))
+    let accumulated = ''
+    for (const chunk of chunks) {
+      accumulated += chunk
+      const wrapped = wrapper.update(accumulated)
+      const expected = wrapSegments(tokenize(accumulated), width)
+      expect(wrapped.rows).toEqual(expected)
+      expect(wrapped.lines).toEqual(expected.map(row => row.map(segment => segment.text).join('')))
+    }
+  }
+
+  it('matches batch tokenization and wrapping for incremental markdown appends', () => {
+    for (const seed of [1, 7, 42, 1337]) {
+      for (const width of [20, 7, 3]) {
+        expectIncrementalMatchesBatch(
+          () => createSegmentWrapper(createMarkdownTokenizer(), width),
+          tokenizeMarkdown,
+          seed,
+          width,
+        )
+      }
+    }
+  })
+
+  it('matches batch tokenization and wrapping for incremental thinking appends', () => {
+    for (const seed of [2, 9, 55, 2024]) {
+      for (const width of [20, 7, 3]) {
+        expectIncrementalMatchesBatch(
+          () => createSegmentWrapper(createThinkingTokenizer(), width),
+          tokenizeThinking,
+          seed,
+          width,
+        )
+      }
+    }
+  })
+
+  it('rebuilds from scratch when content is not an append', () => {
+    const wrapper = createSegmentWrapper(createMarkdownTokenizer(), 30)
+    wrapper.update('# Title\n\nbody text here')
+    const replaced = wrapper.update('totally different')
+    expect(replaced.rows).toEqual(wrapSegments(tokenizeMarkdown('totally different'), 30))
+  })
+
+  it('keeps completed row identities stable across appends', () => {
+    const wrapper = createSegmentWrapper(createMarkdownTokenizer(), 30)
+    const first = wrapper.update('first line\nsec')
+    const second = wrapper.update('first line\nsecond line\nthird')
+    expect(second.rows[0]).toBe(first.rows[0])
+    expect(second.rows[1]).not.toBe(first.rows[1])
+    expect(second.rows).toEqual(wrapSegments(tokenizeMarkdown('first line\nsecond line\nthird'), 30))
   })
 })

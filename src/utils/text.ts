@@ -11,8 +11,15 @@ export function textWidth(text: string): number {
   return width
 }
 
+const charWidthCache = new Map<string, number>()
+
 export function charWidth(ch: string): number {
-  return stringWidth(ch)
+  const cached = charWidthCache.get(ch)
+  if (cached !== undefined) return cached
+  const width = stringWidth(ch)
+  if (charWidthCache.size >= 8192) charWidthCache.clear()
+  charWidthCache.set(ch, width)
+  return width
 }
 
 export function wrapLines(text: string, width: number): string[] {
