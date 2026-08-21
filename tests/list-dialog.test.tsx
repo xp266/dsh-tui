@@ -3,6 +3,7 @@ import { render } from 'ink-testing-library'
 import { Box } from 'ink'
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionSummary } from '../src/chat/session-list.ts'
+import type { DialogHandle } from '../src/ui/dialog/dialog.tsx'
 import { SessionsDialog } from '../src/ui/dialog/sessions-dialog.tsx'
 
 function sessions(): SessionSummary[] {
@@ -121,5 +122,59 @@ describe('list dialog', () => {
       </Box>,
     )
     await until(() => (lastFrame() ?? '').includes('boom'))
+  })
+
+  it('keeps section headers attached to their items while scrolling', async () => {
+    const now = Date.now()
+    const hour = 60 * 60 * 1000
+    const day = 24 * hour
+    const items: SessionSummary[] = [
+      ...Array.from({ length: 6 }, (_, i) => ({ id: `t${i}`, name: `Task-${i}`, directory: '/w', ungrouped: false, updatedAt: 1, modifiedAt: now - (i + 1) * hour })),
+      ...Array.from({ length: 4 }, (_, i) => ({ id: `w${i}`, name: `Week-${i}`, directory: '/w', ungrouped: false, updatedAt: 1, modifiedAt: now - (2 + i) * day })),
+      ...Array.from({ length: 6 }, (_, i) => ({ id: `o${i}`, name: `Old-${i}`, directory: '/w', ungrouped: false, updatedAt: 1, modifiedAt: now - (10 + i * 3) * day })),
+    ]
+    const api = {
+      listSessions: vi.fn(async () => items),
+      openSession: vi.fn(async () => {}),
+      archiveSession: vi.fn(async () => {}),
+      activeSessionId: () => '',
+      newSession: vi.fn(async () => {}),
+    }
+    const ref: { current: DialogHandle | null } = { current: null }
+    const { lastFrame } = render(
+      <Box width={100} height={24}>
+        <SessionsDialog ref={ref} api={api} onClose={() => {}} onSessionSelected={() => {}} />
+      </Box>,
+    )
+    await untilFocused(lastFrame, 'Task-0')
+    const headers = ['Recent', 'Today', 'This Week', 'Other']
+    const gaps: Record<string, number> = { Recent: 7, Today: 8, 'This Week': 6 }
+    const assertHeadersAttached = () => {
+      const lines = (lastFrame() ?? '').split('\n').map(line => line.trim())
+      const found = new Map<string, number>()
+      for (let i = 0; i < lines.length; i++) {
+        if (headers.includes(lines[i]!)) found.set(lines[i]!, i)
+      }
+      for (const [label, gap] of Object.entries(gaps)) {
+        const start = found.get(label)
+        const next = headers[headers.indexOf(label) + 1]!
+        const end = found.get(next)
+        if (start !== undefined && end !== undefined) expect(end - start).toBe(gap)
+      }
+    }
+    for (let step = 0; step < 40; step++) {
+      act(() => {
+        ref.current?.wheelAt(10, 1)
+      })
+      await new Promise(resolve => setTimeout(resolve, 5))
+      assertHeadersAttached()
+    }
+    for (let step = 0; step < 40; step++) {
+      act(() => {
+        ref.current?.wheelAt(10, -1)
+      })
+      await new Promise(resolve => setTimeout(resolve, 5))
+      assertHeadersAttached()
+    }
   })
 })

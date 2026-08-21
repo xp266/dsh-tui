@@ -47,12 +47,13 @@ export function renderRow(
   left: number,
   pressed: 'left' | 'right' | null = null,
   subCol = 0,
+  clip = 0,
 ): ReactNode {
   let col = left + 1
   return (
     <Box flexDirection="row">
       {row.items.map((item, index) => {
-        const next = renderItem(item, focused, contentWidth, baseY, col, pressed, subCol)
+        const next = renderItem(item, focused, contentWidth, baseY, col, pressed, subCol, clip)
         col += textWidth(itemText(item)) + 1
         return (
           <Box key={index} flexDirection="row">
@@ -92,6 +93,7 @@ function renderItem(
   left: number,
   pressed: 'left' | 'right' | null,
   subCol = 0,
+  clip = 0,
 ): ReactNode {
   switch (item.type) {
     case 'search': {
@@ -99,9 +101,11 @@ function renderItem(
       const text = isEmpty ? 'Search' : item.value
       return (
         <Box flexDirection="column">
-          <Box width={contentWidth} backgroundColor={colors.dialogInputBackground}>
-            <SelectableText y={baseY} col={left} text={truncate(text, contentWidth)} color={isEmpty ? colors.dialogHintText : undefined} />
-          </Box>
+          {clip === 0 && (
+            <Box width={contentWidth} backgroundColor={colors.dialogInputBackground}>
+              <SelectableText y={baseY} col={left} text={truncate(text, contentWidth)} color={isEmpty ? colors.dialogHintText : undefined} />
+            </Box>
+          )}
           <Box height={1}>
             <Text> </Text>
           </Box>
@@ -110,21 +114,32 @@ function renderItem(
     }
     case 'input': {
       const lines = wrapLines(item.value, contentWidth)
-      return (
-        <Box flexDirection="column">
-          <Box height={1}>
-            <SelectableText y={baseY} col={left} text={item.label} />
-          </Box>
-          {lines.map((line, index) => (
-            <Box key={index} width={contentWidth} height={1} backgroundColor={colors.dialogInputBackground}>
-              <SelectableText y={baseY + 1 + index} col={left} text={line} />
-            </Box>
-          ))}
-          <Box height={1}>
-            <Text> </Text>
-          </Box>
-        </Box>
+      const first = Math.min(Math.max(clip - 1, 0), lines.length)
+      const parts: ReactNode[] = []
+      let y = baseY
+      if (clip === 0) {
+        parts.push(
+          <Box key="label" height={1}>
+            <SelectableText y={y} col={left} text={item.label} />
+          </Box>,
+        )
+        y += 1
+      }
+      for (let index = first; index < lines.length; index++) {
+        const lineY = y
+        parts.push(
+          <Box key={index} width={contentWidth} height={1} backgroundColor={colors.dialogInputBackground}>
+            <SelectableText y={lineY} col={left} text={lines[index]!} />
+          </Box>,
+        )
+        y += 1
+      }
+      parts.push(
+        <Box key="pad" height={1}>
+          <Text> </Text>
+        </Box>,
       )
+      return <Box flexDirection="column">{parts}</Box>
     }
     case 'select': {
       const block = selectBlock(contentWidth, item.value)
@@ -150,7 +165,7 @@ function renderItem(
       if (!item.spaced) return carousel
       return (
         <Box flexDirection="column">
-          {carousel}
+          {clip === 0 && carousel}
           <Box height={1}>
             <Text> </Text>
           </Box>
@@ -201,7 +216,7 @@ function renderItem(
       )
     }
     case 'header': {
-      const lead = item.leadingBlank === true ? 1 : 0
+      const lead = item.leadingBlank === true && clip === 0 ? 1 : 0
       const label = (
         <SelectableText y={baseY + lead} col={left} text={item.label} color={colors.sectionHeader} bold />
       )

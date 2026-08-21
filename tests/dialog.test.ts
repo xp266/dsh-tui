@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import type { ReactNode } from 'react'
 import { adjustScroll, clampFocus, filterRowsWithHeaders, moveFocus, rowBlockSpan, rowHeight, rowTopOffset, selectableSpan, snapRow } from '../src/ui/dialog/dialog.tsx'
 import type { DialogRow } from '../src/ui/dialog/dialog.tsx'
-import { actionPositions, selectBlock } from '../src/ui/dialog/dialog-item.tsx'
+import { actionPositions, renderRow, selectBlock } from '../src/ui/dialog/dialog-item.tsx'
 
 function rows(count: number, perRow = 1): DialogRow[] {
   return Array.from({ length: count }, () => ({
@@ -181,6 +182,42 @@ describe('modal scroll adjustment', () => {
   it('extends the block over a trailing header below the focus', () => {
     const trailing: DialogRow[] = [rows(1)[0]!, headerRow('Other', true)]
     expect(adjustScroll(trailing, { row: 0, col: 0 }, 0, 1, WIDTH)).toBe(2)
+  })
+})
+
+describe('partial row clipping', () => {
+  const WIDTH = 40
+  type Element = { props: { children?: unknown } }
+  function innerOf(node: ReactNode): ReactNode {
+    const row = (node as Element).props.children as Element[]
+    const slot = Array.isArray(row[0]!.props.children) ? row[0]!.props.children : [row[0]!.props.children]
+    return (slot as Element[]).filter(child => child !== false && child != null).at(-1)
+  }
+
+  it('drops the leading blank of a clipped header', () => {
+    const row: DialogRow = { items: [{ type: 'header', label: 'Today', leadingBlank: true }] }
+    const full = renderRow(row, false, WIDTH, 0, 0)
+    expect((innerOf(full) as Element).props.children).toHaveLength(2)
+    const clipped = renderRow(row, false, WIDTH, 0, 0, null, 0, 1)
+    const inner = innerOf(clipped) as Element
+    expect(inner.props.text).toBe('Today')
+    expect(inner.props.bold).toBe(true)
+  })
+
+  it('clips the label line of an input before its wrapped lines', () => {
+    const row: DialogRow = { items: [{ type: 'input', label: 'L', value: 'aaa bbb ccc ddd', onChange: () => {} }] }
+    const full = renderRow(row, false, 10, 0, 0)
+    expect((innerOf(full) as Element).props.children).toHaveLength(4)
+    const clipped = renderRow(row, false, 10, 0, 0, null, 0, 2)
+    expect((innerOf(clipped) as Element).props.children).toHaveLength(2)
+  })
+
+  it('clips the box line of a search row', () => {
+    const row: DialogRow = { items: [{ type: 'search', value: '', onChange: () => {} }] }
+    const full = renderRow(row, false, WIDTH, 0, 0)
+    expect((innerOf(full) as Element).props.children).toHaveLength(2)
+    const clipped = renderRow(row, false, WIDTH, 0, 0, null, 0, 1)
+    expect((innerOf(clipped) as Element).props.children).toHaveLength(1)
   })
 })
 

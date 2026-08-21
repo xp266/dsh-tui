@@ -561,11 +561,12 @@ export function Dialog({
       continue
     }
     if (offset >= scrollTop + viewportHeight) break
-    const baseY = top + 1 + titleLines + fixedHeight + offset - scrollTop
+    const clip = Math.max(0, scrollTop - offset)
+    const baseY = top + 1 + titleLines + fixedHeight + Math.max(0, offset - scrollTop)
     const focused = safeFocus.row === i + (search ? 1 : 0)
     visibleRows.push(
       <Box key={`row-${i}`} flexDirection="column">
-        {renderRow(contentRows[i], focused, contentWidth, baseY, left, carouselPress, focused ? safeFocus.col : 0)}
+        {renderRow(contentRows[i], focused, contentWidth, baseY, left, carouselPress, focused ? safeFocus.col : 0, clip)}
       </Box>,
     )
     offset += height
