@@ -1,7 +1,6 @@
 import { stat } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { SessionId } from '@deepseek-ai/dsh-session'
 import { textFromBlocks } from './blocks.ts'
 import { isBlankSession } from './presets.ts'
 
@@ -11,6 +10,11 @@ export interface SessionSummary {
   directory: string
   ungrouped: boolean
   updatedAt: number
+  modifiedAt?: number
+}
+
+export function sessionTime(session: SessionSummary): number {
+  return session.modifiedAt ?? session.updatedAt
 }
 
 /**
@@ -29,6 +33,7 @@ export async function computeSessionList(ctx: Context, currentId?: string): Prom
   for (const session of ctx.sessions.list()) {
     const id = String(session.id)
     attached.add(id)
+    if (session.header.origin === 'subagent') continue
     if (archived.has(id)) continue
     if (isBlankSession(session.events) && id !== currentId) continue
     const title = titleService?.get?.(session)?.title ?? firstUserText(session.events)
@@ -36,10 +41,27 @@ export async function computeSessionList(ctx: Context, currentId?: string): Prom
   }
   const persistence = ctx.get('sessionPersistence') as PersistenceLike | undefined
   if (persistence !== undefined && typeof persistence.list === 'function') {
-    const cold = (await persistence.list()).filter(header => !attached.has(header.id) && header.cwd !== undefined)
-    await mergeColdSummaries(ctx, persistence, cold, archived, workspacePaths, summaries)
+    const cold = (await persistence.list()).filter(header =>
+      !attached.has(header.id) && header.cwd !== undefined && header.origin !== 'subagent')
+    await mergeColdSummaries(persistence, cold, archived, workspacePaths, summaries)
   }
-  return summaries.sort((a, b) => b.updatedAt - a.updatedAt)
+  await attachModifiedTimes(ctx, summaries)
+  return summaries.sort((a, b) => sessionTime(b) - sessionTime(a))
+}
+
+async function attachModifiedTimes(ctx: Context, summaries: SessionSummary[]): Promise<void> {
+  const persistence = ctx.get('sessionPersistence') as PersistenceLike | undefined
+  const locate = persistence?.locate
+  if (locate === undefined) return
+  await Promise.all(summaries.map(async summary => {
+    try {
+      const location = locate({ id: summary.id, cwd: summary.directory === '' ? undefined : summary.directory })
+      if (location === undefined) return
+      const info = await stat(location.path)
+      summary.modifiedAt = Math.floor(info.mtimeMs)
+    } catch {
+    }
+  }))
 }
 
 function toSummary(
@@ -87,17 +109,9 @@ function lastPromptAt(events: readonly SessionEvent[]): number {
 }
 
 interface PersistenceLike {
-  list(signal?: AbortSignal): Promise<Array<{ id: string; cwd?: string; createdAt: number }>>
+  list(signal?: AbortSignal): Promise<Array<{ id: string; cwd?: string; createdAt: number; origin?: string }>>
   locate?(header: { cwd?: string; id: string }): { path: string } | undefined
   readFrom?(id: string, offset: number, signal?: AbortSignal): Promise<{ events: SessionEvent[] }>
-}
-
-interface SessionQueryLike {
-  readTitleSnapshots?(ids: readonly SessionId[]): Promise<Array<{
-    sessionId: SessionId
-    status: 'fulfilled' | 'rejected'
-    value?: { title?: { title?: string } }
-  }>>
 }
 
 interface SessionMetaCacheEntry {
@@ -106,30 +120,40 @@ interface SessionMetaCacheEntry {
 }
 
 const sessionMetaCache = new Map<string, SessionMetaCacheEntry>()
-const BLANK_PROBE_MAX_BYTES = 1024
+const PROBE_BATCH_SIZE = 16
 
-async function isSmallLog(ctx: Context, header: { cwd?: string; id: string }): Promise<boolean> {
-  const persistence = ctx.get('sessionPersistence') as { locate?(header: { cwd?: string; id: string }): { path: string } | undefined } | undefined
-  try {
-    const location = persistence?.locate?.(header)
-    if (location === undefined) return false
-    const size = (await stat(location.path)).size
-    return size <= BLANK_PROBE_MAX_BYTES
-  } catch {
-    return false
+async function probeColdHeader(
+  persistence: PersistenceLike,
+  header: { id: string; cwd?: string; createdAt: number },
+  workspacePaths: ReadonlySet<string>,
+  summaries: SessionSummary[],
+): Promise<void> {
+  let blank = false
+  let title: string | undefined
+  let promptAt = 0
+  if (typeof persistence.readFrom === 'function') {
+    try {
+      const { events } = await persistence.readFrom(String(header.id), 0)
+      blank = isBlankSession(events)
+      title = titleFromEvents(events) ?? firstUserText(events)
+      promptAt = lastPromptAt(events)
+    } catch {
+      blank = false
+    }
   }
+  sessionMetaCache.set(header.id, { title, blank })
+  if (blank) return
+  summaries.push(toSummary(header.id, title, header.cwd, header.createdAt, promptAt, workspacePaths))
 }
 
 async function mergeColdSummaries(
-  ctx: Context,
   persistence: PersistenceLike,
   cold: Array<{ id: string; cwd?: string; createdAt: number }>,
   archived: ReadonlySet<string>,
   workspacePaths: ReadonlySet<string>,
   summaries: SessionSummary[],
 ): Promise<void> {
-  const small: Array<{ id: string; cwd?: string; createdAt: number }> = []
-  const large: Array<{ id: string; cwd?: string; createdAt: number }> = []
+  const pending: Array<{ id: string; cwd?: string; createdAt: number }> = []
   for (const header of cold) {
     if (archived.has(header.id)) continue
     const cached = sessionMetaCache.get(header.id)
@@ -139,44 +163,11 @@ async function mergeColdSummaries(
       }
       continue
     }
-    if (await isSmallLog(ctx, header)) small.push(header)
-    else large.push(header)
+    pending.push(header)
   }
-  for (const header of small) {
-    let blank = false
-    let title: string | undefined
-    let promptAt = 0
-    if (typeof persistence.readFrom === 'function') {
-      try {
-        const { events } = await persistence.readFrom(String(header.id), 0)
-        blank = isBlankSession(events)
-        title = titleFromEvents(events) ?? firstUserText(events)
-        promptAt = lastPromptAt(events)
-      } catch {
-        blank = false
-      }
-    }
-    sessionMetaCache.set(header.id, { title, blank })
-    if (blank) continue
-    summaries.push(toSummary(header.id, title, header.cwd, header.createdAt, promptAt, workspacePaths))
-  }
-  if (large.length === 0) return
-  const query = ctx.get('sessionQuery') as SessionQueryLike | undefined
-  if (query?.readTitleSnapshots === undefined) {
-    for (const header of large) {
-      summaries.push(toSummary(header.id, undefined, header.cwd, header.createdAt, header.createdAt, workspacePaths))
-    }
-    return
-  }
-  const results = await query.readTitleSnapshots(large.map(header => SessionId(header.id)))
-  for (let i = 0; i < large.length; i++) {
-    const header = large[i]!
-    const result = results[i]
-    const title = result?.status === 'fulfilled' && result.value?.title?.title !== undefined && result.value.title.title !== ''
-      ? result.value.title.title
-      : undefined
-    sessionMetaCache.set(header.id, { title, blank: undefined })
-    summaries.push(toSummary(header.id, title, header.cwd, header.createdAt, header.createdAt, workspacePaths))
+  for (let index = 0; index < pending.length; index += PROBE_BATCH_SIZE) {
+    await Promise.all(pending.slice(index, index + PROBE_BATCH_SIZE).map(header =>
+      probeColdHeader(persistence, header, workspacePaths, summaries)))
   }
 }
 
