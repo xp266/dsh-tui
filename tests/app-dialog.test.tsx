@@ -20,6 +20,9 @@ function fakeBridge(): ChatBridge {
     addDeepSeekKey: vi.fn(async () => {}),
     fetchCustomModels: vi.fn(async () => []),
     saveCustomProvider: vi.fn(async () => {}),
+    listProviderDirectory: vi.fn(async () => []),
+    fetchProviderModels: vi.fn(async () => []),
+    saveBuiltinProvider: vi.fn(async () => {}),
     cwd: () => process.cwd(),
     listPresets: vi.fn(async () => []),
     currentPreset: () => 'standard',
@@ -66,6 +69,9 @@ async function openAddCustomForm(stdin: { write(data: string): void }) {
     stdin.write('\u001b[B')
   })
   act(() => {
+    stdin.write('\u001b[B')
+  })
+  act(() => {
     stdin.write('\r')
   })
   await new Promise(resolve => setTimeout(resolve, 20))
@@ -81,8 +87,13 @@ describe('App dialog keyboard', () => {
     act(() => {
       stdin.write('\u001b[B')
     })
+    const middle = lastFrame() ?? ''
+    expect(focusedSegment(middle)).toContain('+Add Provider')
+    act(() => {
+      stdin.write('\u001b[B')
+    })
     const after = lastFrame() ?? ''
-    expect(focusedSegment(after)).toContain('+Add Custom Model')
+    expect(focusedSegment(after)).toContain('+Add Custom Provider')
   })
 
   it('shows fetching feedback while discovering custom models and ignores repeated enter', async () => {

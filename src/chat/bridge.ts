@@ -17,10 +17,13 @@ import { textFromBlocks } from './blocks.ts'
 import {
   addDeepSeekKey,
   fetchCustomModels,
+  fetchProviderModels,
   listConfiguredModels,
+  listProviderDirectory,
+  saveBuiltinProvider,
   saveCustomProvider,
 } from './models.ts'
-import type { ConfiguredModel, CustomProviderForm } from './models.ts'
+import type { ConfiguredModel, CustomProviderForm, OfficialProvider } from './models.ts'
 import { formatDiffDiffs, formatReadLines, readBodyCol, relativize, summarizeOthers, summarizeParams, truncateSummary } from './tool-view.ts'
 import type { DiffLike, ReadLineLike } from './tool-view.ts'
 import { computeSessionList } from './session-list.ts'
@@ -109,6 +112,9 @@ export interface ChatBridge {
   addDeepSeekKey(apiKey: string): Promise<void>
   fetchCustomModels(form: CustomProviderForm): Promise<LlmDiscoveredModel[]>
   saveCustomProvider(form: CustomProviderForm, models: LlmDiscoveredModel[]): Promise<void>
+  listProviderDirectory(): Promise<OfficialProvider[]>
+  fetchProviderModels(provider: OfficialProvider, apiKey: string): Promise<LlmDiscoveredModel[]>
+  saveBuiltinProvider(provider: OfficialProvider, apiKey: string, models: LlmDiscoveredModel[]): Promise<void>
   cwd(): string
   listPresets(): Promise<PresetSummary[]>
   currentPreset(): string
@@ -609,6 +615,9 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     addDeepSeekKey: key => addDeepSeekKey(ctx.credentials, key),
     fetchCustomModels: form => fetchCustomModels(llm, form),
     saveCustomProvider: (form, models) => saveCustomProvider(ctx.settings, ctx.credentials, form, models),
+    listProviderDirectory: async () => listProviderDirectory(llm),
+    fetchProviderModels: (provider, apiKey) => fetchProviderModels(llm, provider.settingsNs, provider.provider, apiKey),
+    saveBuiltinProvider: (provider, apiKey, models) => saveBuiltinProvider(ctx.settings, ctx.credentials, provider, apiKey, models),
     cwd: () => currentCwd,
     listPresets: () => presetsList.get(),
     currentPreset,

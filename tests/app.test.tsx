@@ -24,6 +24,9 @@ function fakeBridge(): ChatBridge {
     addDeepSeekKey: vi.fn(async () => {}),
     fetchCustomModels: vi.fn(async () => []),
     saveCustomProvider: vi.fn(async () => {}),
+    listProviderDirectory: vi.fn(async () => []),
+    fetchProviderModels: vi.fn(async () => []),
+    saveBuiltinProvider: vi.fn(async () => {}),
     cwd: () => process.cwd(),
     listPresets: vi.fn(async () => []),
     currentPreset: () => 'standard',
@@ -139,7 +142,7 @@ describe('App layout', () => {
     const frame = lastFrame() ?? ''
     expect(frame).toContain('model')
     expect(frame).toContain('+Add DeepSeek')
-    expect(frame).toContain('+Add Custom Model')
+    expect(frame).toContain('+Add Custom Provider')
     expect(frame).toContain('glm-4.7-flash')
   })
 

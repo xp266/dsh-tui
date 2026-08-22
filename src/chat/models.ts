@@ -16,6 +16,12 @@ export interface CustomProviderForm {
   apiKey: string
 }
 
+export interface OfficialProvider {
+  provider: string
+  displayName: string
+  settingsNs: string
+}
+
 export const API_PROTOCOLS = ['openai-completions', 'openai-responses', 'anthropic-messages']
 
 export const DEEPSEEK_KEY_REF = 'DEEPSEEK_API_KEY'
@@ -33,6 +39,16 @@ export async function listConfiguredModels(llm: Pick<LlmRuntime, 'listProviders'
   return models
 }
 
+export function listProviderDirectory(llm: Pick<LlmRuntime, 'listConfigurableProviders'>): OfficialProvider[] {
+  return llm.listConfigurableProviders()
+    .filter(entry => entry.declared === false)
+    .map(entry => ({
+      provider: entry.provider,
+      displayName: entry.displayName,
+      settingsNs: entry.settingsNs,
+    }))
+}
+
 export interface KeyStorer {
   set(ref: string, value: string): Promise<void>
 }
@@ -44,7 +60,7 @@ export async function addDeepSeekKey(store: KeyStorer, apiKey: string): Promise<
 export interface ModelFetcher {
   discoverModels(
     ns: string,
-    request: { baseURL: string; api?: string; apiKey?: string; signal?: AbortSignal },
+    request: { provider?: string; baseURL?: string; api?: string; apiKey?: string; signal?: AbortSignal },
   ): Promise<LlmDiscoveredModel[]>
 }
 
@@ -59,8 +75,25 @@ export async function fetchCustomModels(fetcher: ModelFetcher, form: CustomProvi
   })
 }
 
+export async function fetchProviderModels(fetcher: ModelFetcher, settingsNs: string, providerId: string, apiKey: string): Promise<LlmDiscoveredModel[]> {
+  return fetcher.discoverModels(settingsNs, {
+    provider: providerId,
+    ...(apiKey.length > 0 ? { apiKey } : {}),
+    signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
+  })
+}
+
 export interface SettingsWriter {
   update(ns: string, patch: unknown, expectedRevision?: number | null): Promise<unknown>
+}
+
+function storedModels(models: LlmDiscoveredModel[]): Array<Record<string, unknown>> {
+  return models.map(model => ({
+    id: model.id,
+    ...(model.name === undefined ? {} : { name: model.name }),
+    ...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow }),
+    ...(model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens }),
+  }))
 }
 
 export async function saveCustomProvider(
@@ -78,12 +111,26 @@ export async function saveCustomProvider(
         api: form.apiProtocol,
         baseURL: form.apiUrl,
         ...(form.apiKey.length > 0 ? { apiKeyEnv: keyRef } : {}),
-        models: models.map(model => ({
-          id: model.id,
-          ...(model.name === undefined ? {} : { name: model.name }),
-          ...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow }),
-          ...(model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens }),
-        })),
+        models: storedModels(models),
+      },
+    },
+  })
+}
+
+export async function saveBuiltinProvider(
+  write: SettingsWriter,
+  store: KeyStorer,
+  provider: OfficialProvider,
+  apiKey: string,
+  models: LlmDiscoveredModel[],
+): Promise<void> {
+  const keyRef = providerKeyRef(provider.provider)
+  if (apiKey.length > 0) await store.set(keyRef, apiKey)
+  await write.update(provider.settingsNs, {
+    providers: {
+      [provider.provider]: {
+        ...(apiKey.length > 0 ? { apiKeyEnv: keyRef } : {}),
+        models: storedModels(models),
       },
     },
   })
