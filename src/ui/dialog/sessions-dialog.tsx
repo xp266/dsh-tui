@@ -42,12 +42,17 @@ const ARCHIVE_HINT: DialogFooterLine[] = [
   { text: 'Ctrl+D to archive the session', color: colors.dialogHintText },
 ]
 
+interface ArmedRow {
+  key: string
+  id: string
+}
+
 export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessionSelected, onNewSession, ref }: SessionsDialogProps) {
   const { error, clearError, run } = useAsyncAction()
-  const [armedId, setArmedId] = useState<string | null>(null)
+  const [armedKey, setArmedKey] = useState<string | null>(null)
   const armedRef = useRef<string | null>(null)
   const armTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const itemIds = useRef(new Map<DialogItem, string>())
+  const itemRows = useRef(new Map<DialogItem, ArmedRow>())
   const selectSession = async (session: SessionSummary) => {
     await run(async () => {
       onBeforeSessionSelected?.()
@@ -62,7 +67,7 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
     clearTimeout(armTimer.current)
     if (armedRef.current !== null) {
       armedRef.current = null
-      setArmedId(null)
+      setArmedKey(null)
     }
   }
   useEffect(() => () => clearTimeout(armTimer.current), [])
@@ -79,25 +84,26 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
   }
   const handleCtrlD = (focused: DialogItem | undefined): boolean => {
     if (focused?.type !== 'button') return false
-    const id = itemIds.current.get(focused)
-    if (id === undefined) return false
-    if (armedRef.current === id) {
+    const row = itemRows.current.get(focused)
+    if (row === undefined) return false
+    if (armedRef.current === row.key) {
       disarm()
-      void archive(id)
+      void archive(row.id)
       return true
     }
     clearTimeout(armTimer.current)
-    armedRef.current = id
-    setArmedId(id)
+    armedRef.current = row.key
+    setArmedKey(row.key)
     armTimer.current = setTimeout(disarm, ARM_TIMEOUT_MS)
     return true
   }
   const rows: DialogRow[] = []
-  const ids = new Map<DialogItem, string>()
+  const rowRefs = new Map<DialogItem, ArmedRow>()
   sections.forEach((section, sectionIndex) => {
     rows.push({ items: [{ type: 'header', label: SECTION_LABELS[section.kind], leadingBlank: sectionIndex > 0 }] })
     for (const session of section.items) {
-      const armed = armedId === session.id
+      const key = `${section.kind}:${session.id}`
+      const armed = armedKey === key
       const item: DialogItem = {
         type: 'button',
         label: session.name || session.id,
@@ -105,11 +111,11 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
         onPress: () => void selectSession(session),
         ...(armed ? { rightColor: colors.errorText } : {}),
       }
-      ids.set(item, session.id)
+      rowRefs.set(item, { key, id: session.id })
       rows.push({ items: [item] })
     }
   })
-  itemIds.current = ids
+  itemRows.current = rowRefs
   const statusLine: DialogFooterLine | undefined = loading
     ? loadingLine()
     : loadError !== null

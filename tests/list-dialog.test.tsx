@@ -124,6 +124,40 @@ describe('list dialog', () => {
     await until(() => (lastFrame() ?? '').includes('boom'))
   })
 
+  it('arms only the focused row when a session appears in several sections', async () => {
+    const now = Date.now()
+    const hour = 60 * 60 * 1000
+    const items: SessionSummary[] = [
+      { id: 'aaa', name: 'aaa', directory: '/w', ungrouped: false, updatedAt: 1, modifiedAt: now - hour },
+      { id: 'bbb', name: 'bbb', directory: '/w', ungrouped: false, updatedAt: 1, modifiedAt: now - 2 * hour },
+    ]
+    const api = {
+      listSessions: vi.fn(async () => items),
+      openSession: vi.fn(async () => {}),
+      archiveSession: vi.fn(async () => {}),
+      activeSessionId: () => '',
+      newSession: vi.fn(async () => {}),
+    }
+    const { lastFrame, stdin } = render(
+      <Box width={100} height={24}>
+        <SessionsDialog api={api} onClose={() => {}} onSessionSelected={() => {}} />
+      </Box>,
+    )
+    await untilFocused(lastFrame, 'aaa')
+    act(() => {
+      stdin.write('\u0004')
+    })
+    await until(() => (lastFrame() ?? '').includes('Press Ctrl+D again'))
+    const frame = lastFrame() ?? ''
+    expect(frame.split('Press Ctrl+D again').length - 1).toBe(1)
+    expect(frame.split('/w').length - 1).toBe(3)
+    act(() => {
+      stdin.write('\u0004')
+    })
+    await until(() => api.archiveSession.mock.calls.length > 0)
+    expect(api.archiveSession).toHaveBeenCalledWith('aaa')
+  })
+
   it('keeps section headers attached to their items while scrolling', async () => {
     const now = Date.now()
     const hour = 60 * 60 * 1000
