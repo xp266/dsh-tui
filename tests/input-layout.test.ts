@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { inputLayout } from '../src/ui/input/input-bar.tsx'
+import { textWidth } from '../src/utils/text.ts'
+
+const textWidthOf = textWidth
 
 function linesOf(count: number): string {
   return Array.from({ length: count }, (_, i) => `line-${i}`).join('\n')
@@ -30,5 +33,26 @@ describe('input layout reserve row', () => {
     expect(layout.visibleStart).toBe(0)
     expect(layout.lines).toHaveLength(3)
     expect(layout.realRows).toBe(3)
+  })
+
+  it('keeps the caret exactly after the last character across every wrap boundary', () => {
+    const width = 40
+    for (const total of [width - 1, width, width + 1, width * 2, width * 2 + 3]) {
+      const value = 'a'.repeat(total)
+      const layout = inputLayout(value, value.length, width + 8)
+      const currentLine = layout.lines[layout.cursorRow] ?? ''
+      expect(layout.cursorRow).toBe(Math.ceil(total / width) - 1)
+      expect(layout.cursorCol).toBe(textWidthOf(currentLine))
+      expect(currentLine.length).toBeLessThanOrEqual(width)
+    }
+  })
+
+  it('maps wide characters to their display columns on wrapped lines', () => {
+    const width = 10
+    const value = '\u4f60\u597d\u4e16\u754c\u4f60\u597d\u4e16\u754c\u4f60\u597d\u4e16\u754c'
+    const layout = inputLayout(value, value.length, width + 8)
+    const currentLine = layout.lines[layout.cursorRow] ?? ''
+    expect(layout.cursorCol).toBe(textWidthOf(currentLine))
+    expect(layout.cursorCol).toBeLessThanOrEqual(width)
   })
 })

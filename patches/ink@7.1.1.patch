@@ -12,7 +12,7 @@ index be493545f0a22d2972a36ad858d2e4bbc4c9326a..e5628c35a513428a8d4fd396f932bb4d
  };
  /**
  Build escape sequence to move cursor from previousCursorPosition back to the bottom of output.
-@@ -38,9 +37,8 @@ Hides cursor if it was previously shown, returns to bottom, then repositions.
+@@ -38,9 +37,11 @@ Hides cursor if it was previously shown, returns to bottom, then repositions.
  */
  export const buildCursorOnlySequence = (input) => {
      const hidePrefix = input.cursorWasShown ? hideCursorEscape : '';
@@ -20,6 +20,9 @@ index be493545f0a22d2972a36ad858d2e4bbc4c9326a..e5628c35a513428a8d4fd396f932bb4d
 -    const cursorSuffix = buildCursorSuffix(input.visibleLineCount, input.cursorPosition);
 -    return hidePrefix + returnToBottom + cursorSuffix;
 +    // absolute move (CSI H is 1-based): matches the suffix base row semantics
++    if (!input.cursorPosition) {
++        return hidePrefix + showCursorEscape;
++    }
 +    return `\x1b[${input.cursorPosition.y + 1};${input.cursorPosition.x + 1}H`;
  };
  /**

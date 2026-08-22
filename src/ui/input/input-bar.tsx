@@ -45,22 +45,28 @@ export interface InputLayout {
 export function inputLayout(value: string, cursor: number, width: number): InputLayout {
   const contentWidth = width - INPUT_WIDTH_OFFSET
   const lines: string[] = []
-  for (const raw of value.split('\n')) lines.push(...wrapLine(raw, contentWidth))
+  const segmentStarts: number[] = []
+  let charOffset = 0
+  for (const raw of value.split('\n')) {
+    const wrapped = wrapLine(raw, contentWidth)
+    let offset = 0
+    for (const segment of wrapped) {
+      lines.push(segment)
+      segmentStarts.push(charOffset + offset)
+      offset += segment.length
+    }
+    charOffset += raw.length + 1
+  }
   const clamped = Math.max(0, Math.min(cursor, value.length))
-  let remaining = clamped
-  let cursorRow = 0
+  let cursorRow = lines.length - 1
   let cursorCol = 0
   for (let i = 0; i < lines.length; i++) {
-    const len = lines[i]!.length
-    if (remaining <= len) {
+    const start = segmentStarts[i]!
+    const end = start + lines[i]!.length
+    if (clamped < end || i === lines.length - 1 || clamped < segmentStarts[i + 1]!) {
       cursorRow = i
-      cursorCol = textWidth(lines[i]!.slice(0, remaining))
+      cursorCol = textWidth(lines[i]!.slice(0, clamped - start))
       break
-    }
-    remaining -= len + 1
-    if (i === lines.length - 1) {
-      cursorRow = i
-      cursorCol = textWidth(lines[i]!)
     }
   }
   const realRows = Math.min(lines.length, INPUT_MAX_CONTENT_ROWS - 1)
