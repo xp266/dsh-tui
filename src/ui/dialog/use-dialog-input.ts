@@ -1,9 +1,13 @@
 import { useInput, usePaste } from 'ink'
 import type { RefObject } from 'react'
 import { isMouseResidue } from '../../terminal/mouse.ts'
+import { editBackspace, editDelete, editInsert } from '../../core/edit.ts'
 import { adjustScroll } from './geometry.ts'
-import { clampFocus, focusedItem, moveFocus } from './items.ts'
+import { asTextItem, clampFocus, focusedItem, moveFocus } from './items.ts'
 import type { DialogFocus, DialogItem, DialogRow } from './items.ts'
+import { widgetOf } from '../widgets/registry.ts'
+import '../widgets/index.ts'
+import type { WidgetKeyApi } from '../widgets/types.ts'
 
 export interface DialogLiveState {
   rows: DialogRow[]
@@ -60,16 +64,16 @@ export function useDialogInput(options: DialogInputOptions): void {
   usePaste(text => {
     onActivity?.()
     const state = live.current
-    const current = state.rows[state.focus.row]?.items[state.focus.col]
-    if (current?.type !== 'input' && current?.type !== 'search') return
+    const current = focusedItem(state.rows[state.focus.row], state.focus.col)
+    const textItem = current === undefined ? null : asTextItem(current)
+    if (textItem === null) return
     const normalized = text.replace(/\r\n?/g, '\n')
     if (normalized === '') return
-    const c = state.cursor
-    const next = current.value.slice(0, c) + normalized + current.value.slice(c)
-    current.onChange(next)
-    state.value = next
-    state.cursor = c + normalized.length
-    setCursor(c + normalized.length)
+    const next = editInsert({ value: textItem.value, cursor: state.cursor }, normalized)
+    textItem.onChange(next.value)
+    state.value = next.value
+    state.cursor = next.cursor
+    setCursor(next.cursor)
   })
   useInput((input, key) => {
     const state = live.current
@@ -85,69 +89,37 @@ export function useDialogInput(options: DialogInputOptions): void {
       if (!(key.ctrl && closeGuarded)) onClose()
       return
     }
-    if ((isLeft || isRight) && liveCurrent?.type === 'select' && liveCurrent.options.length > 1) {
-      const index = Math.max(0, liveCurrent.options.indexOf(liveCurrent.value))
-      const length = liveCurrent.options.length
-      const chosen = isRight
-        ? liveCurrent.options[(index + 1) % length]
-        : liveCurrent.options[(index - 1 + length) % length]
-      if (chosen !== undefined) liveCurrent.onChange(chosen)
-      return
+    const def = liveCurrent === undefined ? undefined : widgetOf(liveCurrent.type)
+    const keyApi: WidgetKeyApi = {
+      cursor: state.cursor,
+      subCol: state.focus.col,
+      setCursor(next) {
+        state.cursor = next
+        setCursor(next)
+      },
+      navigate(direction) {
+        applyNavigation(state, direction, search, setters)
+      },
     }
-    if ((isLeft || isRight) && liveCurrent?.type === 'input') {
-      const c = state.cursor
-      if (isLeft && c > 0) {
-        state.cursor = c - 1
-        setCursor(c - 1)
-      }
-      if (isRight && c < liveCurrent.value.length) {
-        state.cursor = c + 1
-        setCursor(c + 1)
-      }
-      return
-    }
-    if ((isLeft || isRight) && liveCurrent?.type === 'actions') {
-      applyNavigation(state, isRight ? 'right' : 'left', search, setters)
-      return
+    if ((isLeft || isRight) && liveCurrent !== undefined && def !== undefined) {
+      if (def.onLeftRight?.(liveCurrent, isRight ? 1 : -1, keyApi) === true) return
     }
     if (isUp || isDown) {
       applyNavigation(state, isUp ? 'up' : 'down', search, setters)
       return
     }
     if (key.return) {
-      if (liveCurrent === undefined) return
-      switch (liveCurrent.type) {
-        case 'input':
-          if (liveCurrent.onEnter) liveCurrent.onEnter()
-          else applyNavigation(state, 'down', search, setters)
-          break
-        case 'search':
-          applyNavigation(state, 'down', search, setters)
-          break
-        case 'select':
-          if (liveCurrent.onEnter) liveCurrent.onEnter()
-          else applyNavigation(state, 'down', search, setters)
-          break
-        case 'button':
-          liveCurrent.onPress()
-          break
-        case 'checkbox':
-          liveCurrent.onConfirm()
-          break
-        case 'actions':
-          if (state.focus.col === 1) liveCurrent.onCancel()
-          else liveCurrent.onConfirm()
-          break
-        case 'header':
-          break
-      }
+      if (liveCurrent === undefined || def === undefined) return
+      const handled = def.onEnter?.(liveCurrent, keyApi) ?? false
+      if (!handled) applyNavigation(state, 'down', search, setters)
       return
     }
-    if (input === ' ' && liveCurrent?.type === 'checkbox') {
-      liveCurrent.onToggle()
+    if (input === ' ' && liveCurrent !== undefined && def?.onSpace !== undefined) {
+      def.onSpace(liveCurrent)
       return
     }
-    if (search && liveCurrent?.type !== 'input') {
+    const editingFormInput = liveCurrent !== undefined && liveCurrent.type !== 'search' && widgetOf(liveCurrent.type).editable === true
+    if (search && !editingFormInput) {
       const v = state.searchValue
       if ((key.backspace || key.delete) && v.length > 0) {
         requestSearch(v.slice(0, -1))
@@ -158,29 +130,25 @@ export function useDialogInput(options: DialogInputOptions): void {
         return
       }
     }
-    if (liveCurrent?.type === 'input' || liveCurrent?.type === 'search') {
-      const c = state.cursor
-      const v = state.value
+    if (def?.editable === true && liveCurrent !== undefined) {
+      const textItem = asTextItem(liveCurrent)
+      if (textItem === null) return
+      const apply = (next: { value: string; cursor: number } | null, trackCursor: boolean): boolean => {
+        if (next === null) return false
+        state.value = next.value
+        textItem.onChange(next.value)
+        if (trackCursor) {
+          state.cursor = next.cursor
+          setCursor(next.cursor)
+        }
+        return true
+      }
       if (key.backspace) {
-        if (c > 0) {
-          const next = v.slice(0, c - 1) + v.slice(c)
-          state.value = next
-          state.cursor = c - 1
-          liveCurrent.onChange(next)
-          setCursor(c - 1)
-        }
+        apply(editBackspace({ value: state.value, cursor: state.cursor }), true)
       } else if (key.delete) {
-        if (c < v.length) {
-          const next = v.slice(0, c) + v.slice(c + 1)
-          state.value = next
-          liveCurrent.onChange(next)
-        }
+        apply(editDelete({ value: state.value, cursor: state.cursor }), false)
       } else if (input && !key.ctrl && !key.meta && !isMouseResidue(input)) {
-        const next = v.slice(0, c) + input + v.slice(c)
-        state.value = next
-        state.cursor = c + input.length
-        liveCurrent.onChange(next)
-        setCursor(c + input.length)
+        apply(editInsert({ value: state.value, cursor: state.cursor }, input), true)
       }
     }
   })

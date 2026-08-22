@@ -8,13 +8,12 @@ import { SelectableText } from '../selection.tsx'
 interface MessageRowProps {
   info: RowInfo
   row: number
-  screenRow: number
   spinnerFrame: number
   themeTick?: number
 }
 
 export const MessageRow = memo(
-  function MessageRow({ info, row, screenRow, spinnerFrame, themeTick = 0 }: MessageRowProps) {
+  function MessageRow({ info, row, spinnerFrame, themeTick = 0 }: MessageRowProps) {
   switch (info.kind) {
     case 'pad':
       return (
@@ -36,11 +35,11 @@ export const MessageRow = memo(
           backgroundColor={info.background ? backgroundFor(info.role) : undefined}
         >
           {info.segments !== undefined && info.segments.length > 0 ? (
-            <SelectableText y={screenRow} col={col} segments={info.segments} color={baseColor} messageLayer flow />
+            <SelectableText y={row} col={col} segments={info.segments} color={baseColor} messageLayer flow />
           ) : (
             <SelectableText
               text={info.text || ' '}
-              y={screenRow}
+              y={row}
               col={col}
               color={baseColor}
               messageLayer
@@ -55,8 +54,8 @@ export const MessageRow = memo(
       const color = info.thinking ? colors.thinkingLabel : colors.toolLabel
       return (
         <Box>
-          <SelectableText y={screenRow} col={0} text={`  ${symbol} `} color={color} messageLayer />
-          <SelectableText y={screenRow} col={HEADER_LABEL_COL} text={info.label} color={color} messageLayer />
+          <SelectableText y={row} col={0} text={`  ${symbol} `} color={color} messageLayer />
+          <SelectableText y={row} col={HEADER_LABEL_COL} text={info.label} color={color} messageLayer />
         </Box>
       )
     }
@@ -66,7 +65,6 @@ export const MessageRow = memo(
   },
   (prev, next) => {
     if (prev.row !== next.row) return false
-    if (prev.screenRow !== next.screenRow) return false
     if (prev.themeTick !== next.themeTick) return false
     const a = prev.info
     const b = next.info

@@ -1,6 +1,7 @@
-import { textWidth, truncate, wrapLines } from '../../utils/text.ts'
-import type { DialogFocus, DialogItem, DialogRow } from './items.ts'
+import { textWidth, truncate, wrapLines } from '../../core/text.ts'
+import type { DialogFocus, DialogRow } from './items.ts'
 import { isSelectableRow } from './items.ts'
+import { widgetOf } from '../widgets/registry.ts'
 
 export const CAROUSEL_BUTTON_WIDTH = 3
 
@@ -37,14 +38,12 @@ function wrapFooter(footer: DialogFooterLine[] | undefined, width: number): Foot
 export { wrapFooter }
 
 export function rowHeight(row: DialogRow, width: number): number {
-  const only = row.items.length === 1 ? row.items[0] : undefined
-  if (only?.type === 'header') return only.leadingBlank === true ? 2 : 1
-  if (only?.type === 'actions') return 1
-  const input = row.items.find((item): item is Extract<DialogItem, { type: 'input' }> => item.type === 'input')
-  if (input !== undefined) return 2 + wrapLines(input.value, width).length
-  if (row.items.some(item => item.type === 'select' && item.spaced)) return 2
-  if (row.items.some(item => item.type === 'search')) return 2
-  return 1
+  let height = 1
+  for (const item of row.items) {
+    const itemHeight = widgetOf(item.type).height(item, width)
+    if (itemHeight > height) height = itemHeight
+  }
+  return height
 }
 
 export function rowTopOffset(rows: DialogRow[], rowIndex: number, width: number): number {

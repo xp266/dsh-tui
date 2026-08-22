@@ -18,8 +18,9 @@ import { InputBar, inputLayout, INPUT_WIDTH_OFFSET, HINT_MAX_ROWS } from './inpu
 import type { InputBarHandle } from './input/input-bar.tsx'
 import { HINT_COMMAND_COL_WIDTH, matchCommand } from './input/commands.ts'
 import type { CommandId } from './input/commands.ts'
-import { CHROME_MARGIN_X, MESSAGE_INPUT_GAP_ROWS, hintWindowTop } from './layout-metrics.ts'
+import { CHROME_MARGIN_X, CHROME_TEXT_X, MESSAGE_INPUT_GAP_ROWS, hintBlockTop } from '../core/metrics.ts'
 import { useComposer } from './input/use-composer.ts'
+import { Region } from './region.tsx'
 import { filterCommands } from './input/commands.ts'
 import { MessageList } from './message/message-list.tsx'
 import { CloseGuardContext } from './dialog/dialog.tsx'
@@ -29,8 +30,9 @@ import { PresetsDialog } from './dialog/presets-dialog.tsx'
 import { EffortDialog } from './dialog/effort-dialog.tsx'
 import { DefaultsDialog } from './dialog/defaults-dialog.tsx'
 import type { DialogHandle } from './dialog/dialog.tsx'
-import { padToWidth, textWidth, truncate } from '../utils/text.ts'
+import { padToWidth, textWidth, truncate } from '../core/text.ts'
 import type { TokenStats } from '../chat/bridge.ts'
+import { useOverlayStack } from './overlay.ts'
 
 const FORCE_EXIT_DELAY_MS = 6000
 
@@ -44,7 +46,8 @@ interface AppProps {
 
 export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const { columns, rows } = useTerminalSize()
-  const [dialog, setDialog] = useState<DialogKind | null>(null)
+  const overlays = useOverlayStack<DialogKind>()
+  const dialog: DialogKind | null = overlays.top ?? null
   const [, setSessionTick] = useState(0)
   const { messages, modelName, setModelName, updateMessages, resetChat } = useChatEvents(bridge, dialog !== null)
   const dialogRef = useRef<DialogHandle | null>(null)
@@ -78,15 +81,15 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
         startNewSession()
         return
       case 'model-effort':
-        if (bridge) setDialog('effort')
+        if (bridge) overlays.push('effort')
         return
       case 'preset':
-        if (bridge) setDialog('presets')
+        if (bridge) overlays.push('presets')
         return
       case 'models':
       case 'defaults':
       case 'sessions':
-        if (bridge) setDialog(id)
+        if (bridge) overlays.push(id)
         return
     }
   }
@@ -199,23 +202,24 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
           {hintState !== null && dialog === null && (
             <Box
               position="absolute"
-              top={hintWindowTop(rows, inputHeight, hintState.commands.length)}
+              top={hintBlockTop(rows, inputHeight, hintState.commands.length)}
               left={CHROME_MARGIN_X}
-              width={Math.max(1, columns - 4)}
+              width={Math.max(1, columns - CHROME_MARGIN_X * 2)}
               flexDirection="column"
             >
-              {hintState.commands.map((command, index) => {
-                const selected = index === hintState.selectedIndex
-                const blockWidth = Math.max(1, columns - 4)
-                const line = '  ' + padToWidth(command.command, HINT_COMMAND_COL_WIDTH) + command.description
-                const filled = padToWidth(truncate(line, blockWidth), blockWidth)
-                const hintY = hintWindowTop(rows, inputHeight, hintState.commands.length) + index
-                return (
-                  <Box key={command.command} width={blockWidth} backgroundColor={colors.dialogBackground}>
-                    <SelectableText y={hintY} col={0} text={filled} inverse={selected} />
-                  </Box>
-                )
-              })}
+              <Region y={hintBlockTop(rows, inputHeight, hintState.commands.length)}>
+                {hintState.commands.map((command, index) => {
+                  const selected = index === hintState.selectedIndex
+                  const blockWidth = Math.max(1, columns - CHROME_MARGIN_X * 2)
+                  const line = '  ' + padToWidth(command.command, HINT_COMMAND_COL_WIDTH) + command.description
+                  const filled = padToWidth(truncate(line, blockWidth), blockWidth)
+                  return (
+                    <Box key={command.command} width={blockWidth} backgroundColor={colors.dialogBackground}>
+                      <SelectableText y={index} col={0} text={filled} inverse={selected} />
+                    </Box>
+                  )
+                })}
+              </Region>
             </Box>
           )}
           {bridge !== undefined && (
@@ -224,21 +228,23 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
               top={rows - 1}
               left={0}
               width={columns}
-              paddingLeft={4}
-              paddingRight={4}
+              paddingLeft={CHROME_TEXT_X}
+              paddingRight={CHROME_TEXT_X}
               justifyContent="space-between"
             >
-              {(() => {
-                const cwd = cwdLabel(bridge)
-                const rightCol = Math.max(4, columns - 4 - textWidth(cwd))
-                const stats = truncate(statsText(bridge.tokenStats()), Math.max(1, rightCol - 4 - 2))
-                return (
-                  <>
-                    <SelectableText y={rows - 1} col={4} text={stats} color={colors.statsText} />
-                    <SelectableText y={rows - 1} col={rightCol} text={cwd} color={colors.cwdText} />
-                  </>
-                )
-              })()}
+              <Region y={rows - 1}>
+                {(() => {
+                  const cwd = cwdLabel(bridge)
+                  const rightCol = Math.max(CHROME_TEXT_X, columns - CHROME_MARGIN_X * 2 - textWidth(cwd))
+                  const stats = truncate(statsText(bridge.tokenStats()), Math.max(1, rightCol - CHROME_TEXT_X - 2))
+                  return (
+                    <>
+                      <SelectableText y={0} col={CHROME_TEXT_X} text={stats} color={colors.statsText} />
+                      <SelectableText y={0} col={rightCol} text={cwd} color={colors.cwdText} />
+                    </>
+                  )
+                })()}
+              </Region>
             </Box>
           )}
         </SelectionContext.Provider>
@@ -247,7 +253,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
           <SelectionContext.Provider value={chromeSelection}>
             {dialogView(dialog, bridge, {
               dialogRef,
-              onClose: () => setDialog(null),
+              onClose: () => overlays.pop(),
               onModelSelected: (_provider, model) => setModelName(model),
               onBeforeSessionSelected: () => {
                 resetChat()

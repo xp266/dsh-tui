@@ -1,3 +1,5 @@
+import { widgetOf } from '../widgets/registry.ts'
+
 export interface DialogRow {
   items: DialogItem[]
 }
@@ -17,14 +19,17 @@ export interface DialogFocus {
 }
 
 export function isSelectableRow(row: DialogRow | undefined): boolean {
-  return !(row?.items.every(item => item.type === 'header') ?? true)
+  if (row === undefined) return false
+  return row.items.some(item => widgetOf(item.type).selectable === true)
 }
 
 export function selectableSpan(row: DialogRow | undefined): number {
   if (row === undefined) return 0
-  const only = row.items.length === 1 ? row.items[0] : undefined
-  if (only?.type === 'actions') return 1
-  return Math.max(0, row.items.length - 1)
+  let stops = 0
+  for (const item of row.items) {
+    stops += widgetOf(item.type).stops?.(item) ?? 1
+  }
+  return Math.max(0, stops - 1)
 }
 
 export function snapRow(rows: DialogRow[], row: number): number {
@@ -49,7 +54,8 @@ function stepRow(rows: DialogRow[], from: number, delta: -1 | 1): number {
 
 function focusedItem(row: DialogRow | undefined, col: number): DialogItem | undefined {
   if (row === undefined) return undefined
-  if (row.items.length === 1 && row.items[0]?.type === 'actions') return row.items[0]
+  const only = row.items.length === 1 ? row.items[0] : undefined
+  if (only !== undefined && widgetOf(only.type).fullRowFocus === true) return only
   return row.items[col]
 }
 
@@ -75,13 +81,19 @@ export function clampFocus(rows: DialogRow[], focus: DialogFocus, minRow: number
   return { row, col: Math.min(focus.col, selectableSpan(rows[row])) }
 }
 
-export function filterRowsWithHeaders(rows: DialogRow[], query: string, searchRight: boolean): DialogRow[] {
-  const q = query.trim().toLowerCase()
+export type TextItem = Extract<DialogItem, { type: 'input' }> | Extract<DialogItem, { type: 'search' }>
+
+export function asTextItem(item: DialogItem): TextItem | null {
+  return widgetOf(item.type).editable === true ? item as TextItem : null
+}
+
+export function filterRowsWithHeaders(rows: DialogRow[], query: string, searchRight: boolean): DialogRow[] {  const q = query.trim().toLowerCase()
   if (q === '') return rows
-  const matches = (item: DialogItem): boolean =>
-    (item.type === 'button' || item.type === 'checkbox' || item.type === 'select') &&
-    (item.label.toLowerCase().includes(q) ||
-      (searchRight && item.type === 'button' && item.right !== undefined && item.right.toLowerCase().includes(q)))
+  const matches = (item: DialogItem): boolean => {
+    const texts = widgetOf(item.type).searchTexts?.(item, searchRight)
+    if (texts === undefined) return false
+    return texts.some(text => text.toLowerCase().includes(q))
+  }
   const out: DialogRow[] = []
   let pendingHeader: DialogRow | undefined
   for (const row of rows) {

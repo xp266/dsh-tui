@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { errorText } from '../../utils/text.ts'
+import { errorText } from '../../core/text.ts'
 
 export type AsyncActionResult<T> = { ok: true; value: T } | { ok: false }
 

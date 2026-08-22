@@ -2,10 +2,11 @@ import { createContext, useContext, memo } from 'react'
 import type { ReactNode } from 'react'
 import { useLayoutEffect, useRef } from 'react'
 import { Text } from 'ink'
-import { colToCharIndex, textWidth } from '../utils/text.ts'
+import { colToCharIndex, textWidth } from '../core/text.ts'
 import { selectedRange } from '../model/selection.ts'
 import type { LineSelection } from '../model/selection.ts'
 import { envelopeOverlaps, registerRowPiece } from './selection-registry.ts'
+import { useOrigin } from './region.tsx'
 import type { Segment } from './message/markdown.ts'
 import { colors } from '../theme.ts'
 
@@ -26,21 +27,24 @@ export interface SelectableTextProps {
 
 export const SelectableText = memo(function SelectableText({ y, col, text, segments, color, bold = false, inverse = false, backgroundColor, messageLayer = false, flow = false }: SelectableTextProps) {
   const selection = useContext(SelectionContext)
+  const origin = useOrigin()
+  const absY = origin.y + y
+  const absCol = origin.x + col
   const content = text ?? (segments?.map(segment => segment.text).join('') ?? '')
   const pieceId = useRef({})
   useLayoutEffect(() => {
-    registerRowPiece(pieceId.current, y, { col, text: content, ...(messageLayer ? { layer: 'message' as const } : {}) })
-    return () => registerRowPiece(pieceId.current, y, null)
-  }, [y, col, content, messageLayer])
-  const range = selection === null ? null : selectedRange(selection, y)
-  const gated = !flow && selection !== null && range !== null && !envelopeOverlaps(selection, col, textWidth(content))
+    registerRowPiece(pieceId.current, absY, { col: absCol, text: content, ...(messageLayer ? { layer: 'message' as const } : {}) })
+    return () => registerRowPiece(pieceId.current, absY, null)
+  }, [absY, absCol, content, messageLayer])
+  const range = selection === null ? null : selectedRange(selection, absY)
+  const gated = !flow && selection !== null && range !== null && !envelopeOverlaps(selection, absCol, textWidth(content))
   if (selection !== null && range !== null && !gated) {
     const lineWidth = textWidth(content)
-    const start = Math.max(range.start, col)
-    const end = Math.min(range.end, col + lineWidth)
+    const start = Math.max(range.start, absCol)
+    const end = Math.min(range.end, absCol + lineWidth)
     if (start < end) {
-      const startIndex = colToCharIndex(content, start - col)
-      const endIndex = colToCharIndex(content, end - col)
+      const startIndex = colToCharIndex(content, start - absCol)
+      const endIndex = colToCharIndex(content, end - absCol)
       const highlight = (
         <Text backgroundColor={colors.selectionBg} color={colors.selectionFg}>
           {content.slice(startIndex, endIndex)}

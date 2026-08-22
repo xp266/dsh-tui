@@ -1,4 +1,4 @@
-import { truncate } from '../utils/text.ts'
+import { truncate } from '../core/text.ts'
 
 export const SUMMARY_SAFETY_MAX = 300
 

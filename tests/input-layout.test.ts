@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { inputLayout } from '../src/ui/input/input-bar.tsx'
-import { textWidth } from '../src/utils/text.ts'
+import { textWidth } from '../src/core/text.ts'
 
 const textWidthOf = textWidth
 

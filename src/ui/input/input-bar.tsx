@@ -3,10 +3,11 @@ import type { Ref } from 'react'
 import { useImperativeHandle, useEffect } from 'react'
 import { colors, permissionModeInfo } from '../../theme.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
-import { CHROME_FRAME_ROWS, CHROME_MARGIN_X, CHROME_PAD_X, CHROME_TEXT_X, INPUT_WIDTH_OFFSET, inputFrameTop, inputStatusRow } from '../layout-metrics.ts'
-import { colToCharIndex, lineBreaks, textWidth, truncate } from '../../utils/text.ts'
+import { CHROME_FRAME_ROWS, CHROME_MARGIN_X, CHROME_PAD_X, CHROME_TEXT_X, INPUT_WIDTH_OFFSET, inputFrameTop, inputStatusRow } from '../../core/metrics.ts'
+import { colToCharIndex, lineBreaks, textWidth, truncate } from '../../core/text.ts'
 import type { ComposerApi } from './use-composer.ts'
 import { SelectableText } from '../selection.tsx'
+import { Region } from '../region.tsx'
 
 export { INPUT_WIDTH_OFFSET }
 
@@ -191,73 +192,75 @@ export function InputBar({
       used += textWidth(text)
     }
   }
-  const statusY = inputStatusRow(rows)
+  const blockTop = firstRealY - 1
+  const statusLocalY = inputStatusRow(rows) - blockTop
   return (
-    <Box position="absolute" top={0} left={0} width={columns} height={rows}>
-      <Box position="absolute" top={firstRealY - 1} left={CHROME_MARGIN_X} width={blockWidth}>
-        <Text color={permission.color}>{'▄'.repeat(blockWidth)}</Text>
-      </Box>
-      {Array.from({ length: realRows }, (_, row) => {
-        const y = firstRealY + row
-        const line = lines[visibleStart + row] ?? ''
-        return (
-          <Box
-            key={`input-${row}`}
-            position="absolute"
-            top={y}
-            left={CHROME_MARGIN_X}
-            width={blockWidth}
-            paddingLeft={CHROME_PAD_X}
-            paddingRight={CHROME_PAD_X}
-            backgroundColor={permission.color}
-          >
-            <SelectableText y={y} col={CHROME_TEXT_X} text={line || ' '} />
-          </Box>
-        )
-      })}
-      <Box
-        position="absolute"
-        top={inputStatusRow(rows) - 1}
-        left={CHROME_MARGIN_X}
-        width={blockWidth}
-        paddingLeft={CHROME_PAD_X}
-        paddingRight={CHROME_PAD_X}
-        backgroundColor={permission.color}
-      >
-        <Text>{' '}</Text>
-      </Box>
-      <Box
-        position="absolute"
-        top={statusY}
-        left={CHROME_MARGIN_X}
-        width={blockWidth}
-        paddingLeft={CHROME_PAD_X}
-        paddingRight={CHROME_PAD_X}
-        backgroundColor={permission.color}
-      >
-        {statusReady ? (
-          <Box flexDirection="row">
-            {(() => {
-              let col = 4
-              return statusSegments.map((segment, index) => {
-                const node = <SelectableText key={index} y={statusY} col={col} text={segment.text} color={segment.color} />
-                col += textWidth(segment.text)
-                return node
-              })
-            })()}
-          </Box>
-        ) : (
+    <Region y={blockTop}>
+      <Box position="absolute" top={0} left={0} width={columns} height={rows}>
+        <Box position="absolute" top={blockTop} left={CHROME_MARGIN_X} width={blockWidth}>
+          <Text color={permission.color}>{'▄'.repeat(blockWidth)}</Text>
+        </Box>
+        {Array.from({ length: realRows }, (_, row) => {
+          const line = lines[visibleStart + row] ?? ''
+          return (
+            <Box
+              key={`input-${row}`}
+              position="absolute"
+              top={firstRealY + row}
+              left={CHROME_MARGIN_X}
+              width={blockWidth}
+              paddingLeft={CHROME_PAD_X}
+              paddingRight={CHROME_PAD_X}
+              backgroundColor={permission.color}
+            >
+              <SelectableText y={row + 1} col={CHROME_TEXT_X} text={line || ' '} />
+            </Box>
+          )
+        })}
+        <Box
+          position="absolute"
+          top={inputStatusRow(rows) - 1}
+          left={CHROME_MARGIN_X}
+          width={blockWidth}
+          paddingLeft={CHROME_PAD_X}
+          paddingRight={CHROME_PAD_X}
+          backgroundColor={permission.color}
+        >
           <Text>{' '}</Text>
-        )}
-        {statusReady && presetName !== undefined && (
-          <Box position="absolute" top={0} left={CHROME_MARGIN_X + contentWidth - textWidth(presetName)}>
-            <SelectableText y={statusY} col={CHROME_TEXT_X + contentWidth - textWidth(presetName)} text={presetName} color={colors.presetText} />
-          </Box>
-        )}
+        </Box>
+        <Box
+          position="absolute"
+          top={inputStatusRow(rows)}
+          left={CHROME_MARGIN_X}
+          width={blockWidth}
+          paddingLeft={CHROME_PAD_X}
+          paddingRight={CHROME_PAD_X}
+          backgroundColor={permission.color}
+        >
+          {statusReady ? (
+            <Box flexDirection="row">
+              {(() => {
+                let col = 4
+                return statusSegments.map((segment, index) => {
+                  const node = <SelectableText key={index} y={statusLocalY} col={col} text={segment.text} color={segment.color} />
+                  col += textWidth(segment.text)
+                  return node
+                })
+              })()}
+            </Box>
+          ) : (
+            <Text>{' '}</Text>
+          )}
+          {statusReady && presetName !== undefined && (
+            <Box position="absolute" top={0} left={CHROME_MARGIN_X + contentWidth - textWidth(presetName)}>
+              <SelectableText y={statusLocalY} col={CHROME_TEXT_X + contentWidth - textWidth(presetName)} text={presetName} color={colors.presetText} />
+            </Box>
+          )}
+        </Box>
+        <Box position="absolute" top={inputStatusRow(rows) + 1} left={CHROME_MARGIN_X} width={blockWidth}>
+          <Text color={permission.color}>{'▀'.repeat(blockWidth)}</Text>
+        </Box>
       </Box>
-      <Box position="absolute" top={inputStatusRow(rows) + 1} left={CHROME_MARGIN_X} width={blockWidth}>
-        <Text color={permission.color}>{'▀'.repeat(blockWidth)}</Text>
-      </Box>
-    </Box>
+    </Region>
   )
 }

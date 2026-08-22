@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Message } from '../src/model/message.ts'
 import { fitLabel, rowCount, rowInfoAt, rowIndexFor, selectionText } from '../src/ui/message/layout.ts'
 import type { LineSelection } from '../src/model/selection.ts'
-import { textWidth } from '../src/utils/text.ts'
+import { textWidth } from '../src/core/text.ts'
 import { mdStyles } from '../src/ui/message/markdown.ts'
 import type { MarkStyle, Segment } from '../src/ui/message/markdown.ts'
 

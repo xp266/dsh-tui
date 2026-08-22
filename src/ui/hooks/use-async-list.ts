@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { errorText } from '../../utils/text.ts'
+import { errorText } from '../../core/text.ts'
 
 export interface AsyncListState<T> {
   items: T[]

@@ -1,14 +1,13 @@
 import type { Message } from '../../model/message.ts'
-import { colToCharIndex, textWidth, truncate, wrapLines } from '../../utils/text.ts'
+import { colToCharIndex, textWidth, truncate, wrapLines } from '../../core/text.ts'
 import { selectedRange } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
 import { sliceByColumns } from '../selection-registry.ts'
 import { createMarkdownTokenizer, createThinkingTokenizer, createSegmentWrapper, segmentsKey, wrapSegments } from './markdown.ts'
 import type { Segment, SegmentWrapper } from './markdown.ts'
+import { BUBBLE_WIDTH_OFFSET, HEADER_LABEL_COL } from '../../core/metrics.ts'
 
-const BUBBLE_WIDTH_OFFSET = 8
-
-export const HEADER_LABEL_COL = 4
+export { HEADER_LABEL_COL }
 
 export const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 

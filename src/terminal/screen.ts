@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { charWidth } from '../utils/text.ts'
+import { charWidth } from '../core/text.ts'
 import { selectedRange } from '../model/selection.ts'
 import type { LineSelection } from '../model/selection.ts'
 

@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import type { ScreenCapture } from '../../terminal/screen.ts'
 import { createMouseController } from '../../terminal/mouse.ts'
-import { CHROME_FRAME_ROWS, HINT_INPUT_GAP_ROWS, MESSAGE_INPUT_GAP_ROWS } from '../layout-metrics.ts'
+import { CHROME_FRAME_ROWS, HINT_INPUT_GAP_ROWS, MESSAGE_INPUT_GAP_ROWS } from '../../core/metrics.ts'
+import { hintBlockTop } from '../../core/metrics.ts'
 import { clampFocusRow, toScreenSelection } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
 import { rowInfoAt } from '../message/layout.ts'
@@ -19,8 +20,8 @@ export interface HintRegion {
 
 export function hintRegion(rows: number, hint: CommandHintState | null, dialogOpen: boolean, inputHeight: number): HintRegion | null {
   if (hint === null || dialogOpen) return null
+  const top = hintBlockTop(rows, inputHeight, hint.commands.length)
   const bottom = rows - inputHeight - MESSAGE_INPUT_GAP_ROWS - HINT_INPUT_GAP_ROWS
-  const top = Math.max(0, bottom - hint.commands.length + 1)
   return { top, bottom }
 }
 
@@ -108,6 +109,83 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
       }
       return clampFocusRow(current.inMessage, eventY, scrollTopRef.current, messageHeightRef.current, rowsRef.current, dialogOpenRef.current)
     }
+    interface MouseRegion {
+      contains(y: number): boolean
+      onClick?(y: number, x: number): void
+      onWheel?(dir: -1 | 1, y: number): boolean
+    }
+    const clickRegions: MouseRegion[] = [
+      {
+        contains: y => {
+          if (dialogOpenRef.current) return false
+          const region = activeHintRegion()
+          return region !== null && y >= region.top && y <= region.bottom
+        },
+        onClick: y => onHintClickRef.current?.(y),
+      },
+      {
+        contains: y => !dialogOpenRef.current && inInputContent(y),
+        onClick: (y, x) => inputHandleRef.current?.current?.clickAt(y, x),
+      },
+      {
+        contains: () => dialogOpenRef.current,
+        onClick: (y, x) => {
+          const anchorable = screenRef.current?.rowHasText(y) ?? false
+          dialogClickCandidateRef.current = { x, y }
+          if (anchorable) {
+            setSelection({ anchorRow: y, anchorCol: x, focusRow: y, focusCol: x, inMessage: false })
+          }
+        },
+      },
+      {
+        contains: () => true,
+        onClick: (y, x) => {
+          const contentRow = toContentRow(y)
+          const hit = rowInfoAt(messagesRef.current, widthRef.current, contentRow)
+          const anchorable = screenRef.current?.rowHasText(y) ?? false
+          if (hit?.clickable) {
+            clickCandidateRef.current = { messageId: hit.messageId, y, x, moved: false }
+            return
+          }
+          if (anchorable) {
+            const anchorInMessage = inMessageArea(y)
+            setSelection({ anchorRow: contentRow, anchorCol: x, focusRow: contentRow, focusCol: x, inMessage: anchorInMessage })
+          }
+        },
+      },
+    ]
+    const wheelRegions: MouseRegion[] = [
+      {
+        contains: () => dialogOpenRef.current,
+        onWheel: (dir, y) => onDialogWheelRef.current?.(y, dir) === true,
+      },
+      {
+        contains: y => {
+          if (dialogOpenRef.current) return false
+          const region = activeHintRegion()
+          return region !== null && y >= region.top && y <= region.bottom
+        },
+        onWheel: dir => {
+          inputHandleRef.current?.current?.hintWheel(dir)
+          return true
+        },
+      },
+      {
+        contains: y => !dialogOpenRef.current && inInputContent(y),
+        onWheel: dir => {
+          inputHandleRef.current?.current?.wheel(dir)
+          return true
+        },
+      },
+      {
+        contains: () => true,
+        onWheel: dir => {
+          const delta = dir === -1 ? -WHEEL_SCROLL_LINES : WHEEL_SCROLL_LINES
+          onScrollRef.current(scrollTopRef.current + delta)
+          return true
+        },
+      },
+    ]
     const controller = createMouseController(event => {
       switch (event.type) {
         case 'down': {
@@ -115,32 +193,10 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
           clickCandidateRef.current = null
           dialogClickCandidateRef.current = null
           setSelection(null)
-          const region = activeHintRegion()
-          if (!dialogOpenRef.current && region !== null && event.y >= region.top && event.y <= region.bottom) {
-            onHintClickRef.current?.(event.y)
+          for (const region of clickRegions) {
+            if (!region.contains(event.y)) continue
+            region.onClick?.(event.y, event.x)
             return
-          }
-          if (!dialogOpenRef.current && inInputContent(event.y)) {
-            inputHandleRef.current?.current?.clickAt(event.y, event.x)
-            return
-          }
-          const contentRow = toContentRow(event.y)
-          const hit = rowInfoAt(messagesRef.current, widthRef.current, contentRow)
-          const anchorable = screenRef.current?.rowHasText(event.y) ?? false
-          if (dialogOpenRef.current) {
-            dialogClickCandidateRef.current = { x: event.x, y: event.y }
-            if (anchorable) {
-              setSelection({ anchorRow: event.y, anchorCol: event.x, focusRow: event.y, focusCol: event.x, inMessage: false })
-            }
-            return
-          }
-          if (hit?.clickable) {
-            clickCandidateRef.current = { messageId: hit.messageId, y: event.y, x: event.x, moved: false }
-            return
-          }
-          if (anchorable) {
-            const anchorInMessage = inMessageArea(event.y)
-            setSelection({ anchorRow: contentRow, anchorCol: event.x, focusRow: contentRow, focusCol: event.x, inMessage: anchorInMessage })
           }
           return
         }
@@ -194,18 +250,10 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
         }
         case 'scroll': {
           const dir: -1 | 1 = event.scrollDirection === 'up' ? -1 : 1
-          if (dialogOpenRef.current && onDialogWheelRef.current?.(event.y, dir) === true) return
-          const region = activeHintRegion()
-          if (!dialogOpenRef.current && region !== null && event.y >= region.top && event.y <= region.bottom) {
-            inputHandleRef.current?.current?.hintWheel(dir)
-            return
+          for (const region of wheelRegions) {
+            if (!region.contains(event.y)) continue
+            if (region.onWheel?.(dir, event.y) === true) return
           }
-          if (!dialogOpenRef.current && inInputContent(event.y)) {
-            inputHandleRef.current?.current?.wheel(dir)
-            return
-          }
-          const delta = event.scrollDirection === 'up' ? -WHEEL_SCROLL_LINES : WHEEL_SCROLL_LINES
-          onScrollRef.current(scrollTopRef.current + delta)
           return
         }
         default:

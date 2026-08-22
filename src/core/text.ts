@@ -22,28 +22,32 @@ export function charWidth(ch: string): number {
   return width
 }
 
+function pushWrapped(line: string, width: number, out: string[]): void {
+  if (line.length === 0) {
+    out.push('')
+    return
+  }
+  let current = ''
+  let currentWidth = 0
+  for (const ch of line) {
+    const w = charWidth(ch)
+    if (currentWidth + w > width) {
+      out.push(current)
+      current = ch
+      currentWidth = w
+      continue
+    }
+    current += ch
+    currentWidth += w
+  }
+  out.push(current)
+}
+
 export function wrapLines(text: string, width: number): string[] {
   if (width <= 0) return ['']
   const lines: string[] = []
   for (const rawLine of text.split('\n')) {
-    if (rawLine.length === 0) {
-      lines.push('')
-      continue
-    }
-    let current = ''
-    let currentWidth = 0
-    for (const ch of rawLine) {
-      const w = charWidth(ch)
-      if (currentWidth + w > width) {
-        lines.push(current)
-        current = ch
-        currentWidth = w
-      } else {
-        current += ch
-        currentWidth += w
-      }
-    }
-    lines.push(current)
+    pushWrapped(rawLine, width, lines)
   }
   return lines
 }
@@ -53,27 +57,30 @@ export interface LineBreak {
   end: number
 }
 
+function pushWrappedOffsets(line: string, width: number, base: number, out: LineBreak[]): void {
+  if (line.length === 0) {
+    out.push({ start: base, end: base })
+    return
+  }
+  let used = 0
+  let segStart = 0
+  for (let i = 0; i < line.length; i++) {
+    const w = charWidth(line[i]!)
+    if (used + w > width) {
+      out.push({ start: base + segStart, end: base + i })
+      segStart = i
+      used = 0
+    }
+    used += w
+  }
+  out.push({ start: base + segStart, end: base + line.length })
+}
+
 export function lineBreaks(text: string, width: number): LineBreak[] {
   const breaks: LineBreak[] = []
   let start = 0
   for (const rawLine of text.split('\n')) {
-    if (rawLine.length === 0) {
-      breaks.push({ start, end: start })
-      start++
-      continue
-    }
-    let used = 0
-    let segStart = 0
-    for (let i = 0; i < rawLine.length; i++) {
-      const w = charWidth(rawLine[i])
-      if (used + w > width) {
-        breaks.push({ start: start + segStart, end: start + i })
-        segStart = i
-        used = 0
-      }
-      used += w
-    }
-    breaks.push({ start: start + segStart, end: start + rawLine.length })
+    pushWrappedOffsets(rawLine, width, start, breaks)
     start += rawLine.length + 1
   }
   return breaks

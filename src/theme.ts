@@ -1,4 +1,4 @@
-export const colors = {
+const palette = {
   userBubbleBackground: '#2f2f2f',
   aiBubbleBackground: '#0e0e0e',
 
@@ -67,6 +67,10 @@ export const colors = {
   thinkInlineCode: '#2e7d32',
   thinkQuote: '#9a6a4a',
 } as const
+
+export interface Theme extends Readonly<Record<keyof typeof palette, string>> {}
+
+export const colors: Theme = palette
 
 export const permissionModes = {
   'workspace-write': { color: colors.permissionBackground, textColor: colors.workspaceWriteText, name: 'Workspace Write' },

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { lineBreaks, locToPoint, wrapLines } from '../src/utils/text'
+import { lineBreaks, locToPoint, wrapLines } from '../src/core/text'
 
 describe('lineBreaks', () => {
   it('tracks char offsets across wraps', () => {

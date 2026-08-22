@@ -1,7 +1,8 @@
 import { useInput, usePaste } from 'ink'
 import { useRef, useState } from 'react'
 import { isMouseResidue } from '../../terminal/mouse.ts'
-import { colToCharIndex, lineBreaks, locToPoint } from '../../utils/text.ts'
+import { colToCharIndex, lineBreaks, locToPoint } from '../../core/text.ts'
+import { editBackspace, editDelete, editInsert } from '../../core/edit.ts'
 import { filterCommands } from './commands.ts'
 
 export interface ComposerState {
@@ -92,14 +93,12 @@ export function useComposer(
     if (!interactive) return
     const normalized = text.replace(/\r\n?/g, '\n')
     if (normalized === '') return
-    const v = valueRef.current
-    const c = cursorRef.current
-    const next = v.slice(0, c) + normalized + v.slice(c)
-    valueRef.current = next
-    cursorRef.current = c + normalized.length
-    setValue(next)
-    setCursor(c + normalized.length)
-    const open = next.startsWith('/')
+    const next = editInsert({ value: valueRef.current, cursor: cursorRef.current }, normalized)
+    valueRef.current = next.value
+    cursorRef.current = next.cursor
+    setValue(next.value)
+    setCursor(next.cursor)
+    const open = next.value.startsWith('/')
     setHintOpen(open)
     hintOpenRef.current = open
     if (open) {
@@ -107,16 +106,19 @@ export function useComposer(
       commandIndexRef.current = 0
     }
   }, { isActive: interactive })
+  const insertText = (text: string): void => {
+    const v = valueRef.current
+    const c = cursorRef.current
+    const next = editInsert({ value: v, cursor: c }, text)
+    valueRef.current = next.value
+    cursorRef.current = next.cursor
+    setValue(next.value)
+    setCursor(next.cursor)
+  }
   useInput((input, key) => {
     if (!interactive) return
     if (input === '\n') {
-      const v = valueRef.current
-      const c = cursorRef.current
-      const next = v.slice(0, c) + '\n' + v.slice(c)
-      valueRef.current = next
-      cursorRef.current = c + 1
-      setValue(next)
-      setCursor(c + 1)
+      insertText('\n')
       return
     }
     const v = valueRef.current
@@ -164,36 +166,38 @@ export function useComposer(
       return
     }
     if (key.return) {
-      const next = v.slice(0, c) + '\n' + v.slice(c)
-      valueRef.current = next
-      cursorRef.current = c + 1
-      setValue(next)
-      setCursor(c + 1)
+      insertText('\n')
       return
     }
-    if (key.backspace && c > 0) {
-      const next = v.slice(0, c - 1) + v.slice(c)
-      valueRef.current = next
-      cursorRef.current = c - 1
-      setValue(next)
-      setCursor(c - 1)
-      const open = next.startsWith('/')
-      setHintOpen(open)
-      hintOpenRef.current = open
-      setCommandIndex(0)
-      commandIndexRef.current = 0
-      return
+    if (key.backspace) {
+      const next = editBackspace({ value: v, cursor: c })
+      if (next !== null) {
+        valueRef.current = next.value
+        cursorRef.current = next.cursor
+        setValue(next.value)
+        setCursor(next.cursor)
+        const open = next.value.startsWith('/')
+        setHintOpen(open)
+        hintOpenRef.current = open
+        setCommandIndex(0)
+        commandIndexRef.current = 0
+        return
+      }
     }
-    if (key.delete && c < v.length) {
-      const next = v.slice(0, c) + v.slice(c + 1)
-      valueRef.current = next
-      setValue(next)
-      const open = next.startsWith('/')
-      setHintOpen(open)
-      hintOpenRef.current = open
-      setCommandIndex(0)
-      commandIndexRef.current = 0
-      return
+    if (key.delete) {
+      const next = editDelete({ value: v, cursor: c })
+      if (next !== null) {
+        valueRef.current = next.value
+        cursorRef.current = next.cursor
+        setValue(next.value)
+        setCursor(next.cursor)
+        const open = next.value.startsWith('/')
+        setHintOpen(open)
+        hintOpenRef.current = open
+        setCommandIndex(0)
+        commandIndexRef.current = 0
+        return
+      }
     }
     if (key.leftArrow && c > 0) {
       cursorRef.current = c - 1
@@ -228,12 +232,12 @@ export function useComposer(
       return
     }
     if (input && !key.ctrl && !key.meta && !isMouseResidue(input)) {
-      const next = v.slice(0, c) + input + v.slice(c)
-      valueRef.current = next
-      cursorRef.current = c + input.length
-      setValue(next)
-      setCursor(c + input.length)
-      const open = next.startsWith('/')
+      const next = editInsert({ value: v, cursor: c }, input)
+      valueRef.current = next.value
+      cursorRef.current = next.cursor
+      setValue(next.value)
+      setCursor(next.cursor)
+      const open = next.value.startsWith('/')
       setHintOpen(open)
       hintOpenRef.current = open
       if (open) {

@@ -1,6 +1,6 @@
 import { selectedRange } from '../model/selection.ts'
 import type { LineSelection } from '../model/selection.ts'
-import { colToCharIndex, textWidth } from '../utils/text.ts'
+import { colToCharIndex, textWidth } from '../core/text.ts'
 
 export interface RowPiece {
   col: number
