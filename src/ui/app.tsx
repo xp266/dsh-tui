@@ -16,6 +16,9 @@ import { useScroll } from './hooks/use-scroll.ts'
 import { useMouseSelection, hintRegion } from './hooks/use-mouse-selection.ts'
 import { InputBar, inputLayout, INPUT_WIDTH_OFFSET, HINT_MAX_ROWS } from './input/input-bar.tsx'
 import type { InputBarHandle } from './input/input-bar.tsx'
+import { HINT_COMMAND_COL_WIDTH, matchCommand } from './input/commands.ts'
+import type { CommandId } from './input/commands.ts'
+import { CHROME_MARGIN_X, MESSAGE_INPUT_GAP_ROWS, hintWindowTop } from './layout-metrics.ts'
 import { useComposer } from './input/use-composer.ts'
 import { filterCommands } from './input/commands.ts'
 import { MessageList } from './message/message-list.tsx'
@@ -57,37 +60,9 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   )
   const layout = inputLayout(value, cursor, columns)
   const inputHeight = layout.barHeight
-  const messageHeight = Math.max(1, rows - inputHeight - 1)
+  const messageHeight = Math.max(1, rows - inputHeight - MESSAGE_INPUT_GAP_ROWS)
   const total = rowIndexFor(messages, columns).total
   const { scrollTop, applyScroll } = useScroll(total, messageHeight, messages)
-  const handleSend = (text: string) => {
-    if (text === '/models') {
-      if (bridge) setDialog('models')
-      return
-    }
-    if (text === '/model-effort') {
-      if (bridge) setDialog('effort')
-      return
-    }
-    if (text === '/preset') {
-      if (bridge) setDialog('presets')
-      return
-    }
-    if (text === '/defaults') {
-      if (bridge) setDialog('defaults')
-      return
-    }
-    if (text === '/sessions') {
-      if (bridge) setDialog('sessions')
-      return
-    }
-    if (text === '/new') {
-      startNewSession()
-      return
-    }
-    bridge?.send(text)
-    applyScroll(Infinity)
-  }
   const startNewSession = () => {
     if (!bridge) return
     resetChat()
@@ -96,6 +71,33 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     void Promise.resolve(bridge.newSession())
       .then(() => setSessionTick(tick => tick + 1))
       .catch(() => {})
+  }
+  const runCommand = (id: CommandId) => {
+    switch (id) {
+      case 'new':
+        startNewSession()
+        return
+      case 'model-effort':
+        if (bridge) setDialog('effort')
+        return
+      case 'preset':
+        if (bridge) setDialog('presets')
+        return
+      case 'models':
+      case 'defaults':
+      case 'sessions':
+        if (bridge) setDialog(id)
+        return
+    }
+  }
+  const handleSend = (text: string) => {
+    const matched = matchCommand(text)
+    if (matched !== undefined) {
+      runCommand(matched.id)
+      return
+    }
+    bridge?.send(text)
+    applyScroll(Infinity)
   }
   sendRef.current = handleSend
   const commands = useMemo(() => filterCommands(value), [value])
@@ -197,17 +199,17 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
           {hintState !== null && dialog === null && (
             <Box
               position="absolute"
-              top={Math.max(0, rows - inputHeight - 1 - hintState.commands.length)}
-              left={2}
+              top={hintWindowTop(rows, inputHeight, hintState.commands.length)}
+              left={CHROME_MARGIN_X}
               width={Math.max(1, columns - 4)}
               flexDirection="column"
             >
               {hintState.commands.map((command, index) => {
                 const selected = index === hintState.selectedIndex
                 const blockWidth = Math.max(1, columns - 4)
-                const line = '  ' + padToWidth(command.command, 20) + command.description
+                const line = '  ' + padToWidth(command.command, HINT_COMMAND_COL_WIDTH) + command.description
                 const filled = padToWidth(truncate(line, blockWidth), blockWidth)
-                const hintY = Math.max(0, rows - inputHeight - 1 - hintState.commands.length) + index
+                const hintY = hintWindowTop(rows, inputHeight, hintState.commands.length) + index
                 return (
                   <Box key={command.command} width={blockWidth} backgroundColor={colors.dialogBackground}>
                     <SelectableText y={hintY} col={0} text={filled} inverse={selected} />

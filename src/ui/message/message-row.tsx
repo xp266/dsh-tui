@@ -1,7 +1,7 @@
 import { Box, Text } from 'ink'
 import { memo } from 'react'
 import { colors } from '../../theme.ts'
-import { headerSymbol, SPINNER_FRAMES } from './layout.ts'
+import { headerSymbol, HEADER_LABEL_COL, SPINNER_FRAMES } from './layout.ts'
 import type { RowInfo } from './layout.ts'
 import { SelectableText } from '../selection.tsx'
 
@@ -56,7 +56,7 @@ export const MessageRow = memo(
       return (
         <Box>
           <SelectableText y={screenRow} col={0} text={`  ${symbol} `} color={color} messageLayer />
-          <SelectableText y={screenRow} col={4} text={info.label} color={color} messageLayer />
+          <SelectableText y={screenRow} col={HEADER_LABEL_COL} text={info.label} color={color} messageLayer />
         </Box>
       )
     }

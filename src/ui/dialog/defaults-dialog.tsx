@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
 import type { Ref } from 'react'
-import { colors, permissionModeInfo } from '../../theme.ts'
+import { permissionModeInfo } from '../../theme.ts'
+import { errorLine, loadingLine } from './status-lines.ts'
 import type { PresetSummary } from '../../chat/presets.ts'
-import { errorText } from '../../utils/text.ts'
+import { useAsyncAction } from '../hooks/use-async-action.ts'
 import { useAsyncList } from '../hooks/use-async-list.ts'
 import { Dialog } from './dialog.tsx'
 import type { DialogFooterLine, DialogHandle, DialogRow } from './dialog.tsx'
@@ -37,28 +38,26 @@ export function DefaultsDialog({ api, onClose, ref }: DefaultsDialogProps) {
   })
   const [presetDefault, setPresetDefault] = useState(api.defaultPresetId())
   const [permissionDefault, setPermissionDefault] = useState(api.defaultPermission())
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const { error: saveError, clearError: clearSaveError, run } = useAsyncAction()
   const presets = items[0]?.presets ?? []
   const permissionIds = items[0]?.permissions ?? []
   const savePreset = async (id: string) => {
     setPresetDefault(id)
-    try {
-      await api.setDefaultPreset(id)
-      setSaveError(null)
-    } catch (cause) {
-      setPresetDefault(api.defaultPresetId())
-      setSaveError(errorText(cause))
+    const result = await run(() => api.setDefaultPreset(id))
+    if (result.ok) {
+      clearSaveError()
+      return
     }
+    setPresetDefault(api.defaultPresetId())
   }
   const savePermission = async (id: string) => {
     setPermissionDefault(id)
-    try {
-      await api.setDefaultPermission(id)
-      setSaveError(null)
-    } catch (cause) {
-      setPermissionDefault(api.defaultPermission())
-      setSaveError(errorText(cause))
+    const result = await run(() => api.setDefaultPermission(id))
+    if (result.ok) {
+      clearSaveError()
+      return
     }
+    setPermissionDefault(api.defaultPermission())
   }
   const presetIds = presets.map(preset => preset.id)
   const presetNames = presets.map(preset => preset.name)
@@ -119,9 +118,9 @@ export function DefaultsDialog({ api, onClose, ref }: DefaultsDialogProps) {
     },
   ]
   const footer: DialogFooterLine[] = [
-    ...(loading ? [{ text: 'loading…', color: colors.dialogHintText }] : []),
-    ...(error !== null ? [{ text: error, color: colors.errorText }] : []),
-    ...(saveError !== null ? [{ text: saveError, color: colors.errorText }] : []),
+    ...(loading ? [loadingLine()] : []),
+    ...(error !== null ? [errorLine(error)] : []),
+    ...(saveError !== null ? [errorLine(saveError)] : []),
   ]
   return (
     <Dialog

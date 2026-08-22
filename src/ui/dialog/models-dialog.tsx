@@ -4,7 +4,8 @@ import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import type { ConfiguredModel, CustomProviderForm } from '../../chat/models.ts'
 import { API_PROTOCOLS } from '../../chat/models.ts'
 import { colors } from '../../theme.ts'
-import { errorText } from '../../utils/text.ts'
+import { errorLine } from './status-lines.ts'
+import { useAsyncAction } from '../hooks/use-async-action.ts'
 import { Dialog } from './dialog.tsx'
 import type { DialogFooterLine, DialogHandle, DialogRow } from './dialog.tsx'
 import { ListDialog } from './list-dialog.tsx'
@@ -39,7 +40,7 @@ const EMPTY_FORM: CustomProviderForm = {
 
 export function ModelsDialog({ api, onClose, onModelSelected, ref }: ModelsDialogProps) {
   const [window, setWindow] = useState<Window>({ kind: 'list' })
-  const [error, setError] = useState<string | null>(null)
+  const { error, clearError, run } = useAsyncAction()
   const [deepSeekKey, setDeepSeekKey] = useState('')
   const [form, setForm] = useState<CustomProviderForm>(EMPTY_FORM)
   const [discovered, setDiscovered] = useState<LlmDiscoveredModel[]>([])
@@ -47,23 +48,19 @@ export function ModelsDialog({ api, onClose, onModelSelected, ref }: ModelsDialo
   const [fetching, setFetching] = useState(false)
   const fetchingRef = useRef(false)
   const selectModel = async (model: ConfiguredModel) => {
-    try {
+    await run(async () => {
       await api.selectModel(model.provider, model.id)
       onModelSelected(model.provider, model.id)
       onClose()
-    } catch (cause) {
-      setError(errorText(cause))
-    }
+    })
   }
   const submitDeepSeek = async () => {
-    try {
+    await run(async () => {
       await api.addDeepSeekKey(deepSeekKey)
       setDeepSeekKey('')
-      setError(null)
+      clearError()
       setWindow({ kind: 'list' })
-    } catch (cause) {
-      setError(errorText(cause))
-    }
+    })
   }
   const setField = <K extends keyof CustomProviderForm>(key: K, value: CustomProviderForm[K]) => {
     setForm(current => ({ ...current, [key]: value }))
@@ -71,24 +68,18 @@ export function ModelsDialog({ api, onClose, onModelSelected, ref }: ModelsDialo
   const submitCustom = async () => {
     if (fetchingRef.current) return
     fetchingRef.current = true
-    setError(null)
+    clearError()
     setFetching(true)
-    try {
+    await run(async () => {
       const found = await api.fetchCustomModels(form)
-      if (found.length === 0) {
-        setError('Failed to fetch models')
-        return
-      }
+      if (found.length === 0) throw new Error('Failed to fetch models')
       setDiscovered(found)
       setPicked(new Set())
-      setError(null)
+      clearError()
       setWindow({ kind: 'select-models' })
-    } catch (cause) {
-      setError(errorText(cause))
-    } finally {
-      fetchingRef.current = false
-      setFetching(false)
-    }
+    })
+    fetchingRef.current = false
+    setFetching(false)
   }
   const toggleModel = (id: string) => {
     setPicked(current => {
@@ -99,19 +90,14 @@ export function ModelsDialog({ api, onClose, onModelSelected, ref }: ModelsDialo
     })
   }
   const submitModels = async () => {
-    if (picked.size === 0) {
-      setError('Select at least one model')
-      return
-    }
-    const chosen = discovered.filter(model => picked.has(model.id))
-    try {
+    await run(async () => {
+      if (picked.size === 0) throw new Error('Select at least one model')
+      const chosen = discovered.filter(model => picked.has(model.id))
       await api.saveCustomProvider(form, chosen)
       setForm(EMPTY_FORM)
-      setError(null)
+      clearError()
       setWindow({ kind: 'list' })
-    } catch (cause) {
-      setError(errorText(cause))
-    }
+    })
   }
   const deepSeekRows: DialogRow[] = [
     {
@@ -171,7 +157,7 @@ export function ModelsDialog({ api, onClose, onModelSelected, ref }: ModelsDialo
   const footerLines: DialogFooterLine[] = [
     ...(window.kind === 'select-models' ? [{ text: 'Press Space to toggle, Enter to confirm', color: colors.dialogHintText }] : []),
     ...(fetching && window.kind === 'add-custom' ? [{ text: 'Fetching models...' }] : []),
-    ...(error !== null ? [{ text: error, color: colors.errorText }] : []),
+    ...(error !== null ? [errorLine(error)] : []),
   ]
   if (window.kind === 'list') {
     return (

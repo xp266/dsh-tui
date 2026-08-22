@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import type { ScreenCapture } from '../../terminal/screen.ts'
 import { createMouseController } from '../../terminal/mouse.ts'
+import { CHROME_FRAME_ROWS, HINT_INPUT_GAP_ROWS, MESSAGE_INPUT_GAP_ROWS } from '../layout-metrics.ts'
 import { clampFocusRow, toScreenSelection } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
 import { rowInfoAt } from '../message/layout.ts'
@@ -18,7 +19,7 @@ export interface HintRegion {
 
 export function hintRegion(rows: number, hint: CommandHintState | null, dialogOpen: boolean, inputHeight: number): HintRegion | null {
   if (hint === null || dialogOpen) return null
-  const bottom = rows - inputHeight - 2
+  const bottom = rows - inputHeight - MESSAGE_INPUT_GAP_ROWS - HINT_INPUT_GAP_ROWS
   const top = Math.max(0, bottom - hint.commands.length + 1)
   return { top, bottom }
 }
@@ -86,7 +87,7 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
   useEffect(() => {
     const inInputContent = (y: number): boolean => {
       const top = rowsRef.current - inputHeightRef.current
-      return y >= top && y <= top + inputHeightRef.current - 4
+      return y >= top && y <= top + inputHeightRef.current - CHROME_FRAME_ROWS
     }
     const inMessageArea = (screenRow: number): boolean => {
       if (screenRow >= messageHeightRef.current) return false

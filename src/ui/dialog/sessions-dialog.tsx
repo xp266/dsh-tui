@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Ref } from 'react'
 import { colors } from '../../theme.ts'
-import { errorText } from '../../utils/text.ts'
+import { errorLine, loadingLine } from './status-lines.ts'
 import type { SessionSummary } from '../../chat/session-list.ts'
 import { groupSessions } from '../../chat/session-groups.ts'
 import type { SessionSectionKind } from '../../chat/session-groups.ts'
+import { useAsyncAction } from '../hooks/use-async-action.ts'
 import { useAsyncList } from '../hooks/use-async-list.ts'
 import { Dialog } from './dialog.tsx'
 import type { DialogFooterLine, DialogHandle, DialogItem, DialogRow } from './dialog.tsx'
@@ -42,20 +43,18 @@ const ARCHIVE_HINT: DialogFooterLine[] = [
 ]
 
 export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessionSelected, onNewSession, ref }: SessionsDialogProps) {
-  const [error, setError] = useState<string | null>(null)
+  const { error, clearError, run } = useAsyncAction()
   const [armedId, setArmedId] = useState<string | null>(null)
   const armedRef = useRef<string | null>(null)
   const armTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const itemIds = useRef(new Map<DialogItem, string>())
   const selectSession = async (session: SessionSummary) => {
-    try {
+    await run(async () => {
       onBeforeSessionSelected?.()
       await api.openSession(session.id)
       onSessionSelected(session)
       onClose()
-    } catch (cause) {
-      setError(errorText(cause))
-    }
+    })
   }
   const { items, loading, error: loadError, reload } = useAsyncList(api.listSessions)
   const sections = useMemo(() => groupSessions(items), [items])
@@ -68,17 +67,15 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
   }
   useEffect(() => () => clearTimeout(armTimer.current), [])
   const archive = async (id: string) => {
-    try {
+    const result = await run(async () => {
       await api.archiveSession(id)
-      setError(null)
       if (api.activeSessionId() === id) {
         onBeforeSessionSelected?.()
         onNewSession?.()
       }
       reload()
-    } catch (cause) {
-      setError(errorText(cause))
-    }
+    })
+    if (result.ok) clearError()
   }
   const handleCtrlD = (focused: DialogItem | undefined): boolean => {
     if (focused?.type !== 'button') return false
@@ -114,11 +111,11 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
   })
   itemIds.current = ids
   const statusLine: DialogFooterLine | undefined = loading
-    ? { text: 'loading…', color: colors.dialogHintText }
+    ? loadingLine()
     : loadError !== null
-      ? { text: loadError, color: colors.errorText }
+      ? errorLine(loadError)
       : error !== null
-        ? { text: error, color: colors.errorText }
+        ? errorLine(error)
         : undefined
   const footer: DialogFooterLine[] = [...(statusLine === undefined ? [] : [statusLine]), ...ARCHIVE_HINT]
   return (

@@ -70,8 +70,8 @@ export const colors = {
 
 export const permissionModes = {
   'workspace-write': { color: colors.permissionBackground, textColor: colors.workspaceWriteText, name: 'Workspace Write' },
-  'danger-full-access': { color: '#232323', textColor: colors.dangerFullAccessText, name: 'Full access' },
-  'read-only': { color: '#232323', textColor: colors.readOnlyText, name: 'Read Only' },
+  'danger-full-access': { color: colors.permissionBackground, textColor: colors.dangerFullAccessText, name: 'Full access' },
+  'read-only': { color: colors.permissionBackground, textColor: colors.readOnlyText, name: 'Read Only' },
 } as const
 
 export function permissionModeInfo(mode: string): { color: string; textColor: string; name: string } {

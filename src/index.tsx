@@ -4,6 +4,7 @@ import { App } from './ui/app.tsx'
 import { createChatBridge } from './chat/bridge.ts'
 import type { ChatBridge } from './chat/bridge.ts'
 import { createScreenCapture } from './terminal/screen.ts'
+import { writeCursorShape } from './terminal/cursor-shape.ts'
 import { startHotTheme } from './hot-theme.ts'
 
 export const name = 'dsh-tui'
@@ -54,7 +55,7 @@ export function apply(ctx: Context) {
       clearInterval(sizePoll)
       hotTheme?.stop()
       capture.stream.off('resize', onResize)
-      process.stdout.write('\x1b[0 q')
+      writeCursorShape('reset')
       app.unmount()
     }
   })

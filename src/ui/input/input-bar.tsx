@@ -2,13 +2,15 @@ import { Box, Text, useCursor, useStdout } from 'ink'
 import type { Ref } from 'react'
 import { useImperativeHandle, useEffect } from 'react'
 import { colors, permissionModeInfo } from '../../theme.ts'
+import { writeCursorShape } from '../../terminal/cursor-shape.ts'
+import { CHROME_FRAME_ROWS, CHROME_MARGIN_X, CHROME_PAD_X, CHROME_TEXT_X, INPUT_WIDTH_OFFSET, inputFrameTop, inputStatusRow } from '../layout-metrics.ts'
 import { colToCharIndex, lineBreaks, textWidth, truncate } from '../../utils/text.ts'
 import type { ComposerApi } from './use-composer.ts'
 import { SelectableText } from '../selection.tsx'
 
-export const INPUT_BAR_MIN_HEIGHT = 5
+export { INPUT_WIDTH_OFFSET }
+
 export const INPUT_MAX_CONTENT_ROWS = 8
-export const INPUT_WIDTH_OFFSET = 8
 export const HINT_MAX_ROWS = 7
 
 function wrapLine(line: string, width: number): string[] {
@@ -72,7 +74,7 @@ export function inputLayout(value: string, cursor: number, width: number): Input
     cursorRow,
     cursorCol,
     realRows,
-    barHeight: realRows + 4,
+    barHeight: realRows + CHROME_FRAME_ROWS,
     visibleStart,
   }
 }
@@ -117,23 +119,23 @@ export function InputBar({
 }: InputBarProps) {
   const { setCursorPosition } = useCursor()
   const contentWidth = width - INPUT_WIDTH_OFFSET
-  const blockWidth = contentWidth + 4
+  const blockWidth = contentWidth + CHROME_PAD_X * 2
   const permission = permissionModeInfo(permissionMode)
   useEffect(() => {
-    process.stdout.write(interactive ? '\x1b[1 q' : '\x1b[2 q')
+    writeCursorShape(interactive ? 'beam' : 'block')
   }, [interactive])
   useEffect(() => {
     return () => {
-      process.stdout.write('\x1b[0 q')
+      writeCursorShape('reset')
     }
   }, [])
   const layout = inputLayout(value, cursor, width)
   const { lines, cursorRow, cursorCol, realRows, barHeight, visibleStart } = layout
-  const firstRealY = rows - 4 - realRows
+  const firstRealY = inputFrameTop(rows, realRows)
   const caretVisibleRow = cursorRow - visibleStart
   if (interactive) {
     setCursorPosition({
-      x: 4 + cursorCol,
+      x: CHROME_TEXT_X + cursorCol,
       y: firstRealY + caretVisibleRow,
     })
   } else {
@@ -147,7 +149,7 @@ export function InputBar({
       const lineText = lines[lineIndex]
       const target = lineBreaks(value, contentWidth)[lineIndex]
       if (lineText === undefined || target === undefined) return
-      const col = Math.max(0, Math.min(x - 4, textWidth(lineText)))
+      const col = Math.max(0, Math.min(x - CHROME_TEXT_X, textWidth(lineText)))
       api.placeCursor(target.start + colToCharIndex(lineText, col))
     },
     wheel(delta) {
@@ -183,10 +185,10 @@ export function InputBar({
       used += textWidth(text)
     }
   }
-  const statusY = rows - 3
+  const statusY = inputStatusRow(rows)
   return (
     <Box position="absolute" top={0} left={0} width={columns} height={rows}>
-      <Box position="absolute" top={firstRealY - 1} left={2} width={blockWidth}>
+      <Box position="absolute" top={firstRealY - 1} left={CHROME_MARGIN_X} width={blockWidth}>
         <Text color={permission.color}>{'▄'.repeat(blockWidth)}</Text>
       </Box>
       {Array.from({ length: realRows }, (_, row) => {
@@ -197,23 +199,23 @@ export function InputBar({
             key={`input-${row}`}
             position="absolute"
             top={y}
-            left={2}
+            left={CHROME_MARGIN_X}
             width={blockWidth}
-            paddingLeft={2}
-            paddingRight={2}
+            paddingLeft={CHROME_PAD_X}
+            paddingRight={CHROME_PAD_X}
             backgroundColor={permission.color}
           >
-            <SelectableText y={y} col={4} text={line || ' '} />
+            <SelectableText y={y} col={CHROME_TEXT_X} text={line || ' '} />
           </Box>
         )
       })}
       <Box
         position="absolute"
-        top={rows - 4}
-        left={2}
+        top={inputStatusRow(rows) - 1}
+        left={CHROME_MARGIN_X}
         width={blockWidth}
-        paddingLeft={2}
-        paddingRight={2}
+        paddingLeft={CHROME_PAD_X}
+        paddingRight={CHROME_PAD_X}
         backgroundColor={permission.color}
       >
         <Text>{' '}</Text>
@@ -221,10 +223,10 @@ export function InputBar({
       <Box
         position="absolute"
         top={statusY}
-        left={2}
+        left={CHROME_MARGIN_X}
         width={blockWidth}
-        paddingLeft={2}
-        paddingRight={2}
+        paddingLeft={CHROME_PAD_X}
+        paddingRight={CHROME_PAD_X}
         backgroundColor={permission.color}
       >
         {statusReady ? (
@@ -242,12 +244,12 @@ export function InputBar({
           <Text>{' '}</Text>
         )}
         {statusReady && presetName !== undefined && (
-          <Box position="absolute" top={0} left={2 + contentWidth - textWidth(presetName)}>
-            <SelectableText y={statusY} col={4 + contentWidth - textWidth(presetName)} text={presetName} color={colors.presetText} />
+          <Box position="absolute" top={0} left={CHROME_MARGIN_X + contentWidth - textWidth(presetName)}>
+            <SelectableText y={statusY} col={CHROME_TEXT_X + contentWidth - textWidth(presetName)} text={presetName} color={colors.presetText} />
           </Box>
         )}
       </Box>
-      <Box position="absolute" top={rows - 2} left={2} width={blockWidth}>
+      <Box position="absolute" top={inputStatusRow(rows) + 1} left={CHROME_MARGIN_X} width={blockWidth}>
         <Text color={permission.color}>{'▀'.repeat(blockWidth)}</Text>
       </Box>
     </Box>

@@ -3,41 +3,10 @@ import type { ReactNode } from 'react'
 import { colors } from '../../theme.ts'
 import { padToWidth, textWidth, truncate, wrapLines } from '../../utils/text.ts'
 import { SelectableText } from '../selection.tsx'
-import type { DialogItem, DialogRow } from './dialog.tsx'
+import { actionPositions, CAROUSEL_BUTTON_WIDTH, selectBlock } from './geometry.ts'
+import type { DialogItem, DialogRow } from './items.ts'
 
-export const CAROUSEL_BUTTON_WIDTH = 3
-
-export interface SelectBlock {
-  blockWidth: number
-  blockStart: number
-  text: string
-  leftPad: number
-  fullLeftPad: number
-  cursorX: number
-}
-
-export function selectBlock(contentWidth: number, value: string): SelectBlock {
-  const blockWidth = Math.max(3, Math.floor(contentWidth * 0.6))
-  const innerWidth = Math.max(1, blockWidth - CAROUSEL_BUTTON_WIDTH * 2)
-  const text = truncate(value || '(none)', innerWidth)
-  const padding = innerWidth - textWidth(text)
-  const fullPadding = blockWidth - textWidth(text)
-  return {
-    blockWidth,
-    blockStart: contentWidth - blockWidth,
-    text,
-    leftPad: Math.floor(padding / 2),
-    fullLeftPad: Math.floor(fullPadding / 2),
-    cursorX: CAROUSEL_BUTTON_WIDTH + Math.floor(padding / 2) + textWidth(text),
-  }
-}
-
-export function actionPositions(contentWidth: number, confirmLabel: string, cancelLabel: string): { confirmX: number; cancelX: number } {
-  const edge = Math.floor(contentWidth * 0.2)
-  const confirmX = Math.min(edge, Math.max(0, contentWidth - textWidth(confirmLabel)))
-  const cancelX = Math.max(confirmX + textWidth(confirmLabel), contentWidth - edge - textWidth(cancelLabel))
-  return { confirmX, cancelX }
-}
+export { actionPositions, CAROUSEL_BUTTON_WIDTH, selectBlock }
 
 export function renderRow(
   row: DialogRow,

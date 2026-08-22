@@ -1,5 +1,5 @@
 import type { Ref } from 'react'
-import { colors } from '../../theme.ts'
+import { errorLine, loadingLine } from './status-lines.ts'
 import { useAsyncList } from '../hooks/use-async-list.ts'
 import { Dialog } from './dialog.tsx'
 import type { DialogFooterLine, DialogHandle, DialogRow } from './dialog.tsx'
@@ -40,9 +40,9 @@ export function ListDialog<T>({
     items: [{ type: 'button', label: labelOf(item), right: rightOf?.(item), onPress: () => onSelect(item) }],
   }))
   const footer: DialogFooterLine[] = loading
-    ? [{ text: 'loading…', color: colors.dialogHintText }]
+    ? [loadingLine()]
     : error !== null
-      ? [{ text: error, color: colors.errorText }]
+      ? [errorLine(error)]
       : footerLines ?? []
   return (
     <Dialog

@@ -1,10 +1,9 @@
-import { useState } from 'react'
 import type { Ref } from 'react'
-import { colors } from '../../theme.ts'
-import { errorText } from '../../utils/text.ts'
+import { errorLine } from './status-lines.ts'
 import type { PresetSummary } from '../../chat/presets.ts'
+import { useAsyncAction } from '../hooks/use-async-action.ts'
 import { ListDialog } from './list-dialog.tsx'
-import type { DialogFooterLine, DialogHandle } from './dialog.tsx'
+import type { DialogHandle, DialogFooterLine } from './dialog.tsx'
 
 export interface PresetsApi {
   listPresets(): Promise<PresetSummary[]>
@@ -22,17 +21,14 @@ const DIALOG_WIDTH = 60
 const DIALOG_MAX_HEIGHT = 14
 
 export function PresetsDialog({ api, onClose, ref }: PresetsDialogProps) {
-  const [error, setError] = useState<string | null>(null)
+  const { error, run } = useAsyncAction()
   const current = api.currentPreset()
   const selectPreset = async (id: string) => {
-    try {
-      await api.selectPreset(id)
-      onClose()
-    } catch (cause) {
-      setError(errorText(cause))
-    }
+    const result = await run(() => api.selectPreset(id))
+    if (!result.ok) return
+    onClose()
   }
-  const footerLines: DialogFooterLine[] = error === null ? [] : [{ text: error, color: colors.errorText }]
+  const footerLines: DialogFooterLine[] = error === null ? [] : [errorLine(error)]
   return (
     <ListDialog
       ref={ref}
