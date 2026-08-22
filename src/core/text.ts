@@ -13,12 +13,18 @@ export function textWidth(text: string): number {
 
 const charWidthCache = new Map<string, number>()
 
-export function charWidth(ch: string): number {
-  const cached = charWidthCache.get(ch)
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+
+export function segmentGraphemes(text: string): Iterable<Intl.SegmentData> {
+  return graphemeSegmenter.segment(text)
+}
+
+export function charWidth(cluster: string): number {
+  const cached = charWidthCache.get(cluster)
   if (cached !== undefined) return cached
-  const width = stringWidth(ch)
+  const width = stringWidth(cluster)
   if (charWidthCache.size >= 8192) charWidthCache.clear()
-  charWidthCache.set(ch, width)
+  charWidthCache.set(cluster, width)
   return width
 }
 
@@ -29,15 +35,15 @@ function pushWrapped(line: string, width: number, out: string[]): void {
   }
   let current = ''
   let currentWidth = 0
-  for (const ch of line) {
-    const w = charWidth(ch)
+  for (const { segment } of segmentGraphemes(line)) {
+    const w = charWidth(segment)
     if (currentWidth + w > width) {
       out.push(current)
-      current = ch
+      current = segment
       currentWidth = w
       continue
     }
-    current += ch
+    current += segment
     currentWidth += w
   }
   out.push(current)
@@ -64,11 +70,11 @@ function pushWrappedOffsets(line: string, width: number, base: number, out: Line
   }
   let used = 0
   let segStart = 0
-  for (let i = 0; i < line.length; i++) {
-    const w = charWidth(line[i]!)
+  for (const { segment, index } of segmentGraphemes(line)) {
+    const w = charWidth(segment)
     if (used + w > width) {
-      out.push({ start: base + segStart, end: base + i })
-      segStart = i
+      out.push({ start: base + segStart, end: base + index })
+      segStart = index
       used = 0
     }
     used += w
@@ -105,9 +111,9 @@ export function locToPoint(text: string, width: number, index: number): Point {
 
 export function colToCharIndex(line: string, col: number): number {
   let width = 0
-  for (let i = 0; i < line.length; i++) {
-    if (width >= col) return i
-    width += charWidth(line[i])
+  for (const { segment, index } of segmentGraphemes(line)) {
+    if (width >= col) return index
+    width += charWidth(segment)
   }
   return line.length
 }
@@ -119,10 +125,10 @@ export function padToWidth(text: string, width: number): string {
 
 export function truncate(text: string, width: number): string {
   let used = 0
-  for (let i = 0; i < text.length; i++) {
-    const charWidth = textWidth(text[i])
-    if (used + charWidth > width) return text.slice(0, i)
-    used += charWidth
+  for (const { segment, index } of segmentGraphemes(text)) {
+    const w = charWidth(segment)
+    if (used + w > width) return text.slice(0, index)
+    used += w
   }
   return text
 }

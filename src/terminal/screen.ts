@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { charWidth } from '../core/text.ts'
+import { charWidth, segmentGraphemes } from '../core/text.ts'
 import { selectedRange } from '../model/selection.ts'
 import type { LineSelection } from '../model/selection.ts'
 
@@ -47,24 +47,24 @@ export function createScreenCapture(): ScreenCapture {
   }
 
   function writeText(text: string): void {
-    for (const ch of text) {
-      if (ch === '\n') {
+    for (const { segment } of segmentGraphemes(text)) {
+      if (segment === '\n') {
         cursorY += 1
         cursorX = 0
         continue
       }
-      if (ch === '\r') {
+      if (segment === '\r') {
         cursorX = 0
         continue
       }
-      if (ch === '\t') {
+      if (segment === '\t') {
         cursorX += 4
         continue
       }
       if (cursorY < 0) cursorY = 0
       if (cursorX < 0) cursorX = 0
-      setCell(cursorY, cursorX, ch)
-      cursorX += charWidth(ch)
+      setCell(cursorY, cursorX, segment)
+      cursorX += charWidth(segment)
     }
   }
 

@@ -4,7 +4,7 @@ import { useImperativeHandle, useEffect } from 'react'
 import { colors, permissionModeInfo } from '../../theme.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
 import { CHROME_FRAME_ROWS, CHROME_MARGIN_X, CHROME_PAD_X, CHROME_TEXT_X, INPUT_WIDTH_OFFSET, inputFrameTop, inputStatusRow } from '../../core/metrics.ts'
-import { colToCharIndex, lineBreaks, textWidth, truncate } from '../../core/text.ts'
+import { colToCharIndex, lineBreaks, textWidth, truncate, wrapLines } from '../../core/text.ts'
 import type { ComposerApi } from './use-composer.ts'
 import { SelectableText } from '../selection.tsx'
 import { Region } from '../region.tsx'
@@ -15,23 +15,7 @@ export const INPUT_MAX_CONTENT_ROWS = 8
 export const HINT_MAX_ROWS = 7
 
 function wrapLine(line: string, width: number): string[] {
-  if (line === '') return ['']
-  const parts: string[] = []
-  let current = ''
-  let currentWidth = 0
-  for (const ch of line) {
-    const w = textWidth(ch)
-    if (currentWidth + w > width) {
-      parts.push(current)
-      current = ch
-      currentWidth = w
-      continue
-    }
-    current += ch
-    currentWidth += w
-  }
-  parts.push(current)
-  return parts
+  return wrapLines(line, width)
 }
 
 export interface InputLayout {

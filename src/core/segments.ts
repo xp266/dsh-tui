@@ -1,4 +1,4 @@
-import { charWidth } from './text.ts'
+import { charWidth, segmentGraphemes } from './text.ts'
 
 export interface MarkStyle {
   color?: string
@@ -21,16 +21,19 @@ export function wrapSegments(segments: Segment[], width: number): Segment[][] {
     current = []
     currentWidth = 0
   }
+  const pushCluster = (cluster: string, style: MarkStyle) => {
+    if (cluster === '\n') {
+      flush()
+      return
+    }
+    const w = charWidth(cluster)
+    if (currentWidth + w > width) flush()
+    current.push({ text: cluster, style })
+    currentWidth += w
+  }
   const charLoop = (text: string, style: MarkStyle) => {
-    for (const ch of text) {
-      if (ch === '\n') {
-        flush()
-        continue
-      }
-      const w = charWidth(ch)
-      if (currentWidth + w > width) flush()
-      current.push({ text: ch, style })
-      currentWidth += w
+    for (const { segment } of segmentGraphemes(text)) {
+      pushCluster(segment, style)
     }
   }
   for (const seg of segments) {
@@ -42,8 +45,8 @@ export function wrapSegments(segments: Segment[], width: number): Segment[][] {
     }
     let total = 0
     let fits = true
-    for (const ch of text) {
-      const w = charWidth(ch)
+    for (const { segment } of segmentGraphemes(text)) {
+      const w = charWidth(segment)
       if (currentWidth + total + w > width) {
         fits = false
         break
