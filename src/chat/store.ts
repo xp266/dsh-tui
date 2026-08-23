@@ -62,6 +62,8 @@ function nextId(prefix: string): string {
   return `${prefix}-${messageCounter}`
 }
 
+const CHROME_EVENTS = new Set(['permission/preset', 'sandbox/mode', 'approval/policy'])
+
 export function reduceChatEvent(
   messages: Message[],
   event: SessionEvent,
@@ -288,7 +290,7 @@ export function reduceChatEvent(
       return { messages, turn: initialTurnState(), changed }
     }
     default:
-      return { messages, turn, changed: false }
+      return { messages, turn, changed: CHROME_EVENTS.has(event.type) }
   }
 }
 
