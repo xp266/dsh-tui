@@ -1,3 +1,4 @@
+import './terminal/truecolor.ts'
 import { render } from 'ink'
 import type { Context } from '@deepseek-ai/cordis'
 import { App } from './ui/app.tsx'

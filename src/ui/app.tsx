@@ -37,6 +37,9 @@ import type { ActivePanel, InteractionStore } from '../chat/interactions.ts'
 import { ApprovalPanel } from './panels/approval-panel.tsx'
 import type { PanelPointerHandle } from './panels/approval-panel.tsx'
 import { QuestionPanel } from './panels/question-panel.tsx'
+import { TodoDialog } from './dialog/todo-dialog.tsx'
+import { isTodoActive, todoProgress } from '../chat/todo-view.ts'
+import type { TodoItemLike } from '../chat/todo-view.ts'
 import { useOverlayStack } from './overlay.ts'
 
 const FORCE_EXIT_DELAY_MS = 6000
@@ -44,7 +47,7 @@ const INTERRUPT_ARM_MS = 3000
 const WORKING_PLACEHOLDER = 'Press esc twice to interrupt'
 const WORKING_ARMED_PLACEHOLDER = 'Press esc again to interrupt'
 
-type DialogKind = 'models' | 'sessions' | 'presets' | 'effort' | 'defaults'
+type DialogKind = 'models' | 'sessions' | 'presets' | 'effort' | 'defaults' | 'todo'
 
 const noopSubscribe = () => () => {}
 const nullSnapshot = () => null
@@ -88,7 +91,9 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const overlays = useOverlayStack<DialogKind>()
   const dialog: DialogKind | null = overlays.top ?? null
   const [, setSessionTick] = useState(0)
-  const { messages, modelName, setModelName, updateMessages, resetChat, activity } = useChatEvents(bridge, dialog !== null)
+  const { messages, modelName, setModelName, updateMessages, resetChat, activity, todos } = useChatEvents(bridge, dialog !== null)
+  const todoActive = isTodoActive(todos)
+  const todoBadge = todoProgress(todos)
   const running = activity.running
   const [spinnerTick, setSpinnerTick] = useState(0)
   useEffect(() => {
@@ -149,6 +154,9 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
       case 'new':
         startNewSession()
         return
+      case 'todo':
+        if (bridge && todoActive) overlays.push('todo')
+        return
       case 'model-effort':
         if (bridge) overlays.push('effort')
         return
@@ -172,7 +180,10 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     applyScroll(Infinity)
   }
   sendRef.current = handleSend
-  const commands = useMemo(() => filterCommands(value), [value])
+  const commands = useMemo(
+    () => filterCommands(value).filter(command => command.id !== 'todo' || todoActive),
+    [value, todoActive],
+  )
   const showHint = dialog === null && hintOpen && commands.length > 0
   const maxVisible = Math.max(1, Math.min(HINT_MAX_ROWS, rows - inputHeight - 1))
   const hintStartRef = useRef(0)
@@ -348,7 +359,8 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
             <Box position="absolute" top={rows - 1} left={0} width={columns} height={1}>
               <Region y={rows - 1}>
                 {(() => {
-                  const leftText = running ? agentStatusLabel(activity, panel) : cwdLabel(bridge)
+                  const badge = running && todoBadge !== undefined ? `[Task ${todoBadge.current}/${todoBadge.total}] ` : ''
+                  const leftText = running ? `${badge}${agentStatusLabel(activity, panel)}` : cwdLabel(bridge)
                   const avail = columns - CHROME_MARGIN_X * 2 - CHROME_TEXT_X
                   const stats = truncate(statsText(bridge.tokenStats()), Math.max(1, avail - textWidth(leftText) - 2))
                   const rightCol = Math.max(CHROME_TEXT_X + textWidth(leftText), columns - CHROME_MARGIN_X * 2 - textWidth(stats))
@@ -393,7 +405,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
                 applyScroll(Infinity)
               },
               onNewSession: startNewSession,
-            })}
+            }, todos)}
           </SelectionContext.Provider>
         </CloseGuardContext.Provider>
       )}
@@ -411,7 +423,7 @@ interface DialogCallbacks {
   onNewSession(): void
 }
 
-function dialogView(kind: DialogKind, bridge: ChatBridge, cbs: DialogCallbacks): ReactNode {
+function dialogView(kind: DialogKind, bridge: ChatBridge, cbs: DialogCallbacks, todos: TodoItemLike[]): ReactNode {
   switch (kind) {
     case 'models':
       return <ModelsDialog ref={cbs.dialogRef} api={bridge} onClose={cbs.onClose} onModelSelected={cbs.onModelSelected} />
@@ -432,6 +444,8 @@ function dialogView(kind: DialogKind, bridge: ChatBridge, cbs: DialogCallbacks):
       return <EffortDialog ref={cbs.dialogRef} api={bridge} onClose={cbs.onClose} />
     case 'defaults':
       return <DefaultsDialog ref={cbs.dialogRef} api={bridge} onClose={cbs.onClose} />
+    case 'todo':
+      return <TodoDialog ref={cbs.dialogRef} todos={todos} onClose={cbs.onClose} />
   }
 }
 

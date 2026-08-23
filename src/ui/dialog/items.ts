@@ -11,6 +11,7 @@ export type DialogItem =
   | { type: 'button'; label: string; right?: string; rightColor?: string; onPress: () => void }
   | { type: 'checkbox'; label: string; checked: boolean; onToggle: () => void; onConfirm: () => void }
   | { type: 'header'; label: string; leadingBlank?: boolean }
+  | { type: 'static'; label: string }
   | { type: 'actions'; confirmLabel: string; cancelLabel: string; onConfirm: () => void; onCancel: () => void }
 
 export interface DialogFocus {

@@ -371,4 +371,86 @@ describe('App layout', () => {
     expect(stripAnsi(lastFrame() ?? '')).toContain('Press esc twice to interrupt')
     expect(stripAnsi(lastFrame() ?? '')).not.toContain('Press esc again to interrupt')
   })
+
+  it('hides /todo until a todo_write exists and opens the task window while it is active', async () => {
+    const bridge = fakeBridge()
+    let handler: ((event: SessionEvent) => void) | undefined
+    bridge.subscribe = cb => {
+      handler = cb
+      return () => {}
+    }
+    const inactive = render(<App bridge={bridge} />)
+    await new Promise(resolve => setTimeout(resolve, 60))
+    await inactive.stdin.write('/todo')
+    await new Promise(resolve => setTimeout(resolve, 40))
+    expect(inactive.lastFrame() ?? '').not.toContain('Show the current task list')
+    await inactive.stdin.write('\r')
+    await new Promise(resolve => setTimeout(resolve, 40))
+    expect(stripAnsi(inactive.lastFrame() ?? '')).not.toContain('[√]')
+    inactive.unmount()
+
+    const view = render(<App bridge={bridge} />)
+    await new Promise(resolve => setTimeout(resolve, 60))
+    handler?.({
+      type: 'todo/write',
+      seq: 10,
+      time: 0,
+      data: { todos: [{ content: '首先完成代码', status: 'completed' }, { content: '构建项目', status: 'pending' }] },
+    } as unknown as SessionEvent)
+    await new Promise(resolve => setTimeout(resolve, 100))
+    expect(stripAnsi(view.lastFrame() ?? '')).not.toContain('todo_write')
+    await view.stdin.write('/todo')
+    await new Promise(resolve => setTimeout(resolve, 40))
+    expect(view.lastFrame() ?? '').toContain('Show the current task list')
+    await view.stdin.write('\r')
+    await new Promise(resolve => setTimeout(resolve, 40))
+    await view.stdin.write('\r')
+    await new Promise(resolve => setTimeout(resolve, 60))
+    const frame = stripAnsi(view.lastFrame() ?? '')
+    expect(frame).toContain('[√] 首先完成代码')
+    expect(frame).toContain('[ ] 构建项目')
+    view.unmount()
+  })
+
+  it('shows the task badge next to the working status while a todo is active', async () => {
+    const bridge = fakeBridge()
+    let handler: ((event: SessionEvent) => void) | undefined
+    bridge.subscribe = cb => {
+      handler = cb
+      return () => {}
+    }
+    const { lastFrame } = render(<App bridge={bridge} />)
+    handler?.({ type: 'turn/start', seq: 1, time: 0, data: { turn: 1 } } as unknown as SessionEvent)
+    handler?.({
+      type: 'tool/call',
+      seq: 2,
+      time: 0,
+      data: { turn: 1, step: 1, callId: 'c1', name: 'bash', arguments: '{"command":"ls"}' },
+    } as unknown as SessionEvent)
+    handler?.({
+      type: 'todo/write',
+      seq: 3,
+      time: 0,
+      data: {
+        todos: [
+          { content: 'a', status: 'completed' },
+          { content: 'b', status: 'in_progress' },
+          { content: 'c', status: 'pending' },
+        ],
+      },
+    } as unknown as SessionEvent)
+    await new Promise(resolve => setTimeout(resolve, 150))
+    const line = stripAnsi(lastFrame() ?? '').split('\n').find(line => line.includes('Working'))
+    expect(line).toContain('[Task 2/3]')
+    expect(line).toContain('Working')
+    handler?.({
+      type: 'todo/write',
+      seq: 4,
+      time: 0,
+      data: { todos: [{ content: 'b', status: 'completed' }] },
+    } as unknown as SessionEvent)
+    await new Promise(resolve => setTimeout(resolve, 120))
+    const cleared = stripAnsi(lastFrame() ?? '').split('\n').find(line => line.includes('Working'))
+    expect(cleared).not.toContain('[Task')
+  })
 })

@@ -213,6 +213,31 @@ export function buildScenarios(options: { inputText?: string } = {}): Scenario[]
         void ctx.sleep(150)
       },
     },
+    {
+      id: 'todo-bubble',
+      description: 'todo_write bubble with status symbols and hanging-indent wrap',
+      discoveredFrom: 'built-in',
+      run(ctx) {
+        for (const event of [
+          {
+            type: 'tool/call',
+            data: {
+              name: 'todo_write',
+              callId: 'call-todo',
+              arguments: JSON.stringify({
+                todos: [
+                  { content: 'Refactor the screen parser into a shared grid module', status: 'completed' },
+                  { content: 'Add a very long task line that will wrap across multiple rows and align under the first text column', status: 'in_progress' },
+                  { content: 'Build the project', status: 'pending' },
+                ],
+              }),
+            },
+          },
+          { type: 'turn/end', data: { reason: { kind: 'stop' } } },
+        ]) ctx.bridge.emitEvent(event)
+        void ctx.sleep(150)
+      },
+    },
   ]
   return [...scenarios, ...commandScenarios(), ...panelScenarios()]
 }

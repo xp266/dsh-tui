@@ -1,4 +1,4 @@
-export type CommandId = 'models' | 'model-effort' | 'preset' | 'defaults' | 'sessions' | 'new'
+export type CommandId = 'models' | 'model-effort' | 'preset' | 'defaults' | 'sessions' | 'new' | 'todo'
 
 export interface CommandHintItem {
   command: string
@@ -16,6 +16,7 @@ export const COMMANDS: CommandDef[] = [
   { id: 'preset', command: '/preset', description: 'Select agent preset' },
   { id: 'sessions', command: '/sessions', description: 'Open session picker' },
   { id: 'new', command: '/new', description: 'Start a new conversation in current directory' },
+  { id: 'todo', command: '/todo', description: 'Show the current task list' },
 ]
 
 export const HINT_COMMAND_COL_WIDTH = 20

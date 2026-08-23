@@ -1,5 +1,5 @@
 import type { Message } from '../../model/message.ts'
-import { colToCharIndex, textWidth, truncate, wrapLines } from '../../core/text.ts'
+import { colToCharIndex, textWidth, truncate, wrapIndented, wrapLines } from '../../core/text.ts'
 import { selectedRange } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
 import { sliceByColumns } from '../selection-registry.ts'
@@ -54,7 +54,7 @@ function wrapFor(message: Message, width: number): WrapEntry {
   if (entry !== undefined && entry.content === content && entry.collapsed === collapsed) {
     return entry
   }
-  const plainBubble = message.kind === 'bubble' && message.askUser === true
+  const plainBubble = message.kind === 'bubble' && message.variant !== undefined
   const incremental = !plainBubble && (message.kind === 'bubble' && message.role === 'assistant'
     || message.kind === 'collapsible' && message.thinking === true)
   let lines: string[]
@@ -80,6 +80,8 @@ function wrapFor(message: Message, width: number): WrapEntry {
     rows = wrapped.rows
     lines = wrapped.lines
     wrapper = active
+  } else if (plainBubble) {
+    lines = wrapIndented(content, width - BUBBLE_WIDTH_OFFSET, message.kind === 'bubble' ? message.hang ?? 0 : 0)
   } else {
     lines = wrapLines(content, width - BUBBLE_WIDTH_OFFSET)
   }
@@ -169,7 +171,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
   }
   switch (message.kind) {
     case 'bubble': {
-      const muted = message.askUser === true
+      const muted = message.variant !== undefined
       if (offset === 0 || offset === count - 2) {
         return { ...base, kind: 'pad', background: true, role: message.role }
       }

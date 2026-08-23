@@ -233,16 +233,16 @@ describe('chat event reducer', () => {
       type: 'tool/call',
       seq: 1,
       time: 0,
-      data: { turn: 1, step: 1, callId: CallId('c1'), name: 'todo_write', arguments: '{"todos":[]}' },
+      data: { turn: 1, step: 1, callId: CallId('c1'), name: 'job_list', arguments: '{}' },
     }
     const presenter: ChatToolPresenter = {
       call: () => undefined,
       result: () => ({ kind: 'append', text: '' }),
-      argsJson: () => '{\n  "todos": []\n}',
+      argsJson: () => '{\n  "jobs": []\n}',
     }
     const called = reduceChatEvent(messages, call, turn, presenter)
     const done = reduceChatEvent(called.messages, toolResult('c1', ''), called.turn, presenter)
-    expect(done.messages[0]).toMatchObject({ running: false, body: '{\n  "todos": []\n}' })
+    expect(done.messages[0]).toMatchObject({ running: false, body: '{\n  "jobs": []\n}' })
   })
 
   it('renders one Thinking row per step', () => {
@@ -494,7 +494,7 @@ describe('ask_user_question bubble', () => {
   it('shows a title-only bubble while the question is pending', () => {
     const state = apply([], [askCall()])
     expect(state.messages).toHaveLength(1)
-    expect(state.messages[0]).toMatchObject({ kind: 'bubble', role: 'assistant', askUser: true, content: 'ask_user_question' })
+    expect(state.messages[0]).toMatchObject({ kind: 'bubble', role: 'assistant', variant: 'ask-user', content: 'ask_user_question' })
   })
 
   it('renders questions and answers in the bubble once answered', () => {
@@ -502,7 +502,7 @@ describe('ask_user_question bubble', () => {
     expect(state.messages[0]).toMatchObject({
       kind: 'bubble',
       role: 'assistant',
-      askUser: true,
+      variant: 'ask-user',
       content: [
         'ask_user_question',
         '',
@@ -526,7 +526,7 @@ describe('ask_user_question bubble', () => {
   it('shows the failure text where answers would appear', () => {
     const state = apply([], [askCall(), askResult('a1', { text: 'Error: the user closed the question panel', isError: true })])
     expect(state.messages[0]).toMatchObject({
-      askUser: true,
+      variant: 'ask-user',
       content: 'ask_user_question\n\nError: the user closed the question panel',
     })
   })
@@ -534,6 +534,88 @@ describe('ask_user_question bubble', () => {
   it('falls back to the event error identity when no result text exists', () => {
     const state = apply([], [askCall(), askResult('a1', { text: '', error: { name: 'AbortError', code: 'E_ABORT' } })])
     expect(state.messages[0]).toMatchObject({ content: 'ask_user_question\n\nerror: AbortError' })
+  })
+})
+
+describe('todo_write bubble', () => {
+  const todoArgs = {
+    todos: [
+      { content: '首先完成代码', status: 'completed' },
+      { content: '构建项目', status: 'pending' },
+    ],
+  }
+  const todoCall = (callId = 't1'): SessionEvent => ({
+    type: 'tool/call',
+    seq: 1,
+    time: 0,
+    data: { turn: 1, step: 1, callId: CallId(callId), name: 'todo_write', arguments: JSON.stringify(todoArgs) },
+  })
+
+  it('renders the checklist as a plain bubble from the call arguments', () => {
+    const state = apply([], [todoCall()])
+    expect(state.messages).toHaveLength(1)
+    expect(state.messages[0]).toMatchObject({
+      kind: 'bubble',
+      role: 'assistant',
+      variant: 'todo',
+      hang: 4,
+      content: [
+        'todo_write',
+        '',
+        '[√] 首先完成代码',
+        '[ ] 构建项目',
+      ].join('\n'),
+    })
+  })
+
+  it('keeps each todo_write call as its own bubble', () => {
+    const updated = { todos: [{ content: '构建项目', status: 'in_progress' }] }
+    const second: SessionEvent = {
+      type: 'tool/call',
+      seq: 2,
+      time: 0,
+      data: { turn: 1, step: 2, callId: CallId('t2'), name: 'todo_write', arguments: JSON.stringify(updated) },
+    }
+    const state = apply([], [todoCall(), second])
+    expect(state.messages).toHaveLength(2)
+    expect(state.messages[1]).toMatchObject({ variant: 'todo', content: 'todo_write\n\n[●] 构建项目' })
+  })
+
+  it('upgrades the checklist when the result carries the final list', () => {
+    const finalList = { todos: [{ content: '构建项目', status: 'completed' }] }
+    const result: SessionEvent = {
+      type: 'tool/result',
+      seq: 2,
+      time: 0,
+      data: {
+        turn: 1,
+        step: 1,
+        message: createToolResultMessage({
+          callId: CallId('t1'),
+          content: [{ type: 'text', text: JSON.stringify(finalList) }],
+          isError: false,
+        }),
+      },
+    }
+    const state = apply([], [todoCall(), result])
+    expect(state.messages[0]).toMatchObject({ content: 'todo_write\n\n[√] 构建项目' })
+  })
+
+  it('aligns wrapped item lines under the first item text column', () => {
+    const long = { todos: [{ content: 'a very long task description that certainly keeps going far beyond the wrap width used for this check', status: 'pending' }] }
+    const call: SessionEvent = {
+      type: 'tool/call',
+      seq: 1,
+      time: 0,
+      data: { turn: 1, step: 1, callId: CallId('t9'), name: 'todo_write', arguments: JSON.stringify(long) },
+    }
+    const state = apply([], [call])
+    rowIndexFor(state.messages, WIDTH)
+    const rows = [3, 4].map(offset => rowInfoAt(state.messages, WIDTH, offset))
+    expect(rows[0]).toMatchObject({ kind: 'text', muted: true })
+    expect(rows[0]!.text.startsWith('[ ] a very long')).toBe(true)
+    expect(rows[1]!.text.startsWith('    ')).toBe(true)
+    expect(rows[1]!.text).toBe('    ' + rows[1]!.text.trimStart())
   })
 })
 

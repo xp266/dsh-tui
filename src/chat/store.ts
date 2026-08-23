@@ -10,6 +10,13 @@ import {
   parseAskAnswers,
   parseAskQuestions,
 } from './question-view.ts'
+import {
+  TODO_HANG_COLS,
+  TODO_TOOL_NAME,
+  formatTodoBubble,
+  parseTodoArgs,
+  parseTodoResult,
+} from './todo-view.ts'
 
 export type AgentPhase = 'awaiting-request' | 'thinking' | 'working'
 
@@ -85,7 +92,27 @@ export function reduceChatEvent(
         try {
           turn.askArgs.set(event.data.callId, JSON.parse(event.data.arguments))
         } catch {}
-        messages.push({ kind: 'bubble', id, role: 'assistant', content: ASK_USER_TOOL_NAME, askUser: true })
+        messages.push({ kind: 'bubble', id, role: 'assistant', content: ASK_USER_TOOL_NAME, variant: 'ask-user' })
+        markRunning(turn, true)
+        markPhase(turn, 'working')
+        return { messages, turn, changed: true }
+      }
+      if (event.data.name === TODO_TOOL_NAME) {
+        const id = nextId('todo')
+        turn.toolIds.set(event.data.callId, id)
+        let args: unknown
+        try {
+          args = JSON.parse(event.data.arguments)
+        } catch {}
+        const items = parseTodoArgs(args)
+        messages.push({
+          kind: 'bubble',
+          id,
+          role: 'assistant',
+          content: items.length > 0 ? formatTodoBubble(items) : TODO_TOOL_NAME,
+          variant: 'todo',
+          hang: TODO_HANG_COLS,
+        })
         markRunning(turn, true)
         markPhase(turn, 'working')
         return { messages, turn, changed: true }
@@ -112,8 +139,18 @@ export function reduceChatEvent(
       const id = turn.toolIds.get(callId)
       if (id === undefined) return { messages, turn, changed: false }
       const target = messageById(messages, id)
-      if (target?.kind === 'bubble' && target.askUser === true) {
+      if (target?.kind === 'bubble' && target.variant === 'ask-user') {
         return settleAskUserBubble(messages, turn, id, callId, event)
+      }
+      if (target?.kind === 'bubble' && target.variant === 'todo') {
+        turn.toolIds.delete(callId)
+        const items = parseTodoResult(textFromBlocks(event.data.message.content).trim())
+        if (items.length > 0) {
+          updateById(messages, id, message => message.kind === 'bubble'
+            ? { ...message, content: formatTodoBubble(items) }
+            : message)
+        }
+        return { messages, turn, changed: true }
       }
       const collapsible = collapsibleById(messages, id)
       if (collapsible === undefined) return { messages, turn, changed: false }
