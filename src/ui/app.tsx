@@ -5,7 +5,8 @@ import type { RefObject } from 'react'
 import { colors, permissionModeInfo } from '../theme.ts'
 import { writeOsc52 } from '../terminal/clipboard.ts'
 import type { ChatBridge } from '../chat/bridge.ts'
-import { rowIndexFor, selectionText } from './message/layout.ts'
+import type { AgentActivity, AgentPhase } from '../chat/store.ts'
+import { rowIndexFor, selectionText, SPINNER_FRAMES } from './message/layout.ts'
 import { chromeSelectionText } from './selection-registry.ts'
 import type { ScreenCapture } from '../terminal/screen.ts'
 import { SelectionContext } from './selection.tsx'
@@ -38,6 +39,9 @@ import { QuestionPanel } from './panels/question-panel.tsx'
 import { useOverlayStack } from './overlay.ts'
 
 const FORCE_EXIT_DELAY_MS = 6000
+const INTERRUPT_ARM_MS = 3000
+const WORKING_PLACEHOLDER = 'Press esc twice to interrupt'
+const WORKING_ARMED_PLACEHOLDER = 'Press esc again to interrupt'
 
 type DialogKind = 'models' | 'sessions' | 'presets' | 'effort' | 'defaults'
 
@@ -61,6 +65,17 @@ function commandForCall(bridge: ChatBridge | undefined, callId: string | undefin
   }
 }
 
+function agentStatusLabel(activity: AgentActivity, panel: ActivePanel): string {
+  if (panel?.kind === 'approval') return 'Waiting for permission'
+  if (panel?.kind === 'question') return 'Waiting for selection'
+  const labels: Record<AgentPhase, string> = {
+    'awaiting-request': 'Awaiting request',
+    thinking: 'Thinking',
+    working: 'Working',
+  }
+  return labels[activity.phase]
+}
+
 interface AppProps {
   bridge?: ChatBridge
   screen?: ScreenCapture
@@ -72,11 +87,34 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const overlays = useOverlayStack<DialogKind>()
   const dialog: DialogKind | null = overlays.top ?? null
   const [, setSessionTick] = useState(0)
-  const { messages, modelName, setModelName, updateMessages, resetChat } = useChatEvents(bridge, dialog !== null)
+  const { messages, modelName, setModelName, updateMessages, resetChat, activity } = useChatEvents(bridge, dialog !== null)
+  const running = activity.running
+  const [spinnerTick, setSpinnerTick] = useState(0)
+  useEffect(() => {
+    if (!running) return
+    setSpinnerTick(0)
+    const timer = setInterval(() => setSpinnerTick(tick => (tick + 1) % SPINNER_FRAMES.length), 100)
+    return () => clearInterval(timer)
+  }, [running])
   const dialogRef = useRef<DialogHandle | null>(null)
   const inputRef = useRef<InputBarHandle | null>(null)
   const exiting = useRef(false)
   const sendRef = useRef<(text: string) => void>(() => {})
+  const [escArmed, setEscArmed] = useState(false)
+  const escAtRef = useRef(0)
+  const escTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const disarmInterrupt = () => {
+    escAtRef.current = 0
+    setEscArmed(false)
+    if (escTimerRef.current !== null) {
+      clearTimeout(escTimerRef.current)
+      escTimerRef.current = null
+    }
+  }
+  useEffect(() => {
+    if (!running) disarmInterrupt()
+    return disarmInterrupt
+  }, [running])
   const contentWidth = columns - INPUT_WIDTH_OFFSET
   const panel = useActivePanel(bridge?.interactions)
   const [panelHeight, setPanelHeight] = useState(7)
@@ -184,6 +222,21 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   })
   useInput((input, key) => {
     if (dialog !== null && !selection) return
+    if (key.escape) {
+      if (panel === null && running && bridge !== undefined) {
+        const now = Date.now()
+        if (escArmed && now - escAtRef.current <= INTERRUPT_ARM_MS) {
+          disarmInterrupt()
+          bridge.interrupt()
+        } else {
+          escAtRef.current = now
+          setEscArmed(true)
+          if (escTimerRef.current !== null) clearTimeout(escTimerRef.current)
+          escTimerRef.current = setTimeout(disarmInterrupt, INTERRUPT_ARM_MS)
+        }
+      }
+      return
+    }
     if (key.ctrl && input === 'c') {
       if (selection) {
         const text = selection.inMessage
@@ -228,6 +281,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
               effortName={bridge?.effortName()}
               presetName={bridge?.presetName()}
               interactive={composerInteractive}
+              placeholder={running ? (escArmed ? WORKING_ARMED_PLACEHOLDER : WORKING_PLACEHOLDER) : undefined}
             />
           )}
           {panel !== null && bridge !== undefined && (
@@ -285,24 +339,31 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
             </Box>
           )}
           {bridge !== undefined && (
-            <Box
-              position="absolute"
-              top={rows - 1}
-              left={0}
-              width={columns}
-              paddingLeft={CHROME_TEXT_X}
-              paddingRight={CHROME_TEXT_X}
-              justifyContent="space-between"
-            >
+            <Box position="absolute" top={rows - 1} left={0} width={columns} height={1}>
               <Region y={rows - 1}>
                 {(() => {
-                  const cwd = cwdLabel(bridge)
-                  const rightCol = Math.max(CHROME_TEXT_X, columns - CHROME_MARGIN_X * 2 - textWidth(cwd))
-                  const stats = truncate(statsText(bridge.tokenStats()), Math.max(1, rightCol - CHROME_TEXT_X - 2))
+                  const leftText = running ? agentStatusLabel(activity, panel) : cwdLabel(bridge)
+                  const avail = columns - CHROME_MARGIN_X * 2 - CHROME_TEXT_X
+                  const stats = truncate(statsText(bridge.tokenStats()), Math.max(1, avail - textWidth(leftText) - 2))
+                  const rightCol = Math.max(CHROME_TEXT_X + textWidth(leftText), columns - CHROME_MARGIN_X * 2 - textWidth(stats))
                   return (
                     <>
-                      <SelectableText y={0} col={CHROME_TEXT_X} text={stats} color={colors.statsText} />
-                      <SelectableText y={0} col={rightCol} text={cwd} color={colors.cwdText} />
+                      <Box position="absolute" top={0} left={CHROME_MARGIN_X} width={columns - CHROME_MARGIN_X}>
+                        {running && (
+                          <SelectableText
+                            y={0}
+                            col={CHROME_MARGIN_X}
+                            text={`${SPINNER_FRAMES[spinnerTick % SPINNER_FRAMES.length]} `}
+                            color={colors.toolLabel}
+                          />
+                        )}
+                      </Box>
+                      <Box position="absolute" top={0} left={CHROME_TEXT_X} width={columns - CHROME_TEXT_X}>
+                        <SelectableText y={0} col={CHROME_TEXT_X} text={leftText} color={colors.cwdText} />
+                      </Box>
+                      <Box position="absolute" top={0} left={rightCol} width={Math.max(1, columns - rightCol)}>
+                        <SelectableText y={0} col={rightCol} text={stats} color={colors.statsText} />
+                      </Box>
                     </>
                   )
                 })()}

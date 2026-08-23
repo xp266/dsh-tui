@@ -536,3 +536,40 @@ describe('ask_user_question bubble', () => {
     expect(state.messages[0]).toMatchObject({ content: 'ask_user_question\n\nerror: AbortError' })
   })
 })
+
+describe('agent activity tracking', () => {
+  function turnStart(): SessionEvent {
+    return { type: 'turn/start', seq: 1, time: 0, data: { turn: 1 } }
+  }
+
+  it('reports idle before any turn', () => {
+    expect(initialTurnState()).toMatchObject({ running: false, phase: 'awaiting-request' })
+  })
+
+  it('marks the turn running and awaiting on turn/start', () => {
+    const state = apply([], [turnStart()])
+    expect(state.turn).toMatchObject({ running: true, phase: 'awaiting-request' })
+  })
+
+  it('switches to thinking while reasoning deltas stream', () => {
+    const state = apply([], [turnStart(), reasoning('hmm')])
+    expect(state.turn).toMatchObject({ running: true, phase: 'thinking' })
+  })
+
+  it('switches to working on text deltas and tool calls', () => {
+    let state = apply([], [turnStart(), textDelta('Hi')])
+    expect(state.turn).toMatchObject({ running: true, phase: 'working' })
+    state = apply(state.messages, [toolCall('c9')])
+    expect(state.turn).toMatchObject({ running: true, phase: 'working' })
+  })
+
+  it('returns to awaiting after each tool result', () => {
+    const state = apply([], [turnStart(), toolCall('c1'), toolResult('c1', 'out')])
+    expect(state.turn).toMatchObject({ running: true, phase: 'awaiting-request' })
+  })
+
+  it('clears running at turn end', () => {
+    const state = apply([], [turnStart(), textDelta('Hi'), turnEnd()])
+    expect(state.turn).toMatchObject({ running: false, phase: 'awaiting-request' })
+  })
+})

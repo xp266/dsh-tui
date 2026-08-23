@@ -102,6 +102,7 @@ interface ToolsLike {
 export interface ChatBridge {
   modelName(): string
   send(text: string): void
+  interrupt(): void
   subscribe(handler: (event: SessionEvent) => void): () => void
   listSessions(): Promise<SessionSummary[]>
   openSession(id: string): Promise<void>
@@ -604,6 +605,9 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     modelName: () => currentSelection()?.model ?? 'deepseek-v4-flash',
     send(text: string) {
       activeAgent.followup(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
+    },
+    interrupt() {
+      activeAgent.cancel({ kind: 'user' })
     },
     subscribe(handler: (event: SessionEvent) => void) {
       handlers.add(handler)

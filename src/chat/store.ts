@@ -11,16 +11,41 @@ import {
   parseAskQuestions,
 } from './question-view.ts'
 
+export type AgentPhase = 'awaiting-request' | 'thinking' | 'working'
+
+export interface AgentActivity {
+  running: boolean
+  phase: AgentPhase
+}
+
 export interface TurnState {
   thinkingIds: Map<number, string>
   assistantIds: Map<number, string>
   toolIds: Map<string, string>
   pendingText: Map<number, string>
   askArgs: Map<string, unknown>
+  running: boolean
+  phase: AgentPhase
 }
 
 export function initialTurnState(): TurnState {
-  return { thinkingIds: new Map(), assistantIds: new Map(), toolIds: new Map(), pendingText: new Map(), askArgs: new Map() }
+  return {
+    thinkingIds: new Map(),
+    assistantIds: new Map(),
+    toolIds: new Map(),
+    pendingText: new Map(),
+    askArgs: new Map(),
+    running: false,
+    phase: 'awaiting-request',
+  }
+}
+
+function markRunning(turn: TurnState, running: boolean): void {
+  turn.running = running
+}
+
+function markPhase(turn: TurnState, phase: AgentPhase): void {
+  turn.phase = phase
 }
 
 let messageCounter = 0
@@ -48,6 +73,11 @@ export function reduceChatEvent(
       if (chunk.type === 'text-delta') return appendChunk(messages, turn, chunk.text, event.data.step, 'assistant')
       return { messages, turn, changed: false }
     }
+    case 'turn/start': {
+      markRunning(turn, true)
+      markPhase(turn, 'awaiting-request')
+      return { messages, turn, changed: true }
+    }
     case 'tool/call': {
       if (event.data.name === ASK_USER_TOOL_NAME) {
         const id = nextId('ask')
@@ -56,6 +86,8 @@ export function reduceChatEvent(
           turn.askArgs.set(event.data.callId, JSON.parse(event.data.arguments))
         } catch {}
         messages.push({ kind: 'bubble', id, role: 'assistant', content: ASK_USER_TOOL_NAME, askUser: true })
+        markRunning(turn, true)
+        markPhase(turn, 'working')
         return { messages, turn, changed: true }
       }
       const id = nextId('tool')
@@ -70,6 +102,8 @@ export function reduceChatEvent(
         collapsed: true,
         ...view?.bodyCol === undefined ? {} : { bodyCol: view.bodyCol },
       })
+      markRunning(turn, true)
+      markPhase(turn, 'working')
       return { messages, turn, changed: true }
     }
     case 'tool/result': {
@@ -102,6 +136,7 @@ export function reduceChatEvent(
           running: false,
           bodyCol: error === undefined ? presentation.bodyCol : undefined,
         }))
+        markPhase(turn, 'awaiting-request')
         return { messages, turn, changed: true }
       }
       let text = presentation?.text
@@ -127,6 +162,7 @@ export function reduceChatEvent(
         running: false,
         ...(error === undefined ? {} : { bodyCol: undefined }),
       }))
+      markPhase(turn, 'awaiting-request')
       return { messages, turn, changed: true }
     }
     case 'assistant/message': {
@@ -171,6 +207,12 @@ function appendChunk(
   step: number,
   kind: 'thinking' | 'assistant',
 ): { messages: Message[]; turn: TurnState; changed: boolean } {
+  markRunning(turn, true)
+  if (kind === 'thinking') {
+    markPhase(turn, 'thinking')
+  } else {
+    markPhase(turn, 'working')
+  }
   const ids = kind === 'thinking' ? turn.thinkingIds : turn.assistantIds
   const id = ids.get(step)
   if (id === undefined) {

@@ -11,6 +11,7 @@ function fakeBridge(): ChatBridge {
   return {
     modelName: () => 'glm-4.7-flash',
     send: vi.fn(),
+    interrupt: vi.fn(),
     subscribe: () => () => {},
     listSessions: vi.fn(async () => []),
     openSession: vi.fn(async () => {}),

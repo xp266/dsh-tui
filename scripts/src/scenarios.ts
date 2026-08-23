@@ -200,6 +200,19 @@ export function buildScenarios(options: { inputText?: string } = {}): Scenario[]
         ]) ctx.bridge.emitEvent(event)
       },
     },
+    {
+      id: 'working-state',
+      description: 'Agent running: bottom-left spinner with status, composer placeholder',
+      discoveredFrom: 'built-in',
+      run(ctx) {
+        for (const event of [
+          { type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'Run the test suite and summarize failures.' }] } },
+          { type: 'turn/start', data: { turn: 1 } },
+          { type: 'tool/call', data: { name: 'bash', callId: 'call-work', arguments: '{"command":"pnpm test"}' } },
+        ]) ctx.bridge.emitEvent(event)
+        void ctx.sleep(150)
+      },
+    },
   ]
   return [...scenarios, ...commandScenarios(), ...panelScenarios()]
 }

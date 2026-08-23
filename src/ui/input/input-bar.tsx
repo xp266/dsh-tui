@@ -37,6 +37,7 @@ interface InputBarProps {
   presetName?: string
   interactive?: boolean
   statusReady?: boolean
+  placeholder?: string
 }
 
 export function InputBar({
@@ -53,6 +54,7 @@ export function InputBar({
   presetName,
   interactive = true,
   statusReady = true,
+  placeholder,
 }: InputBarProps) {
   const { setCursorPosition } = useCursor()
   const contentWidth = width - INPUT_WIDTH_OFFSET
@@ -132,6 +134,7 @@ export function InputBar({
         </Box>
         {Array.from({ length: realRows }, (_, row) => {
           const line = lines[visibleStart + row] ?? ''
+          const showPlaceholder = placeholder !== undefined && value === '' && row === 0
           return (
             <Box
               key={`input-${row}`}
@@ -143,7 +146,12 @@ export function InputBar({
               paddingRight={CHROME_PAD_X}
               backgroundColor={permission.color}
             >
-              <SelectableText y={row + 1} col={CHROME_TEXT_X} text={line || ' '} />
+              <SelectableText
+                y={row + 1}
+                col={CHROME_TEXT_X}
+                text={showPlaceholder ? truncate(placeholder, contentWidth) : line || ' '}
+                color={showPlaceholder ? colors.dialogHintText : undefined}
+              />
             </Box>
           )
         })}

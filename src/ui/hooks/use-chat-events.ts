@@ -2,9 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ChatBridge, ChatToolPresenter } from '../../chat/bridge.ts'
 import { initialTurnState, reduceChatEvent } from '../../chat/store.ts'
+import type { AgentActivity } from '../../chat/store.ts'
 import type { Message } from '../../model/message.ts'
 
 const FRAME_MS = 33
+
+const IDLE_ACTIVITY: AgentActivity = { running: false, phase: 'awaiting-request' }
 
 export interface ChatEvents {
   messages: Message[]
@@ -12,11 +15,13 @@ export interface ChatEvents {
   setModelName(name: string): void
   updateMessages(fn: (messages: Message[]) => Message[]): void
   resetChat(): void
+  activity: AgentActivity
 }
 
 export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolean): ChatEvents {
   const [messages, setMessages] = useState<Message[]>([])
   const [modelName, setModelName] = useState('deepseek-v4-flash')
+  const [activity, setActivity] = useState<AgentActivity>(IDLE_ACTIVITY)
   const chatStateRef = useRef<{ messages: Message[]; turn: ReturnType<typeof initialTurnState> }>({
     messages: [],
     turn: initialTurnState(),
@@ -49,6 +54,10 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
       }
       chatStateRef.current = state
       if (dirty) setMessages([...state.messages])
+      const turn = state.turn
+      setActivity(previous => previous.running === turn.running && previous.phase === turn.phase
+        ? previous
+        : { running: turn.running, phase: turn.phase })
     }, FRAME_MS)
     return () => clearInterval(timer)
   }, [])
@@ -69,6 +78,8 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
       setMessages([])
       chatStateRef.current = { messages: [], turn: initialTurnState() }
       pendingEventsRef.current = []
+      setActivity(IDLE_ACTIVITY)
     },
+    activity,
   }
 }

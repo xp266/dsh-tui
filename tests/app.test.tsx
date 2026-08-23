@@ -23,6 +23,7 @@ function fakeBridge(): ChatBridge {
   return {
     modelName: () => 'glm-4.7-flash',
     send: vi.fn(),
+    interrupt: vi.fn(),
     subscribe: () => () => {},
     listSessions: vi.fn(async () => []),
     openSession: vi.fn(async () => {}),
@@ -318,5 +319,56 @@ describe('App layout', () => {
     expect(frame).toContain('Context 0%')
     expect(frame).toContain('Hit 0%')
     expect(frame).toContain('0 → 0')
+  })
+
+  it('keeps the working directory on the left and stats on the right while idle', async () => {
+    const bridge = fakeBridge()
+    bridge.cwd = () => '/home/user/py'
+    const { lastFrame } = render(<App bridge={bridge} />)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const line = (lastFrame() ?? '').split('\n').find(line => line.includes('/home/user/py'))
+    expect(line).toBeDefined()
+    expect(line!.indexOf('/home/user/py')).toBeLessThan(line!.indexOf('Context 0%'))
+  })
+
+  it('shows spinner status on the left and the composer placeholder while running', async () => {
+    const bridge = fakeBridge()
+    let handler: ((event: SessionEvent) => void) | undefined
+    bridge.subscribe = cb => {
+      handler = cb
+      return () => {}
+    }
+    bridge.cwd = () => '/home/user/py'
+    const { lastFrame, stdin } = render(<App bridge={bridge} />)
+    handler?.({ type: 'turn/start', seq: 1, time: 0, data: { turn: 1 } } as unknown as SessionEvent)
+    handler?.({ type: 'tool/call', seq: 2, time: 0, data: { turn: 1, step: 1, callId: 'c1', name: 'bash', arguments: '{"command":"ls"}' } } as unknown as SessionEvent)
+    await new Promise(resolve => setTimeout(resolve, 120))
+    const frame = stripAnsi(lastFrame() ?? '')
+    expect(frame).toMatch(/Working/)
+    expect(frame).toContain('Press esc twice to interrupt')
+    expect(frame).not.toContain('/home/user/py')
+  })
+
+  it('interrupts on the second esc within three seconds but not the first', async () => {
+    const bridge = fakeBridge()
+    let handler: ((event: SessionEvent) => void) | undefined
+    bridge.subscribe = cb => {
+      handler = cb
+      return () => {}
+    }
+    const { lastFrame, stdin } = render(<App bridge={bridge} />)
+    handler?.({ type: 'turn/start', seq: 1, time: 0, data: { turn: 1 } } as unknown as SessionEvent)
+    await new Promise(resolve => setTimeout(resolve, 100))
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Press esc twice to interrupt')
+    stdin.write('\x1b')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(bridge.interrupt).not.toHaveBeenCalled()
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Press esc again to interrupt')
+    expect(stripAnsi(lastFrame() ?? '')).not.toContain('Press esc twice to interrupt')
+    stdin.write('\x1b')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(bridge.interrupt).toHaveBeenCalledTimes(1)
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Press esc twice to interrupt')
+    expect(stripAnsi(lastFrame() ?? '')).not.toContain('Press esc again to interrupt')
   })
 })

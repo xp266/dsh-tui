@@ -45,6 +45,7 @@ export interface MockBridgeOptions {
 export interface MockBridge {
   modelName(): string
   send(text: string): void
+  interrupt(): void
   subscribe(handler: (event: unknown) => void): () => void
   emitEvent(event: unknown): void
   listSessions(): Promise<SessionSummary[]>
@@ -114,6 +115,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   return {
     modelName: () => options.model ?? 'deepseek-v4-flash',
     send: () => {},
+    interrupt: () => {},
     subscribe: handler => {
       subscribers.add(handler)
       return () => subscribers.delete(handler)
