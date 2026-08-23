@@ -1,7 +1,8 @@
 import { useInput, usePaste } from 'ink'
 import { useRef, useState } from 'react'
 import { isMouseResidue } from '../../terminal/mouse.ts'
-import { colToCharIndex, lineBreaks, locToPoint } from '../../core/text.ts'
+import { colToCharIndex } from '../../core/text.ts'
+import { moveCaretLine } from '../../core/composer-layout.ts'
 import { editBackspace, editDelete, editInsert } from '../../core/edit.ts'
 import { filterCommands } from './commands.ts'
 
@@ -251,10 +252,5 @@ export function useComposer(
 }
 
 function moveLine(value: string, width: number, cursor: number, delta: -1 | 1): number {
-  const breaks = lineBreaks(value, width)
-  const point = locToPoint(value, width, cursor)
-  const targetRow = point.row + delta
-  if (targetRow < 0 || targetRow >= breaks.length) return cursor
-  const target = breaks[targetRow]!
-  return target.start + colToCharIndex(value.slice(target.start, target.end), point.col)
+  return moveCaretLine(value, cursor, width, delta)
 }

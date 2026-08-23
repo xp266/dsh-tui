@@ -2,6 +2,7 @@ import { Box, Text } from 'ink'
 import { render } from 'ink-testing-library'
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { InteractionStore } from '../src/chat/interactions.ts'
 import type { ChatBridge } from '../src/chat/bridge.ts'
 import { useChatEvents } from '../src/ui/hooks/use-chat-events.ts'
 import type { Message } from '../src/model/message.ts'
@@ -42,6 +43,7 @@ function fakeBridge(): ChatBridge {
     setDefaultPreset: vi.fn(async () => {}),
     tokenStats: () => ({ input: 0, output: 0, hitPercent: 0, contextPercent: 0 }),
     toolPresenter: { call: () => undefined, result: () => undefined, argsJson: () => undefined },
+    interactions: new InteractionStore(),
   }
 }
 

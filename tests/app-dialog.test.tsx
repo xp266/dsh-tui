@@ -2,6 +2,7 @@ import { act } from 'react'
 import { render } from 'ink-testing-library'
 import { describe, expect, it, vi } from 'vitest'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
+import { InteractionStore } from '../src/chat/interactions.ts'
 import type { ChatBridge } from '../src/chat/bridge.ts'
 import { App } from '../src/ui/app.tsx'
 
@@ -41,6 +42,7 @@ function fakeBridge(): ChatBridge {
     setDefaultPreset: vi.fn(async () => {}),
     tokenStats: () => ({ input: 0, output: 0, hitPercent: 0, contextPercent: 0 }),
     toolPresenter: { call: () => undefined, result: () => undefined, argsJson: () => undefined },
+    interactions: new InteractionStore(),
   }
 }
 

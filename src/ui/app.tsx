@@ -1,8 +1,8 @@
 import { Box, Text, useInput } from 'ink'
 import type { ReactNode } from 'react'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { RefObject } from 'react'
-import { colors } from '../theme.ts'
+import { colors, permissionModeInfo } from '../theme.ts'
 import { writeOsc52 } from '../terminal/clipboard.ts'
 import type { ChatBridge } from '../chat/bridge.ts'
 import { rowIndexFor, selectionText } from './message/layout.ts'
@@ -32,11 +32,34 @@ import { DefaultsDialog } from './dialog/defaults-dialog.tsx'
 import type { DialogHandle } from './dialog/dialog.tsx'
 import { padToWidth, textWidth, truncate } from '../core/text.ts'
 import type { TokenStats } from '../chat/bridge.ts'
+import type { ActivePanel, InteractionStore } from '../chat/interactions.ts'
+import { ApprovalPanel } from './panels/approval-panel.tsx'
+import { QuestionPanel } from './panels/question-panel.tsx'
 import { useOverlayStack } from './overlay.ts'
 
 const FORCE_EXIT_DELAY_MS = 6000
 
 type DialogKind = 'models' | 'sessions' | 'presets' | 'effort' | 'defaults'
+
+const noopSubscribe = () => () => {}
+const nullSnapshot = () => null
+
+function useActivePanel(interactions: InteractionStore | undefined): ActivePanel {
+  return useSyncExternalStore(
+    interactions?.subscribe ?? noopSubscribe,
+    interactions?.getSnapshot ?? nullSnapshot,
+  )
+}
+
+function commandForCall(bridge: ChatBridge | undefined, callId: string | undefined): string | undefined {
+  if (bridge === undefined || callId === undefined) return undefined
+  try {
+    const args = JSON.parse(bridge.toolPresenter.argsJson(callId) ?? 'null') as { command?: unknown } | null
+    return typeof args?.command === 'string' && args.command !== '' ? args.command : undefined
+  } catch {
+    return undefined
+  }
+}
 
 interface AppProps {
   bridge?: ChatBridge
@@ -55,14 +78,20 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const exiting = useRef(false)
   const sendRef = useRef<(text: string) => void>(() => {})
   const contentWidth = columns - INPUT_WIDTH_OFFSET
+  const panel = useActivePanel(bridge?.interactions)
+  const [panelHeight, setPanelHeight] = useState(7)
+  const composerInteractive = dialog === null && panel === null
   const { value, cursor, hintOpen, commandIndex, api } = useComposer(
     text => sendRef.current(text),
-    dialog === null,
+    composerInteractive,
     contentWidth,
     () => bridge?.cyclePermission(),
   )
   const layout = inputLayout(value, cursor, columns)
-  const inputHeight = layout.barHeight
+  const permissionMode = bridge?.permissionMode() ?? 'workspace-write'
+  const permissionChrome = permissionModeInfo(permissionMode)
+  const bottomHeight = panel === null ? layout.barHeight : panelHeight
+  const inputHeight = bottomHeight
   const messageHeight = Math.max(1, rows - inputHeight - MESSAGE_INPUT_GAP_ROWS)
   const total = rowIndexFor(messages, columns).total
   const { scrollTop, applyScroll } = useScroll(total, messageHeight, messages)
@@ -184,22 +213,55 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
           themeTick={themeTick}
         />
         <SelectionContext.Provider value={chromeSelection}>
-          <InputBar
-            ref={inputRef}
-            width={columns}
-            columns={columns}
-            rows={rows}
-            value={value}
-            cursor={cursor}
-            api={api}
-            statusReady={bridge !== undefined}
-            modelName={bridge?.modelName() ?? modelName}
-            permissionMode={bridge?.permissionMode() ?? 'workspace-write'}
-            effortName={bridge?.effortName()}
-            presetName={bridge?.presetName()}
-            interactive={dialog === null}
-          />
-          {hintState !== null && dialog === null && (
+          {panel === null && (
+            <InputBar
+              ref={inputRef}
+              width={columns}
+              columns={columns}
+              rows={rows}
+              value={value}
+              cursor={cursor}
+              api={api}
+              statusReady={bridge !== undefined}
+              modelName={bridge?.modelName() ?? modelName}
+              permissionMode={permissionMode}
+              effortName={bridge?.effortName()}
+              presetName={bridge?.presetName()}
+              interactive={composerInteractive}
+            />
+          )}
+          {panel !== null && bridge !== undefined && (
+            panel.kind === 'approval' ? (
+              <ApprovalPanel
+                key={`approval-${panel.approval.id}`}
+                reason={panel.approval.reason}
+                command={commandForCall(bridge, panel.approval.callId)}
+                background={permissionChrome.color}
+                active={dialog === null}
+                columns={columns}
+                rows={rows}
+                innerWidth={contentWidth}
+                blockWidth={contentWidth + 4}
+                onDecide={outcome => bridge.interactions.settleApproval(panel.approval.id, outcome)}
+                onResize={setPanelHeight}
+              />
+            ) : (
+              <QuestionPanel
+                key={`question-${panel.question.id}`}
+                question={panel.question}
+                background={permissionChrome.color}
+                active={dialog === null}
+                columns={columns}
+                rows={rows}
+                innerWidth={contentWidth}
+                blockWidth={contentWidth + 4}
+                onSubmit={answer => bridge.interactions.answerQuestion(panel.question.id, answer)}
+                onCancel={() => bridge.interactions.cancelQuestion(panel.question.id, 'the user closed the question panel')}
+                onResize={setPanelHeight}
+              />
+            )
+          )}
+          {hintState !== null && dialog === null && panel === null && (
             <Box
               position="absolute"
               top={hintBlockTop(rows, inputHeight, hintState.commands.length)}
@@ -222,7 +284,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
               </Region>
             </Box>
           )}
-          {bridge !== undefined && (
+          {bridge !== undefined && panel === null && (
             <Box
               position="absolute"
               top={rows - 1}

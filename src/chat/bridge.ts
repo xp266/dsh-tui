@@ -31,6 +31,7 @@ import type { SessionSummary } from './session-list.ts'
 import { builtInPresetName, isBlankSession, presetDisplayName } from './presets.ts'
 import type { PresetSummary } from './presets.ts'
 import type { EffortSummary } from './efforts.ts'
+import { InteractionStore, registerInteractionChannels } from './interactions.ts'
 
 export const PERMISSION_PRESETS = ['workspace-write', 'danger-full-access', 'read-only'] as const
 
@@ -133,6 +134,7 @@ export interface ChatBridge {
   setDefaultPreset(id: string): Promise<void>
   tokenStats(): TokenStats
   toolPresenter: ChatToolPresenter
+  interactions: InteractionStore
 }
 
 let sessionCounter = 0
@@ -173,6 +175,10 @@ function cachedList<T>(load: () => Promise<T[]>, ttlMs: number): CachedList<T> {
 }
 
 export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
+  const interactions = new InteractionStore()
+  try {
+    registerInteractionChannels(ctx as never, interactions)
+  } catch {}
   const agentOptions = (): AgentOptions => {
     const selection = ctx.get('agentDefaultModel')?.currentSelection()
     if (selection === undefined) return {}
@@ -650,6 +656,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     },
     tokenStats,
     toolPresenter,
+    interactions,
   }
 }
 
