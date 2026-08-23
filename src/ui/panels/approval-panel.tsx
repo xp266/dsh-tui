@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { wrapLines, padToWidth } from '../../core/text.ts'
 import { CHROME_MARGIN_X, CHROME_PAD_X } from '../../core/metrics.ts'
+import { writeCursorShape } from '../../terminal/cursor-shape.ts'
 import { Region } from '../region.tsx'
 
 export const APPROVAL_SECTION_ROWS = 3
@@ -60,7 +61,14 @@ export function ApprovalPanel({ reason, command, background, active, columns, ro
   const body = buildApprovalBody(innerWidth, visibleReason, showCommand ? visibleCommand : [])
   const bodyCount = body.length
   const totalHeight = bodyCount + 2
-  const bodyStart = rows - 1 - bodyCount
+  const bodyStart = rows - 2 - bodyCount
+  useEffect(() => {
+    writeCursorShape('hide')
+    return () => {
+      writeCursorShape('show')
+      writeCursorShape('reset')
+    }
+  }, [])
   useEffect(() => {
     onResize(totalHeight)
   }, [totalHeight])

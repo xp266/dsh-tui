@@ -90,7 +90,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const layout = inputLayout(value, cursor, columns)
   const permissionMode = bridge?.permissionMode() ?? 'workspace-write'
   const permissionChrome = permissionModeInfo(permissionMode)
-  const bottomHeight = panel === null ? layout.barHeight : panelHeight
+  const bottomHeight = panel === null ? layout.barHeight : panelHeight + 1
   const inputHeight = bottomHeight
   const messageHeight = Math.max(1, rows - inputHeight - MESSAGE_INPUT_GAP_ROWS)
   const total = rowIndexFor(messages, columns).total
@@ -284,7 +284,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
               </Region>
             </Box>
           )}
-          {bridge !== undefined && panel === null && (
+          {bridge !== undefined && (
             <Box
               position="absolute"
               top={rows - 1}

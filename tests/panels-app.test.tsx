@@ -63,7 +63,8 @@ describe('app interaction panels', () => {
     expect(frame).toContain('needs network access')
     expect(frame).toContain('npm run build')
     expect(frame).toContain('Allow once')
-    expect(frame).not.toContain('Context 0%')
+    expect(frame).toContain('Context 0%')
+    expect(frame).not.toMatch(/Workspace Write · glm-4\.7-flash/)
     bridge.interactions.settleApproval(
       (bridge.interactions.getSnapshot() as { approval: { id: string } }).approval.id,
       'allowed-once',

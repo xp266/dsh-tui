@@ -41,7 +41,7 @@ export function QuestionPanel({ question: panel, background, active, columns, in
   const { setCursorPosition } = useCursor()
   const layout = questionPanelLayout(state, innerWidth, Math.min(MAX_BODY_ROWS, Math.max(3, rows - 6)))
   const totalHeight = layout.height + 2
-  const bodyStart = rows - 1 - layout.height
+  const bodyStart = rows - 2 - layout.height
   if (active && state.editing && layout.caret !== null) {
     setCursorPosition({
       x: CHROME_TEXT_X + layout.caret.col,
@@ -51,10 +51,16 @@ export function QuestionPanel({ question: panel, background, active, columns, in
     setCursorPosition(undefined)
   }
   useEffect(() => {
-    writeCursorShape(state.editing ? 'beam' : 'block')
+    if (state.editing) {
+      writeCursorShape('show')
+      writeCursorShape('beam')
+    } else {
+      writeCursorShape('hide')
+    }
   }, [state.editing])
   useEffect(() => {
     return () => {
+      writeCursorShape('show')
       writeCursorShape('reset')
     }
   }, [])
