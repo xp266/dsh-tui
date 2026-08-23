@@ -228,10 +228,8 @@ export function reduceChatEvent(
 
       const aiId = turn.assistantIds.get(step)
       if (aiId !== undefined) {
-        const at = messages.findIndex(m => m.id === aiId)
-        if (at >= 0) {
-          if (text === '') messages.splice(at, 1)
-          else updateById(messages, aiId, message =>
+        if (text !== '') {
+          updateById(messages, aiId, message =>
             message.kind === 'bubble' ? { ...message, content: text } : message,
           )
         }

@@ -331,7 +331,7 @@ describe('App layout', () => {
     expect(line!.indexOf('/home/user/py')).toBeLessThan(line!.indexOf('Context 0%'))
   })
 
-  it('shows spinner status on the left and the composer placeholder while running', async () => {
+  it('shows spinner status with the esc hint on the bottom line while running', async () => {
     const bridge = fakeBridge()
     let handler: ((event: SessionEvent) => void) | undefined
     bridge.subscribe = cb => {
@@ -345,7 +345,8 @@ describe('App layout', () => {
     await new Promise(resolve => setTimeout(resolve, 120))
     const frame = stripAnsi(lastFrame() ?? '')
     expect(frame).toMatch(/Working/)
-    expect(frame).toContain('Press esc twice to interrupt')
+    const statusLine = frame.split('\n').find(line => line.includes('Working'))
+    expect(statusLine).toContain('Working  Press esc to interrupt')
     expect(frame).not.toContain('/home/user/py')
   })
 
@@ -359,16 +360,16 @@ describe('App layout', () => {
     const { lastFrame, stdin } = render(<App bridge={bridge} />)
     handler?.({ type: 'turn/start', seq: 1, time: 0, data: { turn: 1 } } as unknown as SessionEvent)
     await new Promise(resolve => setTimeout(resolve, 100))
-    expect(stripAnsi(lastFrame() ?? '')).toContain('Press esc twice to interrupt')
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Press esc to interrupt')
     stdin.write('\x1b')
     await new Promise(resolve => setTimeout(resolve, 50))
     expect(bridge.interrupt).not.toHaveBeenCalled()
     expect(stripAnsi(lastFrame() ?? '')).toContain('Press esc again to interrupt')
-    expect(stripAnsi(lastFrame() ?? '')).not.toContain('Press esc twice to interrupt')
+    expect(stripAnsi(lastFrame() ?? '')).not.toContain('Press esc to interrupt')
     stdin.write('\x1b')
     await new Promise(resolve => setTimeout(resolve, 50))
     expect(bridge.interrupt).toHaveBeenCalledTimes(1)
-    expect(stripAnsi(lastFrame() ?? '')).toContain('Press esc twice to interrupt')
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Press esc to interrupt')
     expect(stripAnsi(lastFrame() ?? '')).not.toContain('Press esc again to interrupt')
   })
 

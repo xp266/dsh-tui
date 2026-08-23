@@ -45,8 +45,8 @@ import { useOverlayStack } from './overlay.ts'
 
 const FORCE_EXIT_DELAY_MS = 6000
 const INTERRUPT_ARM_MS = 3000
-const WORKING_PLACEHOLDER = 'Press esc twice to interrupt'
-const WORKING_ARMED_PLACEHOLDER = 'Press esc again to interrupt'
+const WORKING_HINT = 'Press esc to interrupt'
+const WORKING_ARMED_HINT = 'Press esc again to interrupt'
 
 type DialogKind = 'models' | 'sessions' | 'presets' | 'effort' | 'defaults' | 'todo'
 
@@ -304,7 +304,6 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
               effortName={bridge?.effortName()}
               presetName={bridge?.presetName()}
               interactive={composerInteractive}
-              placeholder={running ? (escArmed ? WORKING_ARMED_PLACEHOLDER : WORKING_PLACEHOLDER) : undefined}
             />
           )}
           {panel !== null && bridge !== undefined && (
@@ -369,9 +368,12 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
                 {(() => {
                   const badge = running && todoBadge !== undefined ? `[Task ${todoBadge.current}/${todoBadge.total}] ` : ''
                   const leftText = running ? `${badge}${agentStatusLabel(activity, panel, retryStatus)}` : cwdLabel(bridge)
+                  const hint = running ? (escArmed ? WORKING_ARMED_HINT : WORKING_HINT) : undefined
+                  const hintCol = CHROME_TEXT_X + textWidth(leftText) + 2
+                  const leftWidth = textWidth(leftText) + (hint === undefined ? 0 : 2 + textWidth(hint))
                   const avail = columns - CHROME_MARGIN_X * 2 - CHROME_TEXT_X
-                  const stats = truncate(statsText(bridge.tokenStats()), Math.max(1, avail - textWidth(leftText) - 2))
-                  const rightCol = Math.max(CHROME_TEXT_X + textWidth(leftText), columns - CHROME_MARGIN_X * 2 - textWidth(stats))
+                  const stats = truncate(statsText(bridge.tokenStats()), Math.max(1, avail - leftWidth - 2))
+                  const rightCol = Math.max(CHROME_TEXT_X + leftWidth, columns - CHROME_MARGIN_X * 2 - textWidth(stats))
                   return (
                     <>
                       <Box position="absolute" top={0} left={CHROME_MARGIN_X} width={columns - CHROME_MARGIN_X}>
@@ -380,13 +382,23 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
                             y={0}
                             col={CHROME_MARGIN_X}
                             text={`${SPINNER_FRAMES[spinnerTick % SPINNER_FRAMES.length]} `}
-                            color={colors.toolLabel}
+                            color={colors.workspaceWriteText}
                           />
                         )}
                       </Box>
                       <Box position="absolute" top={0} left={CHROME_TEXT_X} width={columns - CHROME_TEXT_X}>
-                        <SelectableText y={0} col={CHROME_TEXT_X} text={leftText} color={colors.cwdText} />
+                        <SelectableText
+                          y={0}
+                          col={CHROME_TEXT_X}
+                          text={leftText}
+                          color={running ? colors.workspaceWriteText : colors.cwdText}
+                        />
                       </Box>
+                      {hint !== undefined && (
+                        <Box position="absolute" top={0} left={hintCol} width={Math.max(1, columns - hintCol)}>
+                          <SelectableText y={0} col={hintCol} text={hint} color={colors.dialogHintText} />
+                        </Box>
+                      )}
                       <Box position="absolute" top={0} left={rightCol} width={Math.max(1, columns - rightCol)}>
                         <SelectableText y={0} col={rightCol} text={stats} color={colors.statsText} />
                       </Box>

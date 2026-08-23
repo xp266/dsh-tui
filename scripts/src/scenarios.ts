@@ -202,7 +202,7 @@ export function buildScenarios(options: { inputText?: string } = {}): Scenario[]
     },
     {
       id: 'working-state',
-      description: 'Agent running: bottom-left spinner with status, composer placeholder',
+      description: 'Agent running: bottom-left spinner with status and esc hint',
       discoveredFrom: 'built-in',
       run(ctx) {
         for (const event of [

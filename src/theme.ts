@@ -4,7 +4,7 @@ const palette = {
 
   permissionBackground: '#232323',
   workspaceWriteText: '#3394e3',
-  dangerFullAccessText: '#be2020',
+  dangerFullAccessText: '#d54d4d',
   readOnlyText: '#2d9c54',
 
   dialogBackground: '#000000',
@@ -21,8 +21,8 @@ const palette = {
   statusSeparator: '#aaaaaa',
   presetText: '#aaaaaa',
 
-  cwdText: '#ffffff',
-  statsText: '#ffffff',
+  cwdText: '#aaaaaa',
+  statsText: '#aaaaaa',
 
   errorText: '#ff6b6b',
   success: '#4caf50',
