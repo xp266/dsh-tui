@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ChatBridge, ChatToolPresenter } from '../../chat/bridge.ts'
 import { initialTurnState, reduceChatEvent } from '../../chat/store.ts'
+import { nextRetryStatus } from '../../chat/retry-status.ts'
+import type { RetryStatus } from '../../chat/retry-status.ts'
 import type { AgentActivity } from '../../chat/store.ts'
 import { normalizeTodos } from '../../chat/todo-view.ts'
 import type { TodoItemLike } from '../../chat/todo-view.ts'
@@ -24,6 +26,7 @@ export interface ChatEvents {
   resetChat(): void
   activity: AgentActivity
   todos: TodoItemLike[]
+  retryStatus?: RetryStatus
 }
 
 export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolean): ChatEvents {
@@ -31,11 +34,13 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
   const [modelName, setModelName] = useState('deepseek-v4-flash')
   const [activity, setActivity] = useState<AgentActivity>(IDLE_ACTIVITY)
   const [todos, setTodos] = useState<TodoItemLike[]>(NO_TODOS)
+  const [retryStatus, setRetryStatus] = useState<RetryStatus | undefined>(undefined)
   const chatStateRef = useRef<{ messages: Message[]; turn: ReturnType<typeof initialTurnState> }>({
     messages: [],
     turn: initialTurnState(),
   })
   const pendingEventsRef = useRef<SessionEvent[]>([])
+  const retryStatusRef = useRef<RetryStatus | undefined>(undefined)
   const presenterRef = useRef<ChatToolPresenter | undefined>(undefined)
   const dialogOpenRef = useRef(false)
   dialogOpenRef.current = dialogOpen
@@ -57,16 +62,25 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
       let state = chatStateRef.current
       let dirty = false
       let latestTodos: TodoItemLike[] | undefined
+      let retry: RetryStatus | undefined = retryStatusRef.current
+      let retryDirty = false
       for (const event of events) {
         if (event.type === 'todo/write') {
           latestTodos = normalizeTodos((event.data as { todos?: unknown }).todos)
+        }
+        const nextRetry = nextRetryStatus(retry, event)
+        if (nextRetry !== retry) {
+          retry = nextRetry
+          retryDirty = true
         }
         const next = reduceChatEvent(state.messages, event, state.turn, presenterRef.current)
         dirty = dirty || next.changed
         state = { messages: next.messages, turn: next.turn }
       }
       chatStateRef.current = state
+      retryStatusRef.current = retry
       if (dirty) setMessages([...state.messages])
+      if (retryDirty) setRetryStatus(retry)
       const turn = state.turn
       setActivity(previous => previous.running === turn.running && previous.phase === turn.phase
         ? previous
@@ -94,10 +108,13 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
       setMessages([])
       chatStateRef.current = { messages: [], turn: initialTurnState() }
       pendingEventsRef.current = []
+      retryStatusRef.current = undefined
+      setRetryStatus(undefined)
       setActivity(IDLE_ACTIVITY)
       setTodos(NO_TODOS)
     },
     activity,
     todos,
+    retryStatus,
   }
 }

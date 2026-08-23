@@ -6,6 +6,7 @@ import { colors, permissionModeInfo } from '../theme.ts'
 import { writeOsc52 } from '../terminal/clipboard.ts'
 import type { ChatBridge } from '../chat/bridge.ts'
 import type { AgentActivity, AgentPhase } from '../chat/store.ts'
+import type { RetryStatus } from '../chat/retry-status.ts'
 import { rowIndexFor, selectionText, SPINNER_FRAMES } from './message/layout.ts'
 import { chromeSelectionText } from './selection-registry.ts'
 import type { ScreenCapture } from '../terminal/screen.ts'
@@ -69,9 +70,16 @@ function commandForCall(bridge: ChatBridge | undefined, callId: string | undefin
   }
 }
 
-function agentStatusLabel(activity: AgentActivity, panel: ActivePanel): string {
+function agentStatusLabel(activity: AgentActivity, panel: ActivePanel, retryStatus?: RetryStatus): string {
   if (panel?.kind === 'approval') return 'Waiting for permission'
   if (panel?.kind === 'question') return 'Waiting for selection'
+  if (retryStatus !== undefined) {
+    const remain = retryStatus.untilTs === 0
+      ? undefined
+      : Math.max(0, Math.ceil((retryStatus.untilTs - Date.now()) / 1000))
+    const progress = `(${retryStatus.attempt}/${retryStatus.maxRetries} · ${retryStatus.code})`
+    return remain === undefined ? `Retrying… ${progress}` : `Retrying in ${remain}s ${progress}`
+  }
   const labels: Record<AgentPhase, string> = {
     'awaiting-request': 'Awaiting request',
     thinking: 'Thinking',
@@ -91,7 +99,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const overlays = useOverlayStack<DialogKind>()
   const dialog: DialogKind | null = overlays.top ?? null
   const [, setSessionTick] = useState(0)
-  const { messages, modelName, setModelName, updateMessages, resetChat, activity, todos } = useChatEvents(bridge, dialog !== null)
+  const { messages, modelName, setModelName, updateMessages, resetChat, activity, todos, retryStatus } = useChatEvents(bridge, dialog !== null)
   const todoActive = isTodoActive(todos)
   const todoBadge = todoProgress(todos)
   const running = activity.running
@@ -360,7 +368,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
               <Region y={rows - 1}>
                 {(() => {
                   const badge = running && todoBadge !== undefined ? `[Task ${todoBadge.current}/${todoBadge.total}] ` : ''
-                  const leftText = running ? `${badge}${agentStatusLabel(activity, panel)}` : cwdLabel(bridge)
+                  const leftText = running ? `${badge}${agentStatusLabel(activity, panel, retryStatus)}` : cwdLabel(bridge)
                   const avail = columns - CHROME_MARGIN_X * 2 - CHROME_TEXT_X
                   const stats = truncate(statsText(bridge.tokenStats()), Math.max(1, avail - textWidth(leftText) - 2))
                   const rightCol = Math.max(CHROME_TEXT_X + textWidth(leftText), columns - CHROME_MARGIN_X * 2 - textWidth(stats))

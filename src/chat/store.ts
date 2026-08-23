@@ -64,6 +64,22 @@ function nextId(prefix: string): string {
 
 const CHROME_EVENTS = new Set(['permission/preset', 'sandbox/mode', 'approval/policy'])
 
+function dropStepMessages(messages: Message[], turn: TurnState, step: number): boolean {
+  let removed = false
+  for (const map of [turn.assistantIds, turn.thinkingIds]) {
+    const id = map.get(step)
+    if (id === undefined) continue
+    map.delete(step)
+    const at = messages.findIndex(m => m.id === id)
+    if (at >= 0) {
+      messages.splice(at, 1)
+      removed = true
+    }
+  }
+  turn.pendingText.delete(step)
+  return removed
+}
+
 export function reduceChatEvent(
   messages: Message[],
   event: SessionEvent,
@@ -204,23 +220,6 @@ export function reduceChatEvent(
       markPhase(turn, 'awaiting-request')
       return { messages, turn, changed: true }
     }
-    case 'llm/retry-started': {
-      const step = event.data.step
-      let changed = false
-      for (const map of [turn.assistantIds, turn.thinkingIds]) {
-        const id = map.get(step)
-        if (id === undefined) continue
-        map.delete(step)
-        const at = messages.findIndex(m => m.id === id)
-        if (at >= 0) {
-          messages.splice(at, 1)
-          changed = true
-        }
-      }
-      turn.pendingText.delete(step)
-      markRunning(turn, true)
-      return { messages, turn, changed }
-    }
     case 'assistant/message': {
       const step = event.data.step
       const blocks = event.data.message.content
@@ -289,8 +288,14 @@ export function reduceChatEvent(
       }
       return { messages, turn: initialTurnState(), changed }
     }
-    default:
+    default: {
+      if ((event.type as string) === 'llm/retry-started') {
+        const changed = dropStepMessages(messages, turn, (event.data as { step: number }).step)
+        markRunning(turn, true)
+        return { messages, turn, changed }
+      }
       return { messages, turn, changed: CHROME_EVENTS.has(event.type) }
+    }
   }
 }
 
