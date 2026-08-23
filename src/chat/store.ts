@@ -1,6 +1,6 @@
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { Message } from '../model/message.ts'
-import { textFromBlocks } from './blocks.ts'
+import { reasoningFromBlocks, textFromBlocks } from './blocks.ts'
 import type { ChatToolPresenter, ToolResultLike } from './bridge.ts'
 import type { CollapsibleMessage } from '../model/message.ts'
 import {
@@ -202,12 +202,67 @@ export function reduceChatEvent(
       markPhase(turn, 'awaiting-request')
       return { messages, turn, changed: true }
     }
+    case 'llm/retry-started': {
+      const step = event.data.step
+      let changed = false
+      for (const map of [turn.assistantIds, turn.thinkingIds]) {
+        const id = map.get(step)
+        if (id === undefined) continue
+        map.delete(step)
+        const at = messages.findIndex(m => m.id === id)
+        if (at >= 0) {
+          messages.splice(at, 1)
+          changed = true
+        }
+      }
+      turn.pendingText.delete(step)
+      markRunning(turn, true)
+      return { messages, turn, changed }
+    }
     case 'assistant/message': {
-      const id = turn.thinkingIds.get(event.data.step)
-      if (id === undefined) return { messages, turn, changed: false }
-      updateById(messages, id, message =>
-        message.kind === 'collapsible' ? { ...message, running: false } : message,
-      )
+      const step = event.data.step
+      const blocks = event.data.message.content
+      const text = textFromBlocks(blocks)
+      const reasoning = reasoningFromBlocks(blocks)
+
+      const aiId = turn.assistantIds.get(step)
+      if (aiId !== undefined) {
+        const at = messages.findIndex(m => m.id === aiId)
+        if (at >= 0) {
+          if (text === '') messages.splice(at, 1)
+          else updateById(messages, aiId, message =>
+            message.kind === 'bubble' ? { ...message, content: text } : message,
+          )
+        }
+      } else if (text !== '') {
+        const fresh = nextId('ai')
+        turn.assistantIds.set(step, fresh)
+        messages.push({ kind: 'bubble', id: fresh, role: 'assistant', content: text })
+      }
+
+      const thinkId = turn.thinkingIds.get(step)
+      if (thinkId !== undefined) {
+        updateById(messages, thinkId, message => message.kind === 'collapsible'
+          ? { ...message, running: false, ...(reasoning === '' ? {} : { body: reasoning }) }
+          : message,
+        )
+      } else if (reasoning !== '') {
+        const freshThink = nextId('think')
+        turn.thinkingIds.set(step, freshThink)
+        const entry: CollapsibleMessage = {
+          kind: 'collapsible',
+          id: freshThink,
+          label: 'Thinking',
+          body: reasoning,
+          running: false,
+          collapsed: true,
+          thinking: true,
+        }
+        const anchor = turn.assistantIds.get(step)
+        const at = anchor === undefined ? -1 : messages.findIndex(m => m.id === anchor)
+        if (at >= 0) messages.splice(at, 0, entry)
+        else messages.push(entry)
+      }
       return { messages, turn, changed: true }
     }
     case 'turn/end': {
@@ -233,7 +288,7 @@ export function reduceChatEvent(
       return { messages, turn: initialTurnState(), changed }
     }
     default:
-      return { messages, turn, changed: true }
+      return { messages, turn, changed: false }
   }
 }
 

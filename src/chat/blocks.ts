@@ -8,3 +8,11 @@ export function textFromBlocks(blocks: readonly ContentBlock[]): string {
   }
   return text
 }
+
+export function reasoningFromBlocks(blocks: readonly ContentBlock[]): string {
+  let text = ''
+  for (const block of blocks) {
+    if (block.type === 'reasoning') text += block.text
+  }
+  return text
+}
