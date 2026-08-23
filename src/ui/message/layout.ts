@@ -55,12 +55,16 @@ function wrapFor(message: Message, width: number): WrapEntry {
   if (entry !== undefined && entry.content === content && entry.collapsed === collapsed) {
     return entry
   }
-  const incremental = message.kind === 'bubble' && message.role === 'assistant'
-    || message.kind === 'collapsible' && message.thinking === true
+  const plainBubble = message.kind === 'bubble' && message.askUser === true
+  const incremental = !plainBubble && (message.kind === 'bubble' && message.role === 'assistant'
+    || message.kind === 'collapsible' && message.thinking === true)
   let lines: string[]
   let rows: Segment[][] | null = null
   let wrapper: SegmentWrapper | undefined
-  const useBlocks = message.kind === 'bubble' && message.role === 'assistant' && hasMarkdownTable(content)
+  const useBlocks = !plainBubble
+    && message.kind === 'bubble'
+    && message.role === 'assistant'
+    && hasMarkdownTable(content)
   if (useBlocks) {
     const built = buildMarkdownRows(content, width - BUBBLE_WIDTH_OFFSET)
     rows = built.rows
@@ -167,6 +171,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
   }
   switch (message.kind) {
     case 'bubble': {
+      const muted = message.askUser === true
       if (offset === 0 || offset === count - 2) {
         return { ...base, kind: 'pad', background: true, role: message.role }
       }
@@ -180,6 +185,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
           colStart: 4,
           selectable: true,
           background: true,
+          muted,
           role: message.role,
           ...segments === undefined ? {} : { segments, segKey: segmentsKey(segments) },
         }

@@ -3,6 +3,7 @@ export interface BubbleMessage {
   id: string
   role: 'user' | 'assistant' | 'error'
   content: string
+  askUser?: boolean
 }
 
 export interface CollapsibleMessage {

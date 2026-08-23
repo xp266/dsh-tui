@@ -4,6 +4,9 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { initialTurnState, reduceChatEvent } from '../src/chat/store.ts'
 import type { ChatToolPresenter } from '../src/chat/bridge.ts'
 import type { Message } from '../src/model/message.ts'
+import { rowInfoAt, rowIndexFor } from '../src/ui/message/layout.ts'
+
+const WIDTH = 80
 
 function userEvent(text: string): SessionEvent {
   return {
@@ -398,5 +401,138 @@ describe('chat event reducer', () => {
     }
     const done = reduceChatEvent(called.messages, failed, called.turn, presenter)
     expect(done.messages[0]).toMatchObject({ body: 'error: boom\nraw' })
+  })
+
+  it('drops the diff body column when a result fails so the body aligns with the label', () => {
+    let messages: Message[] = []
+    let turn = initialTurnState()
+    const presenter: ChatToolPresenter = {
+      call: () => ({ label: 'edit[src/a.ts]', body: '- a\n+ b', bodyCol: 2 }),
+      result: () => undefined,
+      argsJson: () => undefined,
+    }
+    const called = reduceChatEvent(messages, toolCall('c1'), turn, presenter)
+    expect(called.messages[0]).toMatchObject({ bodyCol: 2 })
+    const failed: SessionEvent = {
+      type: 'tool/result',
+      seq: 1,
+      time: 0,
+      data: {
+        turn: 1,
+        step: 1,
+        error: { name: 'boom', code: 'E_FAIL' },
+        message: createToolResultMessage({
+          callId: CallId('c1'),
+          content: [{ type: 'text', text: 'Error: file has not been read yet' }],
+          isError: true,
+        }),
+      },
+    }
+    const done = reduceChatEvent(called.messages, failed, called.turn, presenter)
+    expect(done.messages[0]).toMatchObject({ body: 'error: boom\nError: file has not been read yet', bodyCol: undefined })
+    const expanded = done.messages.map(message =>
+      message.kind === 'collapsible' ? { ...message, collapsed: false } : message,
+    )
+    rowIndexFor(expanded, WIDTH)
+    expect(rowInfoAt(expanded, WIDTH, 2)).toMatchObject({ kind: 'text', colStart: 4 })
+  })
+
+  it('keeps the presentation body column when a result succeeds', () => {
+    let messages: Message[] = []
+    let turn = initialTurnState()
+    const presenter: ChatToolPresenter = {
+      call: () => ({ label: 'edit[src/a.ts]', body: '- a\n+ b', bodyCol: 2 }),
+      result: () => ({ kind: 'replace', text: '- a\n+ b', bodyCol: 2 }),
+      argsJson: () => undefined,
+    }
+    const called = reduceChatEvent(messages, toolCall('c1'), turn, presenter)
+    const done = reduceChatEvent(called.messages, toolResult('c1', ''), called.turn, presenter)
+    expect(done.messages[0]).toMatchObject({ bodyCol: 2 })
+  })
+})
+
+describe('ask_user_question bubble', () => {
+  const askCall = (callId = 'a1'): SessionEvent => ({
+    type: 'tool/call',
+    seq: 1,
+    time: 0,
+    data: {
+      turn: 1,
+      step: 1,
+      callId: CallId(callId),
+      name: 'ask_user_question',
+      arguments: JSON.stringify({
+        questions: [
+          { id: 'q1', question: '第一个问题', options: [{ label: 'A' }] },
+          { id: 'q2', question: '第二个问题', multi_select: true },
+        ],
+      }),
+    },
+  })
+
+  function askResult(callId = 'a1', overrides: { text?: string; isError?: boolean; error?: { name: string; code: string } } = {}): SessionEvent {
+    return {
+      type: 'tool/result',
+      seq: 1,
+      time: 0,
+      data: {
+        turn: 1,
+        step: 1,
+        ...overrides.error === undefined ? {} : { error: overrides.error },
+        message: createToolResultMessage({
+          callId: CallId(callId),
+          content: [{
+            type: 'text',
+            text: overrides.text ?? JSON.stringify({ answers: [{ id: 'q1', selected: ['A'] }, { id: 'q2', selected: [], custom: '自定义' }] }),
+          }],
+          isError: overrides.isError === true,
+        }),
+      },
+    }
+  }
+
+  it('shows a title-only bubble while the question is pending', () => {
+    const state = apply([], [askCall()])
+    expect(state.messages).toHaveLength(1)
+    expect(state.messages[0]).toMatchObject({ kind: 'bubble', role: 'assistant', askUser: true, content: 'ask_user_question' })
+  })
+
+  it('renders questions and answers in the bubble once answered', () => {
+    const state = apply([], [askCall(), askResult()])
+    expect(state.messages[0]).toMatchObject({
+      kind: 'bubble',
+      role: 'assistant',
+      askUser: true,
+      content: [
+        'ask_user_question',
+        '',
+        '1. 第一个问题',
+        '   A',
+        '2. 第二个问题',
+        '   自定义',
+      ].join('\n'),
+    })
+  })
+
+  it('aligns the answered bubble rows with an AI reply and keeps them gray', () => {
+    const state = apply([], [askCall(), askResult()])
+    rowIndexFor(state.messages, WIDTH)
+    expect(rowInfoAt(state.messages, WIDTH, 0)).toMatchObject({ kind: 'pad', background: true })
+    expect(rowInfoAt(state.messages, WIDTH, 1)).toMatchObject({ kind: 'text', colStart: 4, muted: true, text: 'ask_user_question' })
+    expect(rowInfoAt(state.messages, WIDTH, 3)).toMatchObject({ kind: 'text', muted: true, text: '1. 第一个问题' })
+    expect(rowInfoAt(state.messages, WIDTH, 4)).toMatchObject({ kind: 'text', muted: true, text: '   A' })
+  })
+
+  it('shows the failure text where answers would appear', () => {
+    const state = apply([], [askCall(), askResult('a1', { text: 'Error: the user closed the question panel', isError: true })])
+    expect(state.messages[0]).toMatchObject({
+      askUser: true,
+      content: 'ask_user_question\n\nError: the user closed the question panel',
+    })
+  })
+
+  it('falls back to the event error identity when no result text exists', () => {
+    const state = apply([], [askCall(), askResult('a1', { text: '', error: { name: 'AbortError', code: 'E_ABORT' } })])
+    expect(state.messages[0]).toMatchObject({ content: 'ask_user_question\n\nerror: AbortError' })
   })
 })

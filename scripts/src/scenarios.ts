@@ -142,6 +142,64 @@ export function buildScenarios(options: { inputText?: string } = {}): Scenario[]
         for (const event of chatTranscriptEvents()) ctx.bridge.emitEvent(event)
       },
     },
+    {
+      id: 'tool-error',
+      description: 'Tool card with a failed execution result expanded',
+      discoveredFrom: 'built-in',
+      run(ctx) {
+        for (const event of [
+          {
+            type: 'tool/call',
+            data: { name: 'bash', callId: 'call-err', arguments: { command: 'pnpm test --filter broken', description: 'Run failing tests' } },
+          },
+          {
+            type: 'tool/result',
+            data: {
+              message: {
+                content: [
+                  {
+                    toolCallId: 'call-err',
+                    isError: true,
+                    content: [{ type: 'text', text: '```console\nsh: line 0: pnpm: command not found\n[exit code: 127]\n```' }],
+                  },
+                ],
+              },
+              error: { name: 'ToolExecutionError' },
+            },
+          },
+          { type: 'turn/end', data: { reason: { kind: 'stop' } } },
+        ]) ctx.bridge.emitEvent(event)
+      },
+    },
+    {
+      id: 'ask-bubble',
+      description: 'ask_user_question bubble with answers rendered like an AI reply',
+      discoveredFrom: 'built-in',
+      run(ctx) {
+        const questions = [
+          { id: 'q1', question: 'Which migration strategy should be used?', options: [{ label: 'Big bang cutover' }, { label: 'Dual write' }] },
+          { id: 'q2', question: 'Which extra checks should run after?', multi_select: true, options: [{ label: 'Row count diff' }] },
+        ]
+        const answers = { answers: [{ id: 'q1', selected: ['Dual write'] }, { id: 'q2', selected: [], custom: 'Latency probe' }] }
+        for (const event of [
+          { type: 'tool/call', data: { name: 'ask_user_question', callId: 'call-ask', arguments: JSON.stringify({ questions }) } },
+          {
+            type: 'tool/result',
+            data: {
+              message: {
+                content: [
+                  {
+                    type: 'tool-result',
+                    toolCallId: 'call-ask',
+                    content: [{ type: 'text', text: JSON.stringify(answers) }],
+                  },
+                ],
+              },
+            },
+          },
+        ]) ctx.bridge.emitEvent(event)
+      },
+    },
   ]
   return [...scenarios, ...commandScenarios(), ...panelScenarios()]
 }

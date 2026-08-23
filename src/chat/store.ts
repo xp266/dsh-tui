@@ -3,16 +3,24 @@ import type { Message } from '../model/message.ts'
 import { textFromBlocks } from './blocks.ts'
 import type { ChatToolPresenter, ToolResultLike } from './bridge.ts'
 import type { CollapsibleMessage } from '../model/message.ts'
+import {
+  ASK_USER_TOOL_NAME,
+  formatAskUserBubble,
+  formatAskUserError,
+  parseAskAnswers,
+  parseAskQuestions,
+} from './question-view.ts'
 
 export interface TurnState {
   thinkingIds: Map<number, string>
   assistantIds: Map<number, string>
   toolIds: Map<string, string>
   pendingText: Map<number, string>
+  askArgs: Map<string, unknown>
 }
 
 export function initialTurnState(): TurnState {
-  return { thinkingIds: new Map(), assistantIds: new Map(), toolIds: new Map(), pendingText: new Map() }
+  return { thinkingIds: new Map(), assistantIds: new Map(), toolIds: new Map(), pendingText: new Map(), askArgs: new Map() }
 }
 
 let messageCounter = 0
@@ -41,6 +49,15 @@ export function reduceChatEvent(
       return { messages, turn, changed: false }
     }
     case 'tool/call': {
+      if (event.data.name === ASK_USER_TOOL_NAME) {
+        const id = nextId('ask')
+        turn.toolIds.set(event.data.callId, id)
+        try {
+          turn.askArgs.set(event.data.callId, JSON.parse(event.data.arguments))
+        } catch {}
+        messages.push({ kind: 'bubble', id, role: 'assistant', content: ASK_USER_TOOL_NAME, askUser: true })
+        return { messages, turn, changed: true }
+      }
       const id = nextId('tool')
       turn.toolIds.set(event.data.callId, id)
       const view = presenter?.call(event.data.name, event.data.callId, event.data.arguments)
@@ -60,6 +77,10 @@ export function reduceChatEvent(
       if (callId === undefined) return { messages, turn, changed: false }
       const id = turn.toolIds.get(callId)
       if (id === undefined) return { messages, turn, changed: false }
+      const target = messageById(messages, id)
+      if (target?.kind === 'bubble' && target.askUser === true) {
+        return settleAskUserBubble(messages, turn, id, callId, event)
+      }
       const collapsible = collapsibleById(messages, id)
       if (collapsible === undefined) return { messages, turn, changed: false }
       const error = event.data.error
@@ -79,7 +100,7 @@ export function reduceChatEvent(
           ...message,
           body,
           running: false,
-          ...presentation.bodyCol === undefined ? {} : { bodyCol: presentation.bodyCol },
+          bodyCol: error === undefined ? presentation.bodyCol : undefined,
         }))
         return { messages, turn, changed: true }
       }
@@ -100,7 +121,12 @@ export function reduceChatEvent(
             : `${collapsible.body}\n\n${rendered}`
         : `error: ${error.name ?? error.code}${rendered ? `\n${rendered}` : ''}`
       turn.toolIds.delete(callId)
-      updateById(messages, id, message => ({ ...message, body, running: false }))
+      updateById(messages, id, message => ({
+        ...message,
+        body,
+        running: false,
+        ...(error === undefined ? {} : { bodyCol: undefined }),
+      }))
       return { messages, turn, changed: true }
     }
     case 'assistant/message': {
@@ -191,6 +217,36 @@ function appendChunk(
 function collapsibleById(messages: Message[], id: string): CollapsibleMessage | undefined {
   const message = messages.find(m => m.id === id)
   return message?.kind === 'collapsible' ? message : undefined
+}
+
+function messageById(messages: Message[], id: string): Message | undefined {
+  return messages.find(m => m.id === id)
+}
+
+function settleAskUserBubble(
+  messages: Message[],
+  turn: TurnState,
+  id: string,
+  callId: string,
+  event: Extract<SessionEvent, { type: 'tool/result' }>,
+): { messages: Message[]; turn: TurnState; changed: boolean } {
+  const error = event.data.error
+  const block = event.data.message.content[0]
+  const failed = error !== undefined || block?.isError === true
+  const resultText = textFromBlocks(event.data.message.content).trim()
+  let content = ASK_USER_TOOL_NAME
+  if (failed) {
+    content = formatAskUserError(resultText !== ''
+      ? resultText
+      : `error: ${error?.name ?? error?.code ?? 'unknown error'}`)
+  } else {
+    const questions = parseAskQuestions(turn.askArgs.get(callId))
+    if (questions.length > 0) content = formatAskUserBubble(questions, parseAskAnswers(resultText))
+  }
+  turn.toolIds.delete(callId)
+  turn.askArgs.delete(callId)
+  updateById(messages, id, message => message.kind === 'bubble' ? { ...message, content } : message)
+  return { messages, turn, changed: true }
 }
 
 function updateById(messages: Message[], id: string, update: (message: Message) => Message): void {
