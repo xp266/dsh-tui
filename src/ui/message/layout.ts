@@ -3,7 +3,7 @@ import { colToCharIndex, textWidth, truncate, wrapLines } from '../../core/text.
 import { selectedRange } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
 import { sliceByColumns } from '../selection-registry.ts'
-import { createMarkdownTokenizer, createThinkingTokenizer, createSegmentWrapper, segmentsKey, wrapSegments } from './markdown.ts'
+import { buildMarkdownRows, createMarkdownTokenizer, createThinkingTokenizer, hasMarkdownTable, segmentsKey, wrapSegments, createSegmentWrapper } from './markdown.ts'
 import type { Segment, SegmentWrapper } from './markdown.ts'
 import { BUBBLE_WIDTH_OFFSET, HEADER_LABEL_COL } from '../../core/metrics.ts'
 
@@ -60,7 +60,12 @@ function wrapFor(message: Message, width: number): WrapEntry {
   let lines: string[]
   let rows: Segment[][] | null = null
   let wrapper: SegmentWrapper | undefined
-  if (incremental) {
+  const useBlocks = message.kind === 'bubble' && message.role === 'assistant' && hasMarkdownTable(content)
+  if (useBlocks) {
+    const built = buildMarkdownRows(content, width - BUBBLE_WIDTH_OFFSET)
+    rows = built.rows
+    lines = built.lines
+  } else if (incremental) {
     const reusable = entry !== undefined && content.startsWith(entry.content) ? entry.wrapper : undefined
     const active = reusable ?? createSegmentWrapper(
       message.kind === 'collapsible' && message.thinking === true

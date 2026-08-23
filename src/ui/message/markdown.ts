@@ -1,7 +1,8 @@
 import { colors } from '../../theme.ts'
 import { highlightCode } from './highlight.ts'
-import { segmentsKey, wrapSegments } from '../../core/segments.ts'
+import { mergeRuns, segmentsKey, wrapSegments } from '../../core/segments.ts'
 import type { MarkStyle, Segment } from '../../core/segments.ts'
+import { charWidth, segmentGraphemes, textWidth } from '../../core/text.ts'
 
 export { segmentsKey, wrapSegments }
 export type { MarkStyle, Segment }
@@ -223,7 +224,7 @@ export function createSegmentWrapper(tokenizer: LineTokenizer, width: number): S
   const appendLine = (line: string): void => {
     const segments = tokenizer.tokenize(line)
     if (segments === null) return
-    const rows = wrapSegments(segments, width)
+    const rows = layoutLineSegments(segments, width)
     for (const row of rows) {
       doneRows.push(row)
       doneTexts.push(row.map(segment => segment.text).join(''))
@@ -231,7 +232,7 @@ export function createSegmentWrapper(tokenizer: LineTokenizer, width: number): S
   }
   const refreshTail = (): void => {
     const segments = tokenizer.tokenize(partial)
-    tailRows = segments === null ? [] : wrapSegments(segments, width)
+    tailRows = segments === null ? [] : layoutLineSegments(segments, width)
     tailTexts = tailRows.map(row => row.map(segment => segment.text).join(''))
   }
   refreshTail()
@@ -255,4 +256,174 @@ export function createSegmentWrapper(tokenizer: LineTokenizer, width: number): S
       return { rows: doneRows.concat(tailRows), lines: doneTexts.concat(tailTexts) }
     },
   }
+}
+
+const LIST_MARKER_RE = /^[ \t]*(?:[-*+]|\d+\.)[ \t]/
+
+export function layoutLineSegments(segments: Segment[], width: number): Segment[][] {
+  const first = segments[0]?.text ?? ''
+  if (!LIST_MARKER_RE.test(first)) return wrapSegments(segments, width)
+  const hang = Math.min(textWidth(first), Math.max(0, width - 4))
+  const rest = wrapSegments(segments.slice(1), Math.max(4, width - hang))
+  return rest.map((row, index) => index === 0
+    ? mergeRuns([segments[0]!, ...row])
+    : [{ text: ' '.repeat(hang), style: mdStyles.plain }, ...row])
+}
+
+const TABLE_ROW_RE = /^[ \t]*\|/
+const TABLE_SEP_CELL_RE = /^[ \t]*:?-+:?[ \t]*$/
+
+function splitTableRow(line: string): string[] {
+  let s = line.trim()
+  if (s.startsWith('|')) s = s.slice(1)
+  if (s.endsWith('|')) s = s.slice(0, -1)
+  const cells: string[] = []
+  let current = ''
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]!
+    if (ch === '\\' && s[i + 1] === '|') {
+      current += '|'
+      i++
+      continue
+    }
+    if (ch === '|') {
+      cells.push(current)
+      current = ''
+      continue
+    }
+    current += ch
+  }
+  cells.push(current)
+  return cells
+}
+
+function isTableSeparator(line: string): boolean {
+  if (!line.includes('|') || !line.includes('-')) return false
+  const cells = splitTableRow(line)
+  return cells.length > 0 && cells.every(cell => TABLE_SEP_CELL_RE.test(cell))
+}
+
+function isTableRowLine(line: string): boolean {
+  return line.trim() !== '' && line.includes('|')
+}
+
+function isTableHeaderAt(raw: string[], i: number): boolean {
+  if (i + 1 >= raw.length) return false
+  const header = raw[i]!
+  if (!header.includes('|') || !isTableSeparator(raw[i + 1]!)) return false
+  const headerCells = splitTableRow(header)
+  const sepCells = splitTableRow(raw[i + 1]!)
+  if (sepCells.length !== headerCells.length) return false
+  return headerCells.length >= 2 || header.trimStart().startsWith('|')
+}
+
+function plainTextOf(segments: Segment[]): string {
+  return segments.map(segment => segment.text).join('')
+}
+
+function borderRow(widths: number[], left: string, mid: string, right: string): Segment[] {
+  return [{ text: left + widths.map(w => '─'.repeat(w + 2)).join(mid) + right, style: mdStyles.plain }]
+}
+
+const TABLE_SAFETY_COLS = 2
+
+function pushMarkdownTable(rows: Segment[][], block: string[], width: number): void {
+  const cols = Math.max(1, splitTableRow(block[0]!).length)
+  const tableRows = [splitTableRow(block[0]!), ...block.slice(2).map(splitTableRow)]
+  const cellAt = (cells: string[], c: number): string => (cells[c] ?? '').trim()
+  const widths: number[] = []
+  const mins: number[] = []
+  for (let c = 0; c < cols; c++) {
+    let natural = 1
+    let min = 1
+    for (const cells of tableRows) {
+      const text = cellAt(cells, c)
+      natural = Math.max(natural, textWidth(text))
+      for (const { segment } of segmentGraphemes(text)) min = Math.max(min, charWidth(segment))
+    }
+    widths.push(natural)
+    mins.push(min)
+  }
+  const budget = Math.max(cols, width - (cols * 3 + 1) - TABLE_SAFETY_COLS)
+  const sum = (): number => widths.reduce((a, b) => a + b, 0)
+  while (sum() > budget) {
+    let maxIdx = -1
+    for (let c = 0; c < cols; c++) {
+      if (widths[c]! <= mins[c]!) continue
+      if (maxIdx === -1 || widths[c]! > widths[maxIdx]!) maxIdx = c
+    }
+    if (maxIdx === -1) break
+    widths[maxIdx] -= 1
+  }
+  const blocksByRow = tableRows.map(cells => {
+    const blocks: Segment[][][] = []
+    for (let c = 0; c < cols; c++) {
+      const segs = tokenizeInline(cellAt(cells, c), false)
+      blocks.push(segs.length === 0 ? [[]] : wrapSegments(segs, widths[c]!))
+    }
+    return blocks
+  })
+  const effective = widths.slice()
+  for (const blocks of blocksByRow) {
+    for (let c = 0; c < cols; c++) {
+      for (const rowSegs of blocks[c]!) {
+        effective[c] = Math.max(effective[c]!, textWidth(plainTextOf(rowSegs)))
+      }
+    }
+  }
+  const renderRowBlock = (blocks: Segment[][][]): Segment[][] => {
+    let height = 1
+    for (let c = 0; c < cols; c++) height = Math.max(height, blocks[c]!.length)
+    const out: Segment[][] = []
+    for (let h = 0; h < height; h++) {
+      const line: Segment[] = [{ text: '│', style: mdStyles.plain }]
+      for (let c = 0; c < cols; c++) {
+        const rowSegs = blocks[c]![h] ?? []
+        const used = textWidth(plainTextOf(rowSegs))
+        line.push({ text: ' ', style: mdStyles.plain })
+        line.push(...rowSegs)
+        line.push({ text: ' '.repeat(Math.max(0, effective[c]! - used + 1)), style: mdStyles.plain }, { text: '│', style: mdStyles.plain })
+      }
+      out.push(mergeRuns(line))
+    }
+    return out
+  }
+  rows.push(borderRow(effective, '┌', '┬', '┐'))
+  rows.push(...renderRowBlock(blocksByRow[0]!))
+  rows.push(borderRow(effective, '├', '┼', '┤'))
+  for (const blocks of blocksByRow.slice(1)) rows.push(...renderRowBlock(blocks))
+  rows.push(borderRow(effective, '└', '┴', '┘'))
+}
+
+export function hasMarkdownTable(content: string): boolean {
+  const lines = content.split('\n')
+  for (let i = 0; i + 1 < lines.length; i++) {
+    if (isTableHeaderAt(lines, i)) return true
+  }
+  return false
+}
+
+export interface BuiltMarkdown {
+  rows: Segment[][]
+  lines: string[]
+}
+
+export function buildMarkdownRows(content: string, width: number): BuiltMarkdown {
+  const tokenizer = createMarkdownTokenizer()
+  const raw = content.split('\n')
+  const rows: Segment[][] = []
+  for (let i = 0; i < raw.length; i++) {
+    const line = raw[i]!
+    if (!tokenizer.snapshot().inCode && isTableHeaderAt(raw, i)) {
+      let end = i
+      while (end < raw.length && isTableRowLine(raw[end]!)) end++
+      pushMarkdownTable(rows, raw.slice(i, end), width)
+      i = end - 1
+      continue
+    }
+    const segments = tokenizer.tokenize(line)
+    if (segments !== null) rows.push(...layoutLineSegments(segments, width))
+  }
+  const lines = rows.map(row => plainTextOf(row))
+  return { rows, lines }
 }

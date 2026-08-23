@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mdStyles, createMarkdownTokenizer, createThinkingTokenizer, createSegmentWrapper, tokenizeMarkdown, tokenizeThinking, wrapSegments } from '../src/ui/message/markdown.ts'
+import { mdStyles, createMarkdownTokenizer, createThinkingTokenizer, createSegmentWrapper, layoutLineSegments, tokenizeMarkdown, tokenizeThinking, wrapSegments } from '../src/ui/message/markdown.ts'
 import type { SegmentWrapper } from '../src/ui/message/markdown.ts'
 import type { MarkStyle, Segment } from '../src/ui/message/markdown.ts'
 import { codeStyles, codeStylesDark, highlightCode } from '../src/ui/message/highlight.ts'
@@ -324,6 +324,24 @@ describe('createSegmentWrapper', () => {
     return chunks
   }
 
+  function layoutBatch(segments: Segment[], width: number): Segment[][] {
+    const rows: Segment[][] = []
+    let line: Segment[] = []
+    const flush = (): void => {
+      rows.push(...layoutLineSegments(line, width))
+      line = []
+    }
+    for (const segment of segments) {
+      if (segment.text === '\n') {
+        flush()
+        continue
+      }
+      line.push(segment)
+    }
+    flush()
+    return rows
+  }
+
   function expectIncrementalMatchesBatch(make: () => SegmentWrapper, tokenize: (content: string) => Segment[], seed: number, width: number): void {
     const random = lcg(seed)
     const content = randomContent(random)
@@ -333,7 +351,7 @@ describe('createSegmentWrapper', () => {
     for (const chunk of chunks) {
       accumulated += chunk
       const wrapped = wrapper.update(accumulated)
-      const expected = wrapSegments(tokenize(accumulated), width)
+      const expected = layoutBatch(tokenize(accumulated), width)
       expect(wrapped.rows).toEqual(expected)
       expect(wrapped.lines).toEqual(expected.map(row => row.map(segment => segment.text).join('')))
     }
