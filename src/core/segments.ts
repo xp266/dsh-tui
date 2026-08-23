@@ -1,4 +1,4 @@
-import { charWidth, segmentGraphemes } from './text.ts'
+import { computeWrapStarts, segmentGraphemes } from './text.ts'
 
 export interface MarkStyle {
   color?: string
@@ -14,53 +14,29 @@ export interface Segment {
 export function wrapSegments(segments: Segment[], width: number): Segment[][] {
   if (width <= 0) return [[]]
   const rows: Segment[][] = []
-  let current: Segment[] = []
-  let currentWidth = 0
-  const flush = () => {
-    rows.push(mergeRuns(current))
-    current = []
-    currentWidth = 0
-  }
-  const pushCluster = (cluster: string, style: MarkStyle) => {
-    if (cluster === '\n') {
-      flush()
-      return
+  let line: Array<{ cluster: string; style: MarkStyle }> = []
+  const flushLine = (): void => {
+    const clusters = line.map(cell => cell.cluster)
+    const starts = computeWrapStarts(clusters, width)
+    for (let r = 0; r < starts.length; r++) {
+      const from = starts[r]!
+      const to = r + 1 < starts.length ? starts[r + 1]! : line.length
+      const row: Segment[] = []
+      for (let k = from; k < to; k++) row.push({ text: line[k]!.cluster, style: line[k]!.style })
+      rows.push(mergeRuns(row))
     }
-    const w = charWidth(cluster)
-    if (currentWidth + w > width) flush()
-    current.push({ text: cluster, style })
-    currentWidth += w
-  }
-  const charLoop = (text: string, style: MarkStyle) => {
-    for (const { segment } of segmentGraphemes(text)) {
-      pushCluster(segment, style)
-    }
+    line = []
   }
   for (const seg of segments) {
-    const text = seg.text
-    if (text === '') continue
-    if (text.indexOf('\n') >= 0) {
-      charLoop(text, seg.style)
-      continue
-    }
-    let total = 0
-    let fits = true
-    for (const { segment } of segmentGraphemes(text)) {
-      const w = charWidth(segment)
-      if (currentWidth + total + w > width) {
-        fits = false
-        break
+    const parts = seg.text.split('\n')
+    for (let p = 0; p < parts.length; p++) {
+      if (p > 0) flushLine()
+      for (const { segment } of segmentGraphemes(parts[p]!)) {
+        line.push({ cluster: segment, style: seg.style })
       }
-      total += w
     }
-    if (fits) {
-      current.push({ text, style: seg.style })
-      currentWidth += total
-      continue
-    }
-    charLoop(text, seg.style)
   }
-  rows.push(mergeRuns(current))
+  flushLine()
   return rows
 }
 

@@ -9,6 +9,15 @@ function stripAnsi(text: string): string {
   return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
 }
 
+async function waitForFrame(lastFrame: () => string | undefined, text: string): Promise<string> {
+  let frame = lastFrame() ?? ''
+  for (let i = 0; i < 120 && !frame.includes(text); i++) {
+    await new Promise(resolve => setTimeout(resolve, 25))
+    frame = lastFrame() ?? ''
+  }
+  return frame
+}
+
 function fakeBridge(): ChatBridge {
   return {
     modelName: () => 'glm-4.7-flash',
@@ -178,14 +187,13 @@ describe('App layout', () => {
     ])
     bridge.currentPreset = () => 'standard'
     const { lastFrame, stdin } = render(<App bridge={bridge} />)
-    await new Promise(resolve => setTimeout(resolve, 20))
+    await waitForFrame(lastFrame, 'glm-4.7-flash')
     stdin.write('/preset')
     await new Promise(resolve => setTimeout(resolve, 20))
     stdin.write('\r')
     await new Promise(resolve => setTimeout(resolve, 20))
     stdin.write('\r')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    const frame = lastFrame() ?? ''
+    const frame = await waitForFrame(lastFrame, 'Creator mode')
     expect(frame).toContain('preset')
     expect(frame).toContain('Standard mode')
     expect(frame).toContain('Code mode')
@@ -206,18 +214,17 @@ describe('App layout', () => {
       throw new Error('the preset is fixed once the session has started; use /new to start a new session')
     })
     const { lastFrame, stdin } = render(<App bridge={bridge} />)
-    await new Promise(resolve => setTimeout(resolve, 20))
+    await waitForFrame(lastFrame, 'glm-4.7-flash')
     stdin.write('/preset')
     await new Promise(resolve => setTimeout(resolve, 20))
     stdin.write('\r')
     await new Promise(resolve => setTimeout(resolve, 20))
     stdin.write('\r')
-    await new Promise(resolve => setTimeout(resolve, 20))
+    await waitForFrame(lastFrame, 'Creator mode')
     stdin.write('\u001b[B')
-    await new Promise(resolve => setTimeout(resolve, 20))
+    await new Promise(resolve => setTimeout(resolve, 30))
     stdin.write('\r')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    const frame = lastFrame() ?? ''
+    const frame = await waitForFrame(lastFrame, 'the preset is fixed')
     expect(frame).toContain('the preset is fixed once the session has started')
   })
 

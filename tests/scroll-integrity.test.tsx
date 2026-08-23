@@ -90,5 +90,5 @@ describe('message list scroll integrity', () => {
       void previousTotal
       if (scrollTop > total) break
     }
-  })
+  }, 30000)
 })

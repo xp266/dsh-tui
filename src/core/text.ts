@@ -28,25 +28,74 @@ export function charWidth(cluster: string): number {
   return width
 }
 
+const NO_START_CHARS = new Set<string>(
+  "!%,.:;?)]}'\"" + "。，、：；！？）］｝》〉」』】〕〗〙〛…—～·％°′″‰",
+)
+
+const NO_END_CHARS = new Set<string>(
+  "([{'\"$#@`" + "（［｛《〈「『【〔〖＄￥",
+)
+
+const BREAK_DELIM_CHARS = new Set<string>("-/\\,.;:!?)]}")
+
+function matchesAny(cluster: string, set: Set<string>): boolean {
+  for (const ch of cluster) {
+    if (set.has(ch)) return true
+  }
+  return false
+}
+
+function canBreakBefore(prev: string, cur: string): boolean {
+  if (matchesAny(cur, NO_START_CHARS) || matchesAny(prev, NO_END_CHARS)) return false
+  if (charWidth(prev) >= 2 || charWidth(cur) >= 2) return true
+  if (prev === ' ' || prev === '\t') return true
+  if (BREAK_DELIM_CHARS.has(prev)) return true
+  return false
+}
+
+export function computeWrapStarts(clusters: string[], width: number): number[] {
+  const total = clusters.length
+  const starts: number[] = [0]
+  let start = 0
+  let lineW = 0
+  let lastBreak = -1
+  for (let i = 0; i < total; i++) {
+    const w = charWidth(clusters[i]!)
+    if (lineW + w > width && i > start) {
+      let j: number
+      if (lastBreak > start) {
+        j = lastBreak
+      } else {
+        j = i
+        while (j > start + 1 && matchesAny(clusters[j]!, NO_START_CHARS)) j--
+        while (j > start + 1 && matchesAny(clusters[j - 1]!, NO_END_CHARS)) j--
+      }
+      starts.push(j)
+      lineW = 0
+      for (let k = j; k < i; k++) lineW += charWidth(clusters[k]!)
+      start = j
+      lastBreak = -1
+    }
+    const next = i + 1
+    if (next < total && canBreakBefore(clusters[i]!, clusters[next]!)) lastBreak = next
+    lineW += w
+  }
+  return starts
+}
+
 function pushWrapped(line: string, width: number, out: string[]): void {
   if (line.length === 0) {
     out.push('')
     return
   }
-  let current = ''
-  let currentWidth = 0
-  for (const { segment } of segmentGraphemes(line)) {
-    const w = charWidth(segment)
-    if (currentWidth + w > width) {
-      out.push(current)
-      current = segment
-      currentWidth = w
-      continue
-    }
-    current += segment
-    currentWidth += w
+  const clusters: string[] = []
+  for (const { segment } of segmentGraphemes(line)) clusters.push(segment)
+  const starts = computeWrapStarts(clusters, width)
+  for (let r = 0; r < starts.length; r++) {
+    const from = starts[r]!
+    const to = r + 1 < starts.length ? starts[r + 1]! : clusters.length
+    out.push(clusters.slice(from, to).join(''))
   }
-  out.push(current)
 }
 
 export function wrapLines(text: string, width: number): string[] {
@@ -68,18 +117,18 @@ function pushWrappedOffsets(line: string, width: number, base: number, out: Line
     out.push({ start: base, end: base })
     return
   }
-  let used = 0
-  let segStart = 0
+  const clusters: string[] = []
+  const offsets: number[] = []
   for (const { segment, index } of segmentGraphemes(line)) {
-    const w = charWidth(segment)
-    if (used + w > width) {
-      out.push({ start: base + segStart, end: base + index })
-      segStart = index
-      used = 0
-    }
-    used += w
+    clusters.push(segment)
+    offsets.push(index)
   }
-  out.push({ start: base + segStart, end: base + line.length })
+  const starts = computeWrapStarts(clusters, width)
+  for (let r = 0; r < starts.length; r++) {
+    const from = starts[r]!
+    const to = r + 1 < starts.length ? offsets[starts[r + 1]!]! : line.length
+    out.push({ start: base + offsets[from]!, end: base + to })
+  }
 }
 
 export function lineBreaks(text: string, width: number): LineBreak[] {
