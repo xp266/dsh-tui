@@ -196,17 +196,24 @@ export function reviewAnswerOf(question: AskQuestionItemLike, draft: QuestionDra
   return labels.length === 0 ? '(Question not answered)' : labels.join(', ')
 }
 
+export interface PanelHitRow {
+  line: number
+  optionIndex: number
+}
+
 export interface PanelLayout {
   lines: string[]
   focusLine: number
   caret: { row: number; col: number } | null
   height: number
+  hitRows: PanelHitRow[]
 }
 
 export function questionPanelLayout(state: QuestionPageState, innerWidth: number, scrollWindow: number = MAX_BODY_ROWS): PanelLayout {
   const total = state.request.questions.length + 1
   const isReview = state.page >= state.request.questions.length
   const body: string[] = []
+  const hitRows: PanelHitRow[] = []
   let focusLine = 0
   let caret: { row: number; col: number } | null = null
 
@@ -233,6 +240,7 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
       const marker = focused ? '❯' : ' '
       const num = `${i + 1}.`
       if (focused) focusLine = body.length
+      hitRows.push({ line: body.length, optionIndex: i })
       if (i === rows - 1) {
         const box = multi ? (draft.customChecked ? '[✓]' : '[ ]') : ''
         const tail = !multi && draft.customChecked ? '    ✓' : ''
@@ -272,11 +280,14 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
 
   const window = Math.max(3, Math.min(scrollWindow, body.length))
   if (body.length <= window) {
-    return { lines: body, focusLine, caret: finalizeCaret(caret, body), height: body.length }
+    return { lines: body, focusLine, caret: finalizeCaret(caret, body), height: body.length, hitRows }
   }
   let start = Math.max(0, Math.min(focusLine - Math.floor(window / 2), body.length - window))
   const lines = body.slice(start, start + window)
-  return { lines, focusLine: focusLine - start, caret: finalizeCaret(caret, body, start), height: window }
+  const shifted = hitRows
+    .map(hit => ({ line: hit.line - start, optionIndex: hit.optionIndex }))
+    .filter(hit => hit.line >= 0 && hit.line < lines.length)
+  return { lines, focusLine: focusLine - start, caret: finalizeCaret(caret, body, start), height: window, hitRows: shifted }
 }
 
 function finalizeCaret(

@@ -121,12 +121,25 @@ export function useDialogInput(options: DialogInputOptions): void {
     const editingFormInput = liveCurrent !== undefined && liveCurrent.type !== 'search' && widgetOf(liveCurrent.type).editable === true
     if (search && !editingFormInput) {
       const v = state.searchValue
-      if ((key.backspace || key.delete) && v.length > 0) {
-        requestSearch(v.slice(0, -1))
+      const onSearchRow = state.focus.row === 0
+      const caret = onSearchRow ? Math.max(0, Math.min(state.cursor, v.length)) : v.length
+      const applyEdit = (next: { value: string; cursor: number } | null): boolean => {
+        if (next === null) return false
+        requestSearch(next.value)
+        state.cursor = next.cursor
+        setCursor(next.cursor)
+        return true
+      }
+      if (key.backspace) {
+        applyEdit(editBackspace({ value: v, cursor: caret }))
+        return
+      }
+      if (key.delete) {
+        applyEdit(editDelete({ value: v, cursor: caret }))
         return
       }
       if (input && !key.ctrl && !key.meta && !isMouseResidue(input)) {
-        requestSearch(v + input)
+        applyEdit(editInsert({ value: v, cursor: caret }, input))
         return
       }
     }

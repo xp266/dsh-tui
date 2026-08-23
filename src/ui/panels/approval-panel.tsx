@@ -1,15 +1,28 @@
 import { Box, Text, useInput } from 'ink'
 import { useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { ReactNode, Ref } from 'react'
+import { useImperativeHandle } from 'react'
 import { wrapLines, padToWidth } from '../../core/text.ts'
-import { CHROME_MARGIN_X, CHROME_PAD_X } from '../../core/metrics.ts'
+import { CHROME_MARGIN_X, CHROME_PAD_X, CHROME_TEXT_X } from '../../core/metrics.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
+import { SelectableText } from '../selection.tsx'
 import { Region } from '../region.tsx'
 
 export const APPROVAL_SECTION_ROWS = 3
-const BUTTON_GAP = ' '.repeat(8)
+const BUTTON_GAP_TEXT = ' '.repeat(8)
+const BUTTON_ALLOW_TEXT = 'Allow once'
+export const APPROVAL_BUTTON_COLS = {
+  allow: CHROME_TEXT_X + 1,
+  reject: CHROME_TEXT_X + 1 + BUTTON_ALLOW_TEXT.length + BUTTON_GAP_TEXT.length,
+}
+
+export interface PanelPointerHandle {
+  clickAt(y: number, x: number): void
+  wheel(dir: -1 | 1): boolean
+}
 
 interface ApprovalPanelProps {
+  handleRef?: Ref<PanelPointerHandle>
   reason?: string
   command?: string
   background: string
@@ -34,7 +47,7 @@ export function buildApprovalBody(innerWidth: number, reason: string[], command:
     lines.push(...command.slice(0, APPROVAL_SECTION_ROWS).map(line => ' ' + padToWidth(line, innerWidth - 1)))
     lines.push('')
   }
-  lines.push(' Allow once' + BUTTON_GAP + 'Reject')
+  lines.push(' ' + BUTTON_ALLOW_TEXT + BUTTON_GAP_TEXT + 'Reject')
   return lines
 }
 
@@ -42,7 +55,7 @@ function clamp(value: number, max: number): number {
   return Math.max(0, Math.min(max, value))
 }
 
-export function ApprovalPanel({ reason, command, background, active, columns, rows, innerWidth, blockWidth, onDecide, onResize }: ApprovalPanelProps) {
+export function ApprovalPanel({ handleRef, reason, command, background, active, columns, rows, innerWidth, blockWidth, onDecide, onResize }: ApprovalPanelProps) {
   const [focusAllow, setFocusAllow] = useState(true)
   const [scroll, setScroll] = useState({ reason: 0, command: 0 })
   const allReason = section(reason, innerWidth)
@@ -72,6 +85,32 @@ export function ApprovalPanel({ reason, command, background, active, columns, ro
   useEffect(() => {
     onResize(totalHeight)
   }, [totalHeight])
+  useImperativeHandle(handleRef, () => ({
+    clickAt(y, x) {
+      if (!active) return
+      if (y !== bodyStart + bodyCount - 1) return
+      if (x >= APPROVAL_BUTTON_COLS.allow && x <= APPROVAL_BUTTON_COLS.allow + BUTTON_ALLOW_TEXT.length) {
+        onDecide(focusAllow ? 'allowed-once' : 'rejected')
+        return
+      }
+      if (x >= APPROVAL_BUTTON_COLS.reject && x <= APPROVAL_BUTTON_COLS.reject + 'Reject'.length) {
+        onDecide(focusAllow ? 'rejected' : 'allowed-once')
+      }
+    },
+    wheel(dir) {
+      if (!active) return false
+      const delta = dir === -1 ? -1 : 1
+      if (reasonOverflow > 0) {
+        setScroll(current => ({ ...current, reason: clamp(current.reason + delta, reasonOverflow) }))
+        return true
+      }
+      if (commandOverflow > 0) {
+        setScroll(current => ({ ...current, command: clamp(current.command + delta, commandOverflow) }))
+        return true
+      }
+      return false
+    },
+  }))
   useInput((input, key) => {
     if (!active) return
     if (key.leftArrow || key.rightArrow || key.tab) {
@@ -95,6 +134,7 @@ export function ApprovalPanel({ reason, command, background, active, columns, ro
       onDecide('rejected')
     }
   })
+  const buttonY = bodyStart + bodyCount - 1
   return (
     <PanelSurface
       columns={columns}
@@ -105,10 +145,10 @@ export function ApprovalPanel({ reason, command, background, active, columns, ro
       blockWidth={blockWidth}
       buttonRow={(
         <Box flexDirection="row">
-          <Text>{' '}</Text>
-          <Text inverse={focusAllow}>Allow once</Text>
-          <Text>{BUTTON_GAP}</Text>
-          <Text inverse={!focusAllow}>Reject</Text>
+          <SelectableText y={buttonY} col={CHROME_TEXT_X} text=" " />
+          <SelectableText y={buttonY} col={APPROVAL_BUTTON_COLS.allow} text={BUTTON_ALLOW_TEXT} inverse={focusAllow} />
+          <SelectableText y={buttonY} col={APPROVAL_BUTTON_COLS.allow + BUTTON_ALLOW_TEXT.length} text={BUTTON_GAP_TEXT} />
+          <SelectableText y={buttonY} col={APPROVAL_BUTTON_COLS.reject} text="Reject" inverse={!focusAllow} />
         </Box>
       )}
     />
@@ -143,7 +183,7 @@ export function PanelSurface({ columns, rows, body, bodyStart, background, block
           >
             {buttonRow !== undefined && index === body.length - 1
               ? buttonRow
-              : <Text>{line === '' ? ' ' : line}</Text>}
+              : <SelectableText y={bodyStart + index} col={CHROME_TEXT_X} text={line === '' ? ' ' : line} />}
           </Box>
         ))}
         <Box position="absolute" top={bodyStart + body.length} left={CHROME_MARGIN_X} width={blockWidth}>

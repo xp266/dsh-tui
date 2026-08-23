@@ -35,6 +35,7 @@ import { padToWidth, textWidth, truncate } from '../core/text.ts'
 import type { TokenStats } from '../chat/bridge.ts'
 import type { ActivePanel, InteractionStore } from '../chat/interactions.ts'
 import { ApprovalPanel } from './panels/approval-panel.tsx'
+import type { PanelPointerHandle } from './panels/approval-panel.tsx'
 import { QuestionPanel } from './panels/question-panel.tsx'
 import { useOverlayStack } from './overlay.ts'
 
@@ -98,6 +99,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   }, [running])
   const dialogRef = useRef<DialogHandle | null>(null)
   const inputRef = useRef<InputBarHandle | null>(null)
+  const panelHandleRef = useRef<PanelPointerHandle | null>(null)
   const exiting = useRef(false)
   const sendRef = useRef<(text: string) => void>(() => {})
   const [escArmed, setEscArmed] = useState(false)
@@ -214,6 +216,8 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     hint: hintState,
     screen,
     inputHandle: inputRef,
+    panelActive: panel !== null,
+    panelHandle: panelHandleRef,
     onHintClick: handleHintClick,
     onDialogWheel: (y, dir) => dialogRef.current?.wheelAt(y, dir) === true,
     onScroll: applyScroll,
@@ -288,6 +292,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
             panel.kind === 'approval' ? (
               <ApprovalPanel
                 key={`approval-${panel.approval.id}`}
+                handleRef={panelHandleRef}
                 reason={panel.approval.reason}
                 command={commandForCall(bridge, panel.approval.callId)}
                 background={permissionChrome.color}
@@ -302,6 +307,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
             ) : (
               <QuestionPanel
                 key={`question-${panel.question.id}`}
+                handleRef={panelHandleRef}
                 question={panel.question}
                 background={permissionChrome.color}
                 active={dialog === null}

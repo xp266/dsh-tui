@@ -262,11 +262,16 @@ const LIST_MARKER_RE = /^[ \t]*(?:[-*+]|\d+\.)[ \t]/
 
 export function layoutLineSegments(segments: Segment[], width: number): Segment[][] {
   const first = segments[0]?.text ?? ''
-  if (!LIST_MARKER_RE.test(first)) return wrapSegments(segments, width)
-  const hang = Math.min(textWidth(first), Math.max(0, width - 4))
-  const rest = wrapSegments(segments.slice(1), Math.max(4, width - hang))
+  const marker = LIST_MARKER_RE.exec(first)?.[0]
+  if (marker === undefined) return wrapSegments(segments, width)
+  const head = segments[0]!
+  const hang = Math.min(textWidth(marker), Math.max(0, width - 4))
+  const tail: Segment[] = first.length > marker.length
+    ? [{ text: first.slice(marker.length), style: head.style }, ...segments.slice(1)]
+    : segments.slice(1)
+  const rest = wrapSegments(tail, Math.max(4, width - hang))
   return rest.map((row, index) => index === 0
-    ? mergeRuns([segments[0]!, ...row])
+    ? mergeRuns([{ text: marker, style: head.style }, ...row])
     : [{ text: ' '.repeat(hang), style: mdStyles.plain }, ...row])
 }
 

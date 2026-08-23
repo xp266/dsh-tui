@@ -8,6 +8,7 @@ import { clampFocusRow, toScreenSelection } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
 import { rowInfoAt } from '../message/layout.ts'
 import type { InputBarHandle } from '../input/input-bar.tsx'
+import type { PanelPointerHandle } from '../panels/approval-panel.tsx'
 import type { CommandHintState } from '../input/commands.ts'
 import type { Message } from '../../model/message.ts'
 
@@ -36,6 +37,8 @@ export interface MouseSelectionOptions {
   hint: CommandHintState | null
   screen?: ScreenCapture
   inputHandle?: RefObject<InputBarHandle | null>
+  panelActive?: boolean
+  panelHandle?: RefObject<PanelPointerHandle | null>
   onHintClick?(y: number): void
   onDialogWheel?(y: number, dir: -1 | 1): boolean
   onScroll(next: number): void
@@ -51,7 +54,7 @@ export interface MouseSelectionState {
 }
 
 export function useMouseSelection(options: MouseSelectionOptions): MouseSelectionState {
-  const { messages, columns, rows, scrollTop, messageHeight, inputHeight, dialogOpen, hint, screen, inputHandle, onHintClick, onDialogWheel, onScroll, onToggleMessage, onDialogClick } = options
+  const { messages, columns, rows, scrollTop, messageHeight, inputHeight, dialogOpen, hint, screen, inputHandle, panelActive = false, panelHandle, onHintClick, onDialogWheel, onScroll, onToggleMessage, onDialogClick } = options
   const [selection, setSelection] = useState<LineSelection | null>(null)
   const messagesRef = useRef(messages)
   const widthRef = useRef(columns)
@@ -63,10 +66,14 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
   const hintStateRef = useRef<CommandHintState | null>(null)
   const screenRef = useRef<ScreenCapture | undefined>(screen)
   const inputHandleRef = useRef(inputHandle)
+  const panelActiveRef = useRef(panelActive)
+  const panelHandleRef = useRef(panelHandle)
   const onHintClickRef = useRef(onHintClick)
   const onDialogWheelRef = useRef(onDialogWheel)
   const clickCandidateRef = useRef<{ messageId: string; y: number; x: number; moved: boolean } | null>(null)
   const dialogClickCandidateRef = useRef<{ x: number; y: number } | null>(null)
+  const panelClickCandidateRef = useRef<{ x: number; y: number } | null>(null)
+  const inputClickCandidateRef = useRef<{ x: number; y: number } | null>(null)
   const onScrollRef = useRef(onScroll)
   const onToggleMessageRef = useRef(onToggleMessage)
   const onDialogClickRef = useRef(onDialogClick)
@@ -80,6 +87,8 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
   hintStateRef.current = hint
   screenRef.current = screen
   inputHandleRef.current = inputHandle
+  panelActiveRef.current = panelActive
+  panelHandleRef.current = panelHandle
   onHintClickRef.current = onHintClick
   onDialogWheelRef.current = onDialogWheel
   onScrollRef.current = onScroll
@@ -124,8 +133,20 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
         onClick: y => onHintClickRef.current?.(y),
       },
       {
-        contains: y => !dialogOpenRef.current && inInputContent(y),
-        onClick: (y, x) => inputHandleRef.current?.current?.clickAt(y, x),
+        contains: y => !dialogOpenRef.current && !panelActiveRef.current && inInputContent(y),
+        onClick: (y, x) => {
+          inputClickCandidateRef.current = { x, y }
+        },
+      },
+      {
+        contains: y => panelActiveRef.current && !dialogOpenRef.current
+          && y >= messageHeightRef.current && y <= rowsRef.current - 2,
+        onClick: (y, x) => {
+          panelClickCandidateRef.current = { x, y }
+          if (screenRef.current?.rowHasText(y) ?? false) {
+            setSelection({ anchorRow: y, anchorCol: x, focusRow: y, focusCol: x, inMessage: false })
+          }
+        },
       },
       {
         contains: () => dialogOpenRef.current,
@@ -160,6 +181,11 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
         onWheel: (dir, y) => onDialogWheelRef.current?.(y, dir) === true,
       },
       {
+        contains: y => panelActiveRef.current && !dialogOpenRef.current
+          && y >= messageHeightRef.current && y <= rowsRef.current - 2,
+        onWheel: dir => panelHandleRef.current?.current?.wheel(dir) === true,
+      },
+      {
         contains: y => {
           if (dialogOpenRef.current) return false
           const region = activeHintRegion()
@@ -171,7 +197,7 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
         },
       },
       {
-        contains: y => !dialogOpenRef.current && inInputContent(y),
+        contains: y => !dialogOpenRef.current && !panelActiveRef.current && inInputContent(y),
         onWheel: dir => {
           inputHandleRef.current?.current?.wheel(dir)
           return true
@@ -192,6 +218,8 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
           if (event.button !== 0) return
           clickCandidateRef.current = null
           dialogClickCandidateRef.current = null
+          panelClickCandidateRef.current = null
+          inputClickCandidateRef.current = null
           setSelection(null)
           for (const region of clickRegions) {
             if (!region.contains(event.y)) continue
@@ -201,6 +229,30 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
           return
         }
         case 'drag': {
+          const inputCandidate = inputClickCandidateRef.current
+          if (inputCandidate !== null) {
+            inputClickCandidateRef.current = null
+            setSelection({
+              anchorRow: inputCandidate.y,
+              anchorCol: inputCandidate.x,
+              focusRow: clampFocusRow(false, event.y, scrollTopRef.current, messageHeightRef.current, rowsRef.current, dialogOpenRef.current),
+              focusCol: event.x,
+              inMessage: false,
+            })
+            return
+          }
+          const panelCandidate = panelClickCandidateRef.current
+          if (panelCandidate !== null) {
+            panelClickCandidateRef.current = null
+            setSelection({
+              anchorRow: panelCandidate.y,
+              anchorCol: panelCandidate.x,
+              focusRow: clampFocusRow(false, event.y, scrollTopRef.current, messageHeightRef.current, rowsRef.current, dialogOpenRef.current),
+              focusCol: event.x,
+              inMessage: false,
+            })
+            return
+          }
           const candidate = clickCandidateRef.current
           if (candidate !== null) {
             candidate.moved = true
@@ -235,6 +287,19 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
           return
         }
         case 'up': {
+          const inputCandidate = inputClickCandidateRef.current
+          if (inputCandidate !== null) {
+            inputClickCandidateRef.current = null
+            inputHandleRef.current?.current?.clickAt(inputCandidate.y, inputCandidate.x)
+            return
+          }
+          const panelCandidate = panelClickCandidateRef.current
+          if (panelCandidate !== null) {
+            panelClickCandidateRef.current = null
+            panelHandleRef.current?.current?.clickAt(panelCandidate.y, panelCandidate.x)
+            setSelection(null)
+            return
+          }
           const candidate = clickCandidateRef.current
           if (candidate !== null && !candidate.moved) {
             onToggleMessageRef.current(candidate.messageId)

@@ -1,5 +1,7 @@
 import { Box, Text, useCursor, useInput } from 'ink'
 import { useEffect, useState } from 'react'
+import type { Ref } from 'react'
+import { useImperativeHandle } from 'react'
 import { padToWidth } from '../../core/text.ts'
 import { isMouseResidue } from '../../terminal/mouse.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
@@ -22,8 +24,10 @@ import {
 } from './question-model.ts'
 import type { QuestionPageState } from './question-model.ts'
 import { PanelSurface } from './approval-panel.tsx'
+import type { PanelPointerHandle } from './approval-panel.tsx'
 
 interface QuestionPanelProps {
+  handleRef?: Ref<PanelPointerHandle>
   question: QuestionPanelRequest
   background: string
   active: boolean
@@ -36,12 +40,30 @@ interface QuestionPanelProps {
   onResize(height: number): void
 }
 
-export function QuestionPanel({ question: panel, background, active, columns, innerWidth, blockWidth, rows, onSubmit, onCancel, onResize }: QuestionPanelProps) {
+export function QuestionPanel({ handleRef, question: panel, background, active, columns, innerWidth, blockWidth, rows, onSubmit, onCancel, onResize }: QuestionPanelProps) {
   const [state, setState] = useState<QuestionPageState>(() => initialPageState(panel.request))
   const { setCursorPosition } = useCursor()
   const layout = questionPanelLayout(state, innerWidth, Math.min(MAX_BODY_ROWS, Math.max(3, rows - 6)))
   const totalHeight = layout.height + 2
   const bodyStart = rows - 2 - layout.height
+  useImperativeHandle(handleRef, () => ({
+    clickAt(y) {
+      if (!active || state.editing) return
+      const rel = y - bodyStart
+      const hit = layout.hitRows.find(entry => entry.line === rel)
+      if (hit === undefined) return
+      setState(current => {
+        if (current.cursors[current.page] === hit.optionIndex) return enterOnRow(current)
+        return {
+          ...current,
+          cursors: current.cursors.map((value, index) => index === current.page ? hit.optionIndex : value),
+        }
+      })
+    },
+    wheel() {
+      return false
+    },
+  }))
   if (active && state.editing && layout.caret !== null) {
     setCursorPosition({
       x: CHROME_TEXT_X + layout.caret.col,

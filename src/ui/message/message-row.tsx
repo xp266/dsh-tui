@@ -1,19 +1,18 @@
 import { Box, Text } from 'ink'
 import { memo } from 'react'
 import { colors } from '../../theme.ts'
-import { headerSymbol, HEADER_LABEL_COL, SPINNER_FRAMES } from './layout.ts'
+import { headerSymbol, HEADER_LABEL_COL } from './layout.ts'
 import type { RowInfo } from './layout.ts'
 import { SelectableText } from '../selection.tsx'
 
 interface MessageRowProps {
   info: RowInfo
   row: number
-  spinnerFrame: number
   themeTick?: number
 }
 
 export const MessageRow = memo(
-  function MessageRow({ info, row, spinnerFrame, themeTick = 0 }: MessageRowProps) {
+  function MessageRow({ info, row, themeTick = 0 }: MessageRowProps) {
   switch (info.kind) {
     case 'pad':
       return (
@@ -50,7 +49,7 @@ export const MessageRow = memo(
       )
     }
     case 'header': {
-      const symbol = info.running ? SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length] : headerSymbol(info.running, info.collapsed)
+      const symbol = headerSymbol(info.collapsed)
       const color = info.thinking ? colors.thinkingLabel : colors.toolLabel
       return (
         <Box>
@@ -79,11 +78,9 @@ export const MessageRow = memo(
       a.colStart === b.colStart &&
       a.selectable === b.selectable &&
       a.clickable === b.clickable &&
-      a.running === b.running &&
       a.collapsed === b.collapsed &&
       a.thinking === b.thinking &&
-      a.segKey === b.segKey &&
-      (a.kind !== 'header' || prev.spinnerFrame === next.spinnerFrame)
+      a.segKey === b.segKey
     )
   },
 )

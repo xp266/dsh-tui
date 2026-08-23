@@ -4,7 +4,7 @@ import { Box } from 'ink'
 import { describe, expect, it } from 'vitest'
 import { useEffect, useState } from 'react'
 import { Dialog } from '../src/ui/dialog/dialog.tsx'
-import type { DialogRow } from '../src/ui/dialog/dialog.tsx'
+import type { DialogHandle, DialogRow } from '../src/ui/dialog/dialog.tsx'
 
 function rows(count: number): DialogRow[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -50,6 +50,26 @@ describe('dialog search', () => {
     const frame = lastFrame() ?? ''
     expect(frame).toContain('it')
     expect(focusedSegment(frame)).toContain('item-0')
+  })
+
+  it('places the search caret on click and inserts at that spot', () => {
+    const ref: { current: DialogHandle | null } = { current: null }
+    const { lastFrame, stdin } = render(
+      <Box width={100} height={24}>
+        <Dialog ref={ref} width={60} maxHeight={22} title="list" rows={rows(1)} onClose={() => {}} search />
+      </Box>,
+    )
+    act(() => {
+      stdin.write('ab')
+    })
+    expect(lastFrame() ?? '').toContain('ab')
+    act(() => {
+      ref.current?.clickAt(12, 21)
+    })
+    act(() => {
+      stdin.write('Z')
+    })
+    expect(lastFrame() ?? '').toContain('aZb')
   })
 
   it('filters rows by the typed search text', () => {

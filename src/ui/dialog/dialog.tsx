@@ -4,7 +4,7 @@ import type { ReactNode, Ref } from 'react'
 import { useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { colors } from '../../theme.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
-import { textWidth } from '../../core/text.ts'
+import { textWidth, colToCharIndex } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
 import { Region } from '../region.tsx'
 import { renderRow } from './dialog-item.tsx'
@@ -131,12 +131,17 @@ export function Dialog({
   const currentText = current === undefined ? null : asTextItem(current)
   live.current.value = currentText?.value ?? ''
   useEffect(() => {
-    setCursor(currentText?.value.length ?? 0)
+    if (currentText !== null && currentText.type !== 'search') {
+      setCursor(currentText.value.length)
+    }
   }, [current?.type, safeFocus.row, safeFocus.col, displayRows.length])
-  if (search) {
-    const x = left + frameLeft + textWidth(searchValue)
-    const y = top + headerBottom
-    setCursorPosition({ x, y })
+  if (search && safeFocus.row === 0) {
+    setCursorPosition({
+      x: left + frameLeft + textWidth(searchValue.slice(0, Math.min(cursor, searchValue.length))),
+      y: top + headerBottom,
+    })
+  } else if (search) {
+    setCursorPosition(undefined)
   } else {
     const caretOffset = current === undefined ? undefined : widgetOf(current.type).caret?.(current, cursor, contentWidth)
     if (caretOffset === undefined) {
@@ -187,6 +192,15 @@ export function Dialog({
     clickAt(y, x) {
       onActivity?.()
       if (y < top || y >= top + windowHeight || x < left || x >= left + windowWidth) return
+      if (search) {
+        const searchTop = top + headerBottom
+        if (y >= searchTop && y < searchTop + fixedHeight) {
+          const col = Math.max(0, Math.min(x - (left + frameLeft), textWidth(searchValue)))
+          setFocus({ row: 0, col: 0 })
+          setCursor(colToCharIndex(searchValue, col))
+          return
+        }
+      }
       const rowIndex = hitRowIndex(y, top + fixedHeight, titleLines, contentRows, scrollTop, contentWidth)
       if (rowIndex === null) return
       const rowSpec = contentRows[rowIndex]

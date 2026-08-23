@@ -23,6 +23,12 @@ registerWidget<SearchItem>('search', {
   caret(item, cursor) {
     return { dy: 0, dx: textWidth(item.value.slice(0, cursor)) }
   },
+  onLeftRight(item, direction, api) {
+    const next = Math.max(0, Math.min(item.value.length, api.cursor + direction))
+    if (next === api.cursor) return false
+    api.setCursor(next)
+    return true
+  },
   render({ item, width, y, x, clip }) {
     const isEmpty = item.value === ''
     const text = truncate(searchTextOf(item), width)

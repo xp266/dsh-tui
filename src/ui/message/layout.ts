@@ -25,7 +25,6 @@ export interface RowInfo {
   backgroundWidth: number
   muted: boolean
   label: string
-  running: boolean
   collapsed: boolean
   thinking: boolean
   role: 'user' | 'assistant' | 'error' | undefined
@@ -164,7 +163,6 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
     backgroundWidth: width - 4,
     muted: false,
     label: '',
-    running: false,
     collapsed: false,
     thinking: false,
     role: undefined,
@@ -200,7 +198,6 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
           colStart: HEADER_LABEL_COL,
           clickable: true,
           label: fitLabel(message.label, width),
-          running: message.running,
           collapsed: message.collapsed,
           thinking: message.thinking === true,
         }
@@ -242,8 +239,7 @@ export function fitLabel(label: string, width: number): string {
   return `${name}${cut.length === rest.length ? rest : `${cut}...`}]`
 }
 
-export function headerSymbol(running: boolean, collapsed: boolean): string {
-  if (running) return '⠋'
+export function headerSymbol(collapsed: boolean): string {
   return collapsed ? '-' : '↓'
 }
 
@@ -265,7 +261,7 @@ export function selectionText(messages: Message[], width: number, selection: Lin
       let line = ''
       let prevEnd = -1
       const pieces: Array<{ text: string; col: number }> = [
-        { text: `  ${headerSymbol(info.running, info.collapsed)} `, col: 0 },
+        { text: `  ${headerSymbol(info.collapsed)} `, col: 0 },
         { text: info.label, col: HEADER_LABEL_COL },
       ]
       for (const piece of pieces) {
