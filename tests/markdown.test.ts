@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mdStyles, createMarkdownTokenizer, createThinkingTokenizer, createSegmentWrapper, layoutLineSegments, tokenizeMarkdown, tokenizeThinking, wrapSegments } from '../src/ui/message/markdown.ts'
-import type { SegmentWrapper } from '../src/ui/message/markdown.ts'
+import type { LineTokenizer, SegmentWrapper } from '../src/ui/message/markdown.ts'
 import type { MarkStyle, Segment } from '../src/ui/message/markdown.ts'
 import { codeStyles, codeStylesDark, highlightCode } from '../src/ui/message/highlight.ts'
 
@@ -181,9 +181,9 @@ describe('tokenizeThinking', () => {
       seg('\n'),
       seg('"quoted"', codeStylesDark.string),
       seg(' ', codeStylesDark.punctuation),
-      seg('`', codeStylesDark.punctuation),
+      seg('`', codeStylesDark.string),
       seg('tick', codeStylesDark.string),
-      seg('`', codeStylesDark.punctuation),
+      seg('`', codeStylesDark.string),
       seg('\n'),
       seg('```'),
     ])
@@ -324,25 +324,19 @@ describe('createSegmentWrapper', () => {
     return chunks
   }
 
-  function layoutBatch(segments: Segment[], width: number): Segment[][] {
+  function layoutBatch(makeTokenizer: () => LineTokenizer, content: string, width: number): Segment[][] {
+    const tokenizer = makeTokenizer()
     const rows: Segment[][] = []
-    let line: Segment[] = []
-    const flush = (): void => {
-      rows.push(...layoutLineSegments(line, width))
-      line = []
+    for (const line of content.split('\n')) {
+      const inCode = tokenizer.snapshot().inCode
+      const segments = tokenizer.tokenize(line)
+      if (segments === null) continue
+      rows.push(...layoutLineSegments(segments, width, inCode))
     }
-    for (const segment of segments) {
-      if (segment.text === '\n') {
-        flush()
-        continue
-      }
-      line.push(segment)
-    }
-    flush()
     return rows
   }
 
-  function expectIncrementalMatchesBatch(make: () => SegmentWrapper, tokenize: (content: string) => Segment[], seed: number, width: number): void {
+  function expectIncrementalMatchesBatch(make: () => SegmentWrapper, makeTokenizer: () => LineTokenizer, seed: number, width: number): void {
     const random = lcg(seed)
     const content = randomContent(random)
     const wrapper = make()
@@ -351,7 +345,7 @@ describe('createSegmentWrapper', () => {
     for (const chunk of chunks) {
       accumulated += chunk
       const wrapped = wrapper.update(accumulated)
-      const expected = layoutBatch(tokenize(accumulated), width)
+      const expected = layoutBatch(makeTokenizer, accumulated, width)
       expect(wrapped.rows).toEqual(expected)
       expect(wrapped.lines).toEqual(expected.map(row => row.map(segment => segment.text).join('')))
     }
@@ -362,7 +356,7 @@ describe('createSegmentWrapper', () => {
       for (const width of [20, 7, 3]) {
         expectIncrementalMatchesBatch(
           () => createSegmentWrapper(createMarkdownTokenizer(), width),
-          tokenizeMarkdown,
+          createMarkdownTokenizer,
           seed,
           width,
         )
@@ -375,7 +369,7 @@ describe('createSegmentWrapper', () => {
       for (const width of [20, 7, 3]) {
         expectIncrementalMatchesBatch(
           () => createSegmentWrapper(createThinkingTokenizer(), width),
-          tokenizeThinking,
+          createThinkingTokenizer,
           seed,
           width,
         )
@@ -397,5 +391,178 @@ describe('createSegmentWrapper', () => {
     expect(second.rows[0]).toBe(first.rows[0])
     expect(second.rows[1]).not.toBe(first.rows[1])
     expect(second.rows).toEqual(wrapSegments(tokenizeMarkdown('first line\nsecond line\nthird'), 30))
+  })
+})
+describe('layoutLineSegments inside code fences', () => {
+  it('applies the list hanging indent outside fences', () => {
+    const rows = layoutLineSegments([seg('- alpha beta gamma delta epsilon')], 16)
+    expect(rows[0]!.map(segment => segment.text).join('')).toBe('- alpha beta ')
+    expect(rows[1]![0]!.text).toBe('  ')
+    expect(rows.length).toBeGreaterThan(1)
+  })
+
+  it('wraps a plain line without the hanging indent when inCode is set', () => {
+    const rows = layoutLineSegments([seg('- alpha beta gamma delta epsilon')], 16, true)
+    expect(rows[0]![0]!.text.startsWith('- alpha')).toBe(true)
+    for (const row of rows) expect(row[0]!.text.startsWith('    ')).toBe(false)
+  })
+
+  it('keeps bullet-like code lines verbatim when inCode is set', () => {
+    const line = '  - nose cone: ConeGeometry(0.55, 3.2, 8)'
+    const rows = layoutLineSegments([seg(line, mdStyles.codeNoLangDark)], 80, true)
+    expect(rows).toEqual(wrapSegments([seg(line, mdStyles.codeNoLangDark)], 80))
+    expect(rows[0]![0]!.text).toBe(line)
+  })
+
+  it('does not reindent fenced bullets while streaming thinking', () => {
+    const wrapper = createSegmentWrapper(createThinkingTokenizer(), 60)
+    const content = 'plan:\n```js\nconst g = new THREE.Group()\n  - nose cone: ConeGeometry(0.55, 3.2, 8)\n```\ndone\n'
+    const wrapped = wrapper.update(content)
+    const fenceRow = wrapped.rows.findIndex(row => row.some(segment => segment.text.includes('nose cone')))
+    expect(fenceRow).toBeGreaterThanOrEqual(0)
+    expect(wrapped.rows[fenceRow]![0]!.text.startsWith('  - nose cone')).toBe(true)
+    const nose = wrapped.lines.findIndex(text => text.includes('nose cone'))
+    expect(wrapped.lines[nose]).toBe('  - nose cone: ConeGeometry(0.55, 3.2, 8)')
+  })
+})
+
+describe('multiline token highlighting', () => {
+  it('colors complete single-line python docstrings as strings', () => {
+    const segments = tokenizeMarkdown('```python\n"""docstring text"""\n```')
+    expect(segments[0]).toEqual(seg('"""docstring text"""', codeStyles.string))
+  })
+
+  it('colors every line of a multi-line docstring as a string', () => {
+    const md = '```python\ndef f():\n    """first line\n\n    second line\n    """\n    return 1\n```'
+    const rows = createSegmentWrapper(createMarkdownTokenizer(), 200).update(md).rows
+    const texts = rows.map(row => row.map(s => s.text).join(''))
+    expect(texts.some(t => t.includes('"""first line'))).toBe(true)
+    for (const [index, row] of rows.entries()) {
+      const text = texts[index]!
+      if (!text.includes('first line') && !text.includes('second line')) continue
+      for (const s of row) {
+        if (s.style.color === codeStyles.string.color) continue
+        expect(/^[ \t]*$/.test(s.text)).toBe(true)
+      }
+    }
+  })
+
+  it('colors continuation lines of block comments', () => {
+    const md = '```ts\n/**\n * body line\n */\n```'
+    const rows = createSegmentWrapper(createMarkdownTokenizer(), 200).update(md).rows
+    const texts = rows.map(row => row.map(s => s.text).join(''))
+    for (const [index, row] of rows.entries()) {
+      if (texts[index]!.includes('body line')) {
+        expect(row.every(s => s.style.color === codeStyles.comment.color)).toBe(true)
+      }
+    }
+  })
+
+  it('colors js template literals across lines', () => {
+    const md = '```js\nconst sql = `select\nfrom t`;\n```'
+    const segments = tokenizeMarkdown(md)
+    const joined = segments.map(s => s.text).join('')
+    expect(joined).toContain('select')
+    const stringColored = segments.filter(s => s.style.color === codeStyles.string.color).map(s => s.text).join('')
+    expect(stringColored).toContain('select')
+    expect(stringColored).toContain('from t')
+  })
+
+  it('highlights blocks whose info string has trailing parameters', () => {
+    const md = '```python title="retry.py"\nx = "v"\n```'
+    const segments = tokenizeMarkdown(md)
+    expect(segments.some(s => s.style.color === codeStyles.string.color && s.text.includes('"v"'))).toBe(true)
+    expect(tokenizeMarkdown('```ts twoslash\nconst x = 1\n```')[0]).toEqual(seg('const', codeStyles.keyword))
+  })
+
+  it('supports tilde fences', () => {
+    const segments = tokenizeMarkdown('~~~python\nx = "v"\n~~~')
+    expect(segments.some(s => s.style.color === codeStyles.string.color && s.text.includes('"v"'))).toBe(true)
+  })
+
+  it('keeps inner triple backticks visible inside a longer backtick fence', () => {
+    const md = '````markdown\n```py\nx = 1\n```\n````'
+    const rows = createSegmentWrapper(createMarkdownTokenizer(), 200).update(md).rows
+    const texts = rows.map(row => row.map(s => s.text).join(''))
+    expect(texts).toContain('```py')
+    expect(texts).toContain('```')
+    expect(texts).toContain('x = 1')
+  })
+
+  it('renders fenced code inside list indentation without losing characters', () => {
+    const md = '- step\n  ```bash\n  echo hi\n  ```\n- next'
+    const wrapped = createSegmentWrapper(createMarkdownTokenizer(), 70).update(md)
+    const plain = wrapped.lines.join('\n')
+    expect(plain).not.toContain('`')
+    expect(plain).toContain('echo hi')
+    const bashRows = wrapped.rows.filter(row => row.some(s => s.style.color === codeStyles.builtin.color))
+    expect(bashRows.length).toBeGreaterThan(0)
+  })
+})
+
+describe('inline markdown extensions', () => {
+  it('parses double-backtick code spans containing backticks', () => {
+    const segments = tokenizeMarkdown('use ``a ` b`` end')
+    expect(segments.map(s => s.text).join('')).toBe('use a ` b end')
+    expect(segments).toEqual([seg('use '), seg('a ` b', mdStyles.inlineCode), seg(' end')])
+  })
+
+  it('consumes escaped punctuation', () => {
+    expect(tokenizeMarkdown('multiply 2 \\* 3')).toEqual([seg('multiply 2 * 3')])
+  })
+
+  it('strips closing hashes from headings', () => {
+    expect(tokenizeMarkdown('## My Title ##')).toEqual([seg('My Title', mdStyles.h2)])
+  })
+
+  it('renders italics with the italic flag', () => {
+    const segments = tokenizeMarkdown('plain *em* tail')
+    expect(segments).toEqual([seg('plain '), seg('em', mdStyles.italic), seg(' tail')])
+  })
+
+  it('renders bold-italic triple delimiters without stray asterisks', () => {
+    const segments = tokenizeMarkdown('***both***')
+    expect(segments).toEqual([{ text: 'both', style: { color: mdStyles.bold.color, bold: true, italic: true } }])
+  })
+
+  it('renders strikethrough with the strike flag', () => {
+    expect(tokenizeMarkdown('~~gone~~')).toEqual([seg('gone', mdStyles.strike)])
+  })
+
+  it('renders links as underlined link-colored text without the url', () => {
+    expect(tokenizeMarkdown('see [docs](https://example.com) now')).toEqual([
+      seg('see '),
+      { text: 'docs', style: { color: mdStyles.link.color, underline: true } },
+      seg(' now'),
+    ])
+  })
+
+  it('strips carriage returns from CRLF content', () => {
+    const wrapped = createSegmentWrapper(createMarkdownTokenizer(), 60).update('```python\r\nx = 1\r\n```\r\n')
+    expect(wrapped.lines.join('\n')).not.toContain('\r')
+  })
+
+  it('does not add hanging indent to bullet-shaped lines inside no-language fences', () => {
+    const md = '```\n- download_file_and_verify_checksum_from_mirror\n```'
+    const wrapped = createSegmentWrapper(createMarkdownTokenizer(), 30).update(md)
+    const stripped = wrapped.lines.map(l => l.replace(/^[ \t]+/, '')).join('')
+    expect(stripped).toBe('- download_file_and_verify_checksum_from_mirror')
+    for (const row of wrapped.rows) {
+      expect(row[0]!.style.color).toBe(mdStyles.codeNoLang.color)
+    }
+  })
+
+  it('recolors an opened docstring once its closer arrives mid-stream', () => {
+    const wrapper = createSegmentWrapper(createMarkdownTokenizer(), 200)
+    const before = wrapper.update('```python\n    """对目标函数进行指数退避重试。').rows
+    const after = wrapper.update('```python\n    """对目标函数进行指数退避重试。\n    """').rows
+    const beforeText = before.map(row => row.map(s => s.text).join('')).join('\n')
+    const afterRow = after.find(row => row.map(s => s.text).join('').includes('对目标函数'))
+    expect(beforeText).toContain('对目标函数')
+    expect(afterRow).toBeDefined()
+    for (const s of afterRow!) {
+      if (s.style.color === codeStyles.string.color) continue
+      expect(/^[ \t]*$/.test(s.text)).toBe(true)
+    }
   })
 })

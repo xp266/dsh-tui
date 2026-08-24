@@ -218,64 +218,210 @@ const LANGUAGE_ALIASES: Record<string, string> = {
 
 export const codeStyles: Record<string, MarkStyle> = {
   get comment() { return { color: colors.codeComment, italic: true } },
+  get shebang() { return { color: colors.codeComment, italic: true } },
+  get hashbang() { return { color: colors.codeComment, italic: true } },
+  get at() { return { color: colors.codeOperator } },
+  get 'generic-function'() { return { color: colors.codeFunction } },
+  get 'doctype-tag'() { return { color: colors.codeKeyword } },
+  get 'special-attr'() { return { color: colors.codeConstant } },
+  get 'for-or-select'() { return { color: colors.codeKeyword } },
+  get 'closure-punctuation'() { return { color: colors.codeOperator } },
+  get target() { return { color: colors.codeKeyword } },
+  get prolog() { return { color: colors.codeComment, italic: true } },
+  get doctype() { return { color: colors.codeComment, italic: true } },
+  get cdata() { return { color: colors.codeComment, italic: true } },
+  get 'included-cdata'() { return { color: colors.codeComment, italic: true } },
+  get 'internal-subset'() { return { color: colors.codeComment, italic: true } },
   get string() { return { color: colors.codeString } },
   get 'template-string'() { return { color: colors.codeString } },
+  get 'triple-quoted-string'() { return { color: colors.codeString } },
+  get 'interpolation-string'() { return { color: colors.codeString } },
+  get 'string-interpolation'() { return { color: colors.codeString } },
   get 'attr-value'() { return { color: colors.codeString } },
   get char() { return { color: colors.codeString } },
   get regex() { return { color: colors.codeString } },
+  get 'regex-source'() { return { color: colors.codeString } },
+  get url() { return { color: colors.codeString } },
+  get scalar() { return { color: colors.codeString } },
   get number() { return { color: colors.codeNumber } },
   get literal() { return { color: colors.codeNumber } },
+  get datetime() { return { color: colors.codeNumber } },
   get boolean() { return { color: colors.codeConstant } },
   get symbol() { return { color: colors.codeConstant } },
   get constant() { return { color: colors.codeConstant } },
+  get null() { return { color: colors.codeConstant } },
+  get 'format-spec'() { return { color: colors.codeConstant } },
+  get 'conversion-option'() { return { color: colors.codeConstant } },
+  get 'regex-flags'() { return { color: colors.codeConstant } },
+  get 'file-descriptor'() { return { color: colors.codeConstant } },
+  get 'lifetime-annotation'() { return { color: colors.codeConstant } },
   get keyword() { return { color: colors.codeKeyword } },
   get atrule() { return { color: colors.codeKeyword } },
   get rule() { return { color: colors.codeKeyword } },
+  get directive() { return { color: colors.codeKeyword } },
+  get preprocessor() { return { color: colors.codeKeyword } },
+  get import() { return { color: colors.codeKeyword } },
+  get 'module-declaration'() { return { color: colors.codeKeyword } },
+  get attribute() { return { color: colors.codeKeyword } },
+  get annotation() { return { color: colors.codeFunction } },
+  get decorator() { return { color: colors.codeFunction } },
   get function() { return { color: colors.codeFunction } },
+  get 'function-variable'() { return { color: colors.codeFunction } },
+  get 'function-name'() { return { color: colors.codeFunction } },
+  get macro() { return { color: colors.codeFunction } },
+  get 'function-definition'() { return { color: colors.codeFunction } },
+  get 'constructor-invocation'() { return { color: colors.codeFunction } },
+  get 'generic-method'() { return { color: colors.codeFunction } },
+  get 'selector-function-argument'() { return { color: colors.codeFunction } },
   get 'class-name'() { return { color: colors.codeType } },
   get builtin() { return { color: colors.codeType } },
   get type() { return { color: colors.codeType } },
+  get generics() { return { color: colors.codeType } },
+  get generic() { return { color: colors.codeType } },
+  get namespace() { return { color: colors.codeType } },
+  get 'type-definition'() { return { color: colors.codeType } },
+  get 'type-expression'() { return { color: colors.codeType } },
+  get 'type-list'() { return { color: colors.codeType } },
+  get 'return-type'() { return { color: colors.codeType } },
+  get 'fragment-specifier'() { return { color: colors.codeType } },
   get variable() { return { color: colors.codeVariable } },
   get parameter() { return { color: colors.codeVariable } },
   get property() { return { color: colors.codeVariable } },
+  get 'literal-property'() { return { color: colors.codeVariable } },
+  get 'string-property'() { return { color: colors.codeVariable } },
   get 'attr-name'() { return { color: colors.codeVariable } },
+  get key() { return { color: colors.codeVariable } },
+  get identifier() { return { color: colors.codeVariable } },
+  get environment() { return { color: colors.codeVariable } },
+  get 'assign-left'() { return { color: colors.codeVariable } },
+  get 'named-parameter'() { return { color: colors.codeVariable } },
+  get 'closure-params'() { return { color: colors.codeVariable } },
+  get interpolation() { return { color: colors.codeVariable } },
   get operator() { return { color: colors.codeOperator } },
   get punctuation() { return { color: colors.codeOperator } },
   get tag() { return { color: colors.codeOperator } },
+  get name() { return { color: colors.codeOperator } },
   get selector() { return { color: colors.codeOperator } },
   get entity() { return { color: colors.codeOperator } },
   get important() { return { color: colors.codeOperator } },
+  get script() { return { color: colors.codeOperator } },
+  get style() { return { color: colors.codeOperator } },
+  get 'regex-delimiter'() { return { color: colors.codeOperator } },
+  get 'template-punctuation'() { return { color: colors.codeString } },
+  get 'interpolation-punctuation'() { return { color: colors.codeOperator } },
+  get range() { return { color: colors.codeOperator } },
+  get 'record-arguments'() { return { color: colors.codeOperator } },
+  get 'attribute-arguments'() { return { color: colors.codeOperator } },
+  get instruction() { return { color: colors.codeKeyword } },
+  get options() { return { color: colors.codeConstant } },
+  get insertion() { return { color: colors.success } },
+  get deleted() { return { color: colors.errorText } },
+  get diff() { return { color: colors.codeKeyword } },
+  get coord() { return { color: colors.codeComment, italic: true } },
 }
 
 export const codeStylesDark: Record<string, MarkStyle> = {
   get comment() { return { color: colors.codeCommentDark, italic: true } },
+  get shebang() { return { color: colors.codeCommentDark, italic: true } },
+  get hashbang() { return { color: colors.codeCommentDark, italic: true } },
+  get at() { return { color: colors.codeOperatorDark } },
+  get 'generic-function'() { return { color: colors.codeFunctionDark } },
+  get 'doctype-tag'() { return { color: colors.codeKeywordDark } },
+  get 'special-attr'() { return { color: colors.codeConstantDark } },
+  get 'for-or-select'() { return { color: colors.codeKeywordDark } },
+  get 'closure-punctuation'() { return { color: colors.codeOperatorDark } },
+  get target() { return { color: colors.codeKeywordDark } },
+  get prolog() { return { color: colors.codeCommentDark, italic: true } },
+  get doctype() { return { color: colors.codeCommentDark, italic: true } },
+  get cdata() { return { color: colors.codeCommentDark, italic: true } },
+  get 'included-cdata'() { return { color: colors.codeCommentDark, italic: true } },
+  get 'internal-subset'() { return { color: colors.codeCommentDark, italic: true } },
   get string() { return { color: colors.codeStringDark } },
   get 'template-string'() { return { color: colors.codeStringDark } },
+  get 'triple-quoted-string'() { return { color: colors.codeStringDark } },
+  get 'interpolation-string'() { return { color: colors.codeStringDark } },
+  get 'string-interpolation'() { return { color: colors.codeStringDark } },
   get 'attr-value'() { return { color: colors.codeStringDark } },
   get char() { return { color: colors.codeStringDark } },
   get regex() { return { color: colors.codeStringDark } },
+  get 'regex-source'() { return { color: colors.codeStringDark } },
+  get url() { return { color: colors.codeStringDark } },
+  get scalar() { return { color: colors.codeStringDark } },
   get number() { return { color: colors.codeNumberDark } },
   get literal() { return { color: colors.codeNumberDark } },
+  get datetime() { return { color: colors.codeNumberDark } },
   get boolean() { return { color: colors.codeConstantDark } },
   get symbol() { return { color: colors.codeConstantDark } },
   get constant() { return { color: colors.codeConstantDark } },
+  get null() { return { color: colors.codeConstantDark } },
+  get 'format-spec'() { return { color: colors.codeConstantDark } },
+  get 'conversion-option'() { return { color: colors.codeConstantDark } },
+  get 'regex-flags'() { return { color: colors.codeConstantDark } },
+  get 'file-descriptor'() { return { color: colors.codeConstantDark } },
+  get 'lifetime-annotation'() { return { color: colors.codeConstantDark } },
   get keyword() { return { color: colors.codeKeywordDark } },
   get atrule() { return { color: colors.codeKeywordDark } },
   get rule() { return { color: colors.codeKeywordDark } },
+  get directive() { return { color: colors.codeKeywordDark } },
+  get preprocessor() { return { color: colors.codeKeywordDark } },
+  get import() { return { color: colors.codeKeywordDark } },
+  get 'module-declaration'() { return { color: colors.codeKeywordDark } },
+  get attribute() { return { color: colors.codeKeywordDark } },
+  get annotation() { return { color: colors.codeFunctionDark } },
+  get decorator() { return { color: colors.codeFunctionDark } },
   get function() { return { color: colors.codeFunctionDark } },
+  get 'function-variable'() { return { color: colors.codeFunctionDark } },
+  get 'function-name'() { return { color: colors.codeFunctionDark } },
+  get macro() { return { color: colors.codeFunctionDark } },
+  get 'function-definition'() { return { color: colors.codeFunctionDark } },
+  get 'constructor-invocation'() { return { color: colors.codeFunctionDark } },
+  get 'generic-method'() { return { color: colors.codeFunctionDark } },
+  get 'selector-function-argument'() { return { color: colors.codeFunctionDark } },
   get 'class-name'() { return { color: colors.codeTypeDark } },
   get builtin() { return { color: colors.codeTypeDark } },
   get type() { return { color: colors.codeTypeDark } },
+  get generics() { return { color: colors.codeTypeDark } },
+  get generic() { return { color: colors.codeTypeDark } },
+  get namespace() { return { color: colors.codeTypeDark } },
+  get 'type-definition'() { return { color: colors.codeTypeDark } },
+  get 'type-expression'() { return { color: colors.codeTypeDark } },
+  get 'type-list'() { return { color: colors.codeTypeDark } },
+  get 'return-type'() { return { color: colors.codeTypeDark } },
+  get 'fragment-specifier'() { return { color: colors.codeTypeDark } },
   get variable() { return { color: colors.codeVariableDark } },
   get parameter() { return { color: colors.codeVariableDark } },
   get property() { return { color: colors.codeVariableDark } },
+  get 'literal-property'() { return { color: colors.codeVariableDark } },
+  get 'string-property'() { return { color: colors.codeVariableDark } },
   get 'attr-name'() { return { color: colors.codeVariableDark } },
+  get key() { return { color: colors.codeVariableDark } },
+  get identifier() { return { color: colors.codeVariableDark } },
+  get environment() { return { color: colors.codeVariableDark } },
+  get 'assign-left'() { return { color: colors.codeVariableDark } },
+  get 'named-parameter'() { return { color: colors.codeVariableDark } },
+  get 'closure-params'() { return { color: colors.codeVariableDark } },
+  get interpolation() { return { color: colors.codeVariableDark } },
   get operator() { return { color: colors.codeOperatorDark } },
   get punctuation() { return { color: colors.codeOperatorDark } },
   get tag() { return { color: colors.codeOperatorDark } },
+  get name() { return { color: colors.codeOperatorDark } },
   get selector() { return { color: colors.codeOperatorDark } },
   get entity() { return { color: colors.codeOperatorDark } },
   get important() { return { color: colors.codeOperatorDark } },
+  get script() { return { color: colors.codeOperatorDark } },
+  get style() { return { color: colors.codeOperatorDark } },
+  get 'regex-delimiter'() { return { color: colors.codeOperatorDark } },
+  get 'template-punctuation'() { return { color: colors.codeStringDark } },
+  get 'interpolation-punctuation'() { return { color: colors.codeOperatorDark } },
+  get range() { return { color: colors.codeOperatorDark } },
+  get 'record-arguments'() { return { color: colors.codeOperatorDark } },
+  get 'attribute-arguments'() { return { color: colors.codeOperatorDark } },
+  get instruction() { return { color: colors.codeKeywordDark } },
+  get options() { return { color: colors.codeConstantDark } },
+  get insertion() { return { color: colors.success } },
+  get deleted() { return { color: colors.errorText } },
+  get diff() { return { color: colors.codeKeywordDark } },
+  get coord() { return { color: colors.codeCommentDark, italic: true } },
 }
 
 const highlightCache = new Map<string, Segment[] | null>()
@@ -284,12 +430,16 @@ export function clearHighlightCache(): void {
   highlightCache.clear()
 }
 
-export function highlightCode(line: string, lang: string, dark = false): Segment[] | null {
-  const key = `${dark ? 'd' : 'l'}\x00${lang}\x00${line}`
+function resolveGrammar(lang: string): Prism.Grammar | undefined {
+  const name = LANGUAGE_ALIASES[lang.toLowerCase()] ?? lang.toLowerCase()
+  return Prism.languages[name]
+}
+
+export function highlightCodeBlock(text: string, lang: string, dark = false): Segment[] | null {
+  const key = `${dark ? 'd' : 'l'}\x00${lang}\x00${text}`
   const cached = highlightCache.get(key)
   if (cached !== undefined) return cached
-  const name = LANGUAGE_ALIASES[lang.toLowerCase()] ?? lang.toLowerCase()
-  const grammar = Prism.languages[name]
+  const grammar = resolveGrammar(lang)
   let result: Segment[] | null
   if (grammar === undefined) {
     result = null
@@ -298,7 +448,7 @@ export function highlightCode(line: string, lang: string, dark = false): Segment
       const styles = dark ? codeStylesDark : codeStyles
       const plain = dark ? CODE_PLAIN_DARK : CODE_PLAIN
       result = []
-      for (const token of Prism.tokenize(line, grammar)) {
+      for (const token of Prism.tokenize(text, grammar)) {
         if (typeof token === 'string') {
           if (token !== '') result.push({ text: token, style: plain })
         } else {
@@ -317,8 +467,25 @@ export function highlightCode(line: string, lang: string, dark = false): Segment
   return result
 }
 
+export function highlightCode(line: string, lang: string, dark = false): Segment[] | null {
+  return highlightCodeBlock(line, lang, dark)
+}
+
+function styleForToken(token: Prism.Token, styles: Record<string, MarkStyle>): MarkStyle | undefined {
+  const direct = styles[token.type]
+  if (direct !== undefined) return direct
+  const alias = (token as unknown as { alias?: string | string[] }).alias
+  if (alias !== undefined) {
+    for (const name of Array.isArray(alias) ? alias : [alias]) {
+      const style = styles[name]
+      if (style !== undefined) return style
+    }
+  }
+  return undefined
+}
+
 function appendToken(segments: Segment[], token: Prism.Token, styles: Record<string, MarkStyle>, plain: MarkStyle): void {
-  const style = styles[token.type] ?? plain
+  const style = styleForToken(token, styles) ?? plain
   const content = token.content
   if (typeof content === 'string') {
     if (content !== '') segments.push({ text: content, style })

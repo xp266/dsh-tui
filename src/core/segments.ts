@@ -4,6 +4,8 @@ export interface MarkStyle {
   color?: string
   bold?: boolean
   italic?: boolean
+  strike?: boolean
+  underline?: boolean
 }
 
 export interface Segment {
@@ -42,10 +44,16 @@ export function wrapSegments(segments: Segment[], width: number): Segment[][] {
 
 export function mergeRuns(segments: Segment[]): Segment[] {
   if (segments.length === 0) return segments
+  const sameStyle = (a: MarkStyle, b: MarkStyle): boolean =>
+    a.color === b.color
+    && a.bold === b.bold
+    && a.italic === b.italic
+    && a.strike === b.strike
+    && a.underline === b.underline
   const out: Segment[] = []
   for (const seg of segments) {
     const last = out[out.length - 1]
-    if (last !== undefined && last.style.color === seg.style.color && last.style.bold === seg.style.bold) {
+    if (last !== undefined && sameStyle(last.style, seg.style)) {
       last.text += seg.text
     } else {
       out.push({ text: seg.text, style: seg.style })
@@ -57,7 +65,8 @@ export function mergeRuns(segments: Segment[]): Segment[] {
 export function segmentsKey(segments: Segment[]): string {
   let key = ''
   for (const seg of segments) {
-    key += `${seg.text.length}:${seg.text}\x1f${seg.style.color ?? ''}\x1e${seg.style.bold ? 'b' : ''}${seg.style.italic ? 'i' : ''}\x1d`
+    const flags = `${seg.style.bold ? 'b' : ''}${seg.style.italic ? 'i' : ''}${seg.style.strike ? 's' : ''}${seg.style.underline ? 'u' : ''}`
+    key += `${seg.text.length}:${seg.text}\x1f${seg.style.color ?? ''}\x1e${flags}\x1d`
   }
   return key
 }

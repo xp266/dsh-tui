@@ -35,6 +35,10 @@ const palette = {
   selectionFg: '#000000',
 
   mdBold: '#cc7e25',
+  mdItalic: '#c8c8c8',
+  mdLink: '#4da0e8',
+  mdQuote: '#9a9a9a',
+  mdHr: '#666666',
   mdInlineCode: '#4caf50',
   mdList: '#cc7e25',
   mdH1: '#c678dd',

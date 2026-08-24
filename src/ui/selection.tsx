@@ -90,7 +90,7 @@ function renderSegments(segments: Segment[], start: number, end: number, baseCol
     const to = Math.min(segment.text.length, end - segmentStart)
     if (from >= to) continue
     out.push(
-      <Text key={out.length} color={segment.style.color ?? baseColor} bold={segment.style.bold} italic={segment.style.italic}>
+      <Text key={out.length} color={segment.style.color ?? baseColor} bold={segment.style.bold} italic={segment.style.italic} underline={segment.style.underline} strikethrough={segment.style.strike}>
         {segment.text.slice(from, to)}
       </Text>,
     )
