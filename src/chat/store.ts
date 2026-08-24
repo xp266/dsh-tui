@@ -254,7 +254,7 @@ export function reduceChatEvent(
           label: 'Thinking',
           body: reasoning,
           running: false,
-          collapsed: true,
+          collapsed: false,
           thinking: true,
         }
         const anchor = turn.assistantIds.get(step)
@@ -327,7 +327,7 @@ function appendChunk(
     }
     const fresh = nextId('think')
     ids.set(step, fresh)
-    messages.push({ kind: 'collapsible', id: fresh, label: 'Thinking', body: text, running: true, collapsed: true, thinking: true })
+    messages.push({ kind: 'collapsible', id: fresh, label: 'Thinking', body: text, running: true, collapsed: false, thinking: true })
     return { messages, turn, changed: true }
   }
   let changed = false

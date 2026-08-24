@@ -134,7 +134,7 @@ describe('App layout', () => {
     const frame = lastFrame() ?? ''
     expect(frame).toContain('hello tui')
     expect(frame).toContain('Thinking')
-    expect(frame).not.toContain('thinking hard')
+    expect(frame).toContain('thinking hard')
     expect(frame).toContain('answer')
   })
 

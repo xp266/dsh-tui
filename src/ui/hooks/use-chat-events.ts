@@ -27,6 +27,7 @@ export interface ChatEvents {
   activity: AgentActivity
   todos: TodoItemLike[]
   retryStatus?: RetryStatus
+  streamedChars: number
 }
 
 export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolean): ChatEvents {
@@ -35,6 +36,8 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
   const [activity, setActivity] = useState<AgentActivity>(IDLE_ACTIVITY)
   const [todos, setTodos] = useState<TodoItemLike[]>(NO_TODOS)
   const [retryStatus, setRetryStatus] = useState<RetryStatus | undefined>(undefined)
+  const [streamedChars, setStreamedChars] = useState(0)
+  const streamedCharsRef = useRef(0)
   const chatStateRef = useRef<{ messages: Message[]; turn: ReturnType<typeof initialTurnState> }>({
     messages: [],
     turn: initialTurnState(),
@@ -65,6 +68,14 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
       let retry: RetryStatus | undefined = retryStatusRef.current
       let retryDirty = false
       for (const event of events) {
+        if (event.type === 'assistant/chunk') {
+          const chunk = (event.data as { chunk?: { type?: string; text?: string } }).chunk
+          if ((chunk?.type === 'text-delta' || chunk?.type === 'reasoning-delta') && typeof chunk.text === 'string') {
+            streamedCharsRef.current += chunk.text.length
+          }
+        } else if (event.type === 'assistant/message' || event.type === 'turn/end') {
+          streamedCharsRef.current = 0
+        }
         if (event.type === 'todo/write') {
           latestTodos = normalizeTodos((event.data as { todos?: unknown }).todos)
         }
@@ -79,6 +90,7 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
       }
       chatStateRef.current = state
       retryStatusRef.current = retry
+      setStreamedChars(previous => previous === streamedCharsRef.current ? previous : streamedCharsRef.current)
       if (dirty) setMessages([...state.messages])
       if (retryDirty) setRetryStatus(retry)
       const turn = state.turn
@@ -109,6 +121,8 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
       chatStateRef.current = { messages: [], turn: initialTurnState() }
       pendingEventsRef.current = []
       retryStatusRef.current = undefined
+      streamedCharsRef.current = 0
+      setStreamedChars(0)
       setRetryStatus(undefined)
       setActivity(IDLE_ACTIVITY)
       setTodos(NO_TODOS)
@@ -116,5 +130,6 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
     activity,
     todos,
     retryStatus,
+    streamedChars,
   }
 }

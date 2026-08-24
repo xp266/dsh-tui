@@ -47,6 +47,8 @@ export interface TokenStats {
   output: number
   hitPercent: number
   contextPercent: number
+  projectedTokens?: number
+  contextWindow?: number
 }
 
 export interface ToolResultLike {
@@ -591,6 +593,8 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       output,
       hitPercent: input === 0 ? 0 : Math.round((usage?.cacheReadTokens ?? 0) / input * 100),
       contextPercent,
+      ...pressure?.projectedTokens === undefined ? {} : { projectedTokens: pressure.projectedTokens },
+      ...pressure?.contextWindow === undefined ? {} : { contextWindow: pressure.contextWindow },
     }
   }
 

@@ -47,6 +47,7 @@ const FORCE_EXIT_DELAY_MS = 6000
 const INTERRUPT_ARM_MS = 3000
 const WORKING_HINT = 'Press esc to interrupt'
 const WORKING_ARMED_HINT = 'Press esc again to interrupt'
+const CHARS_PER_TOKEN = 4
 
 type DialogKind = 'models' | 'sessions' | 'presets' | 'effort' | 'defaults' | 'todo'
 
@@ -99,7 +100,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const overlays = useOverlayStack<DialogKind>()
   const dialog: DialogKind | null = overlays.top ?? null
   const [, setSessionTick] = useState(0)
-  const { messages, modelName, setModelName, updateMessages, resetChat, activity, todos, retryStatus } = useChatEvents(bridge, dialog !== null)
+  const { messages, modelName, setModelName, updateMessages, resetChat, activity, todos, retryStatus, streamedChars } = useChatEvents(bridge, dialog !== null)
   const todoActive = isTodoActive(todos)
   const todoBadge = todoProgress(todos)
   const running = activity.running
@@ -372,7 +373,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
                   const hintCol = CHROME_TEXT_X + textWidth(leftText) + 2
                   const leftWidth = textWidth(leftText) + (hint === undefined ? 0 : 2 + textWidth(hint))
                   const avail = columns - CHROME_MARGIN_X * 2 - CHROME_TEXT_X
-                  const stats = truncate(statsText(bridge.tokenStats()), Math.max(1, avail - leftWidth - 2))
+                  const stats = truncate(statsText(bridge.tokenStats(), streamedChars), Math.max(1, avail - leftWidth - 2))
                   const rightCol = Math.max(CHROME_TEXT_X + leftWidth, columns - CHROME_MARGIN_X * 2 - textWidth(stats))
                   return (
                     <>
@@ -475,10 +476,14 @@ function cwdLabel(bridge: ChatBridge | undefined): string {
   return cwd.startsWith(home) ? `~${cwd.slice(home.length)}` : cwd
 }
 
-function statsText(stats: TokenStats): string {
-  const context = `Context ${stats.contextPercent}%`
+function statsText(stats: TokenStats, streamedChars = 0): string {
+  const estimate = Math.ceil(streamedChars / CHARS_PER_TOKEN)
+  const contextPercent = estimate > 0 && stats.projectedTokens !== undefined && stats.contextWindow !== undefined
+    ? Math.min(100, Math.round((stats.projectedTokens + estimate) / stats.contextWindow * 100))
+    : stats.contextPercent
+  const context = `Context ${contextPercent}%`
   const hit = `Hit ${stats.hitPercent}%`
-  const tokens = `${formatTokens(stats.input)} → ${formatTokens(stats.output)}`
+  const tokens = `${formatTokens(stats.input)} → ${formatTokens(stats.output + estimate)}`
   return `${context} | ${hit} | ${tokens}`
 }
 
