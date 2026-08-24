@@ -7,7 +7,7 @@ import { selectedRange } from '../model/selection.ts'
 import type { LineSelection } from '../model/selection.ts'
 import { envelopeOverlaps, registerRowPiece } from './selection-registry.ts'
 import { useOrigin } from './region.tsx'
-import type { Segment } from './message/markdown.ts'
+import type { Segment } from '../core/segments.ts'
 import { colors } from '../theme.ts'
 
 export const SelectionContext = createContext<LineSelection | null>(null)

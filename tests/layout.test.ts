@@ -3,14 +3,17 @@ import type { Message } from '../src/model/message.ts'
 import { fitLabel, rowCount, rowInfoAt, rowIndexFor, selectionText } from '../src/ui/message/layout.ts'
 import type { LineSelection } from '../src/model/selection.ts'
 import { textWidth } from '../src/core/text.ts'
-import { mdStyles } from '../src/ui/message/markdown.ts'
-import type { MarkStyle, Segment } from '../src/ui/message/markdown.ts'
+import { createMdPalette } from '../src/ui/message/md/palette.ts'
+import type { MarkStyle, Segment } from '../src/core/segments.ts'
 
-const WIDTH = 80
+const light = createMdPalette(false)
+const think = createMdPalette(true)
 
-function seg(text: string, style: MarkStyle = mdStyles.plain): Segment {
+function seg(text: string, style: MarkStyle = light.plain): Segment {
   return { text, style }
 }
+
+const WIDTH = 80
 
 describe('row layout', () => {
   it('maps bubble rows to text rows starting at column 4', () => {
@@ -53,7 +56,7 @@ describe('row layout', () => {
     ]
     const row = rowInfoAt(messages, WIDTH, 1)
     expect(row).toMatchObject({ kind: 'text', text: 'bold text', colStart: 4, selectable: true })
-    expect(row?.segments).toEqual([seg('bold', mdStyles.bold), seg(' text')])
+    expect(row?.segments).toEqual([seg('bold', light.bold), seg(' text')])
     expect(row?.segKey).toBeDefined()
   })
 
@@ -75,16 +78,16 @@ describe('row layout', () => {
     expect(rowInfoAt(messages, WIDTH, 5)?.segments).toBeUndefined()
   })
 
-  it('attaches styled segments to thinking rows while keeping markers', () => {
+  it('attaches styled segments to thinking rows with the dimmed palette', () => {
     const messages: Message[] = [
       { kind: 'collapsible', id: 't', label: 'Thinking', body: 'use `code` here', running: true, collapsed: false, thinking: true },
     ]
     const row = rowInfoAt(messages, WIDTH, 2)
-    expect(row).toMatchObject({ kind: 'text', text: 'use `code` here', colStart: 4, muted: true, selectable: true })
+    expect(row).toMatchObject({ kind: 'text', text: 'use code here', colStart: 4, muted: true, selectable: true })
     expect(row?.segments).toEqual([
-      seg('use `'),
-      seg('code', mdStyles.thinkInlineCode),
-      seg('` here'),
+      seg('use ', think.plain),
+      seg('code', think.inlineCode),
+      seg(' here', think.plain),
     ])
     expect(row?.segKey).toBeDefined()
   })

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import stringWidth from 'string-width'
 import { colToCharIndex, lineBreaks, textWidth, truncate, wrapLines } from '../src/core/text.ts'
-import { tokenizeMarkdown, wrapSegments } from '../src/ui/message/markdown.ts'
+import { renderMarkdown } from '../src/ui/message/md/index.ts'
 
 const EXAMPLE =
   '| 1️⃣ | rm /home/xp266/ox-alpha-permission-test.txt（工作区外删除） | ❌ 被拒：Read-only file system + [sandbox: file access denied under workspace-write mode]，并附升级提示 |'
@@ -53,7 +53,7 @@ describe('grapheme-aware widths', () => {
 describe('segment wrapping parity', () => {
   it('produces the same rows as plain wrapping for the reported example', () => {
     for (const width of [20, 40, 80, 96]) {
-      const rows = wrapSegments(tokenizeMarkdown(EXAMPLE), width)
+      const rows = renderMarkdown(EXAMPLE, width).rows
       const plain = wrapLines(EXAMPLE, width)
       expect(rows.map(row => row.map(segment => segment.text).join(''))).toEqual(plain)
     }
@@ -62,11 +62,11 @@ describe('segment wrapping parity', () => {
   it('never emits a row wider than the budget', () => {
     const content = 'A'.repeat(90) + '1️⃣' + 'END-TOKEN'
     for (const width of [30, 60, 92]) {
-      for (const row of wrapSegments(tokenizeMarkdown(content), width)) {
+      for (const row of renderMarkdown(content, width).rows) {
         expect(stringWidth(row.map(segment => segment.text).join('')), `width ${width}`).toBeLessThanOrEqual(width)
       }
     }
-    expect(wrapSegments(tokenizeMarkdown(content), 92).map(row => row.map(segment => segment.text).join(''))).toEqual([
+    expect(renderMarkdown(content, 92).rows.map(row => row.map(segment => segment.text).join(''))).toEqual([
       'A'.repeat(90) + '1️⃣',
       'END-TOKEN',
     ])

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import stringWidth from 'string-width'
 import { wrapLines } from '../src/core/text.ts'
-import { tokenizeMarkdown, wrapSegments } from '../src/ui/message/markdown.ts'
+import { renderMarkdown } from '../src/ui/message/md/index.ts'
+import { wrapSegments } from '../src/core/segments.ts'
 
 describe('word wrapping', () => {
   it('moves short words whole to the next line', () => {
@@ -67,7 +68,7 @@ describe('word wrapping', () => {
     for (const text of samples) {
       for (const width of [6, 11, 20]) {
         const plain = wrapLines(text, width)
-        const styled = wrapSegments(tokenizeMarkdown(text), width)
+        const styled = renderMarkdown(text, width).rows
         expect(styled.map(row => row.map(segment => segment.text).join('')), `${text} @${width}`).toEqual(plain)
       }
     }

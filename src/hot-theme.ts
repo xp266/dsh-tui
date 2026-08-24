@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { colors, permissionModes } from './theme.ts'
-import { clearHighlightCache } from './ui/message/highlight.ts'
+import { clearHighlightCache } from './ui/message/md/highlight.ts'
+import { clearMarkdownBlockCache } from './ui/message/md/engine.ts'
 import { clearWrapCache } from './ui/message/layout.ts'
 
 const REFRESH_MS = 300
@@ -38,6 +39,7 @@ export function startHotTheme(onChange: () => void): HotThemeHandle | undefined 
       Object.assign(permissionModes, fresh.permissionModes)
       clearWrapCache()
       clearHighlightCache()
+      clearMarkdownBlockCache()
       onChange()
     } catch {
       // theme.ts is mid-edit or temporarily broken; retry on the next tick

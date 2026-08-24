@@ -3,8 +3,9 @@ import { colToCharIndex, textWidth, truncate, wrapIndented, wrapLines } from '..
 import { selectedRange } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
 import { sliceByColumns } from '../selection-registry.ts'
-import { buildMarkdownRows, createMarkdownTokenizer, createThinkingTokenizer, hasMarkdownTable, segmentsKey, wrapSegments, createSegmentWrapper } from './markdown.ts'
-import type { Segment, SegmentWrapper } from './markdown.ts'
+import { renderMarkdown } from './md/index.ts'
+import { segmentsKey } from '../../core/segments.ts'
+import type { Segment } from '../../core/segments.ts'
 import { BUBBLE_WIDTH_OFFSET, HEADER_LABEL_COL } from '../../core/metrics.ts'
 
 export { HEADER_LABEL_COL }
@@ -37,7 +38,6 @@ interface WrapEntry {
   collapsed: boolean
   lines: string[]
   rows: Segment[][] | null
-  wrapper?: SegmentWrapper
 }
 
 const wrapCache = new Map<string, WrapEntry>()
@@ -55,37 +55,21 @@ function wrapFor(message: Message, width: number): WrapEntry {
     return entry
   }
   const plainBubble = message.kind === 'bubble' && message.variant !== undefined
-  const incremental = !plainBubble && (message.kind === 'bubble' && message.role === 'assistant'
-    || message.kind === 'collapsible' && message.thinking === true)
+  const useMarkdown = !plainBubble
+    && (message.kind === 'bubble' && message.role === 'assistant'
+      || message.kind === 'collapsible' && message.thinking === true)
   let lines: string[]
   let rows: Segment[][] | null = null
-  let wrapper: SegmentWrapper | undefined
-  const useBlocks = !plainBubble
-    && message.kind === 'bubble'
-    && message.role === 'assistant'
-    && hasMarkdownTable(content)
-  if (useBlocks) {
-    const built = buildMarkdownRows(content, width - BUBBLE_WIDTH_OFFSET)
-    rows = built.rows
-    lines = built.lines
-  } else if (incremental) {
-    const reusable = entry !== undefined && content.startsWith(entry.content) ? entry.wrapper : undefined
-    const active = reusable ?? createSegmentWrapper(
-      message.kind === 'collapsible' && message.thinking === true
-        ? createThinkingTokenizer()
-        : createMarkdownTokenizer(),
-      width - BUBBLE_WIDTH_OFFSET,
-    )
-    const wrapped = active.update(content)
-    rows = wrapped.rows
-    lines = wrapped.lines
-    wrapper = active
+  if (useMarkdown) {
+    const rendered = renderMarkdown(content, width - BUBBLE_WIDTH_OFFSET, message.kind === 'collapsible')
+    rows = rendered.rows
+    lines = rendered.lines
   } else if (plainBubble) {
     lines = wrapIndented(content, width - BUBBLE_WIDTH_OFFSET, message.kind === 'bubble' ? message.hang ?? 0 : 0)
   } else {
     lines = wrapLines(content, width - BUBBLE_WIDTH_OFFSET)
   }
-  const next: WrapEntry = { content, collapsed, lines, rows, wrapper }
+  const next: WrapEntry = { content, collapsed, lines, rows }
   wrapCache.set(key, next)
   return next
 }

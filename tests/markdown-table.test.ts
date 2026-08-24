@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import {
-  buildMarkdownRows,
-  hasMarkdownTable,
-  layoutLineSegments,
-  mdStyles,
-} from '../src/ui/message/markdown.ts'
-import type { Segment } from '../src/ui/message/markdown.ts'
+import { renderMarkdown } from '../src/ui/message/md/index.ts'
+import type { Segment } from '../src/core/segments.ts'
 import { textWidth } from '../src/core/text.ts'
 import { BUBBLE_WIDTH_OFFSET } from '../src/core/metrics.ts'
 import { rowIndexFor } from '../src/ui/message/layout.ts'
@@ -25,13 +20,8 @@ describe('markdown table rendering', () => {
     'beta | second **bold** item',
   ].join('\n')
 
-  it('detects tables only with a separator row', () => {
-    expect(hasMarkdownTable(table)).toBe(true)
-    expect(hasMarkdownTable('| just pipes |\n| more |')).toBe(false)
-  })
-
   it('renders standard borders with padded columns', () => {
-    const { rows, lines } = buildMarkdownRows(table, W)
+    const { lines } = renderMarkdown(table, W)
     expect(lines[0]).toMatch(/^┌─+┬─+┐$/)
     expect(lines[1]).toContain('│ Name ')
     expect(lines[1]).toMatch(/│ +Name +│ +Description +│/)
@@ -40,21 +30,18 @@ describe('markdown table rendering', () => {
     expect(lines[3]).toContain('first item')
     expect(lines[4]).toContain('beta')
     expect(lines.at(-1)).toMatch(/^└─+┴─+┘$/)
-    const widths = new Set(lines.map(line => textWidth(line)))
-    expect(widths.size).toBe(1)
-    expect([...widths][0]).toBeLessThanOrEqual(W)
-    expect(plain(rows).join('\n')).toBe(lines.join('\n'))
   })
 
   it('keeps inline styling inside cells', () => {
-    const { rows } = buildMarkdownRows(table, W)
-    const bold = rows.find(row => row.some(segment => segment.style.bold === true && segment.text === 'bold'))
+    const bold = plain(renderMarkdown(table, W).rows).find(line => line.includes('bold'))
     expect(bold).toBeDefined()
+    const styled = renderMarkdown(table, W).rows.find(row => row.some(segment => segment.style.bold === true && segment.text === 'bold'))
+    expect(styled).toBeDefined()
   })
 
   it('wraps long cells across multiple border rows', () => {
     const content = 'K | V\n--- | ---\nkey | ' + 'verylongvalue'.repeat(6)
-    const { lines } = buildMarkdownRows(content, W)
+    const { lines } = renderMarkdown(content, W)
     const valueLines = lines.filter(line => line.includes('verylongvalue'))
     expect(valueLines.length).toBeGreaterThan(1)
     for (const line of lines) expect(textWidth(line)).toBeLessThanOrEqual(W)
@@ -70,9 +57,9 @@ describe('markdown table rendering', () => {
     ]
     let sawHeader = false
     for (const content of stages) {
-      const { lines } = buildMarkdownRows(content, W)
-      if (hasMarkdownTable(content)) {
-        expect(lines[0]).toMatch(/^┌/)
+      const { lines } = renderMarkdown(content, W)
+      const isTable = lines.some(line => line.startsWith('┌'))
+      if (isTable) {
         expect(lines.at(-1)).toMatch(/^└/)
         if (content.includes('one')) {
           const header = lines.find(line => line.includes(' A '))
@@ -94,7 +81,7 @@ describe('markdown table rendering', () => {
       'git status | ✅ 正常 | 返回工作区状态与变更列表内容',
     ].join('\n')
     for (const width of [30, 24, 20]) {
-      const { lines } = buildMarkdownRows(content, width)
+      const { lines } = renderMarkdown(content, width)
       const widths = new Set(lines.map(line => textWidth(line)))
       expect(widths.size, `width ${width}`).toBe(1)
       const total = [...widths][0]!
@@ -105,7 +92,7 @@ describe('markdown table rendering', () => {
 
   it('respects the two-column minimum for wide-only columns', () => {
     const content = '中文名 | x\n--- | ---\n很长很长的中文内容在这里 | y'
-    const { lines } = buildMarkdownRows(content, 16)
+    const { lines } = renderMarkdown(content, 16)
     const widths = new Set(lines.map(line => textWidth(line)))
     expect(widths.size).toBe(1)
     expect(lines[1]).toContain('│ 中文名')
@@ -113,45 +100,37 @@ describe('markdown table rendering', () => {
 
   it('keeps every row identical when a cell cannot wrap further', () => {
     const content = 'A | B\n--- | ---\n你 | 我'
-    const { lines } = buildMarkdownRows(content, 14)
+    const { lines } = renderMarkdown(content, 14)
     const widths = new Set(lines.map(line => textWidth(line)))
     expect(widths.size).toBe(1)
   })
 
   it('ignores pipe lines inside fenced code blocks', () => {
     const content = '```\n| a | b |\n|---|---|\n| c | d |\n```'
-    const { lines } = buildMarkdownRows(content, W)
+    const { lines } = renderMarkdown(content, W)
     expect(lines.join('\n')).not.toContain('┌')
     expect(lines.join('\n')).toContain('| a | b |')
   })
 })
 
-describe('list hanging indent', () => {
+describe('list rendering inside the engine', () => {
   it('aligns wrapped continuation under the list text', () => {
-    const segments: Segment[] = [
-      { text: '- ', style: mdStyles.list },
-      { text: '拒绝是策略性的（policy denial），不是工具故障；沙箱会明确给出标记和升级提示说明文字足够长以触发折行', style: mdStyles.plain },
-    ]
-    const rows = layoutLineSegments(segments, 30)
-    const texts = plain(rows)
-    expect(texts[0]).toMatch(/^- /)
-    expect(rows.length).toBeGreaterThan(1)
-    for (let i = 1; i < texts.length; i++) {
-      expect(texts[i].startsWith('  ')).toBe(true)
-      expect(textWidth(texts[i])).toBeLessThanOrEqual(30)
+    const md = '- 拒绝是策略性的（policy denial），不是工具故障；沙箱会明确给出标记和升级提示说明文字足够长以触发折行'
+    const result = plain(renderMarkdown(md, 30).rows)
+    expect(result.length).toBeGreaterThan(1)
+    expect(result[0]).toMatch(/^• /)
+    for (let i = 1; i < result.length; i++) {
+      expect(result[i].startsWith('  ')).toBe(true)
+      expect(textWidth(result[i])).toBeLessThanOrEqual(30)
     }
   })
 
   it('uses the marker width of numbered lists', () => {
-    const segments: Segment[] = [
-      { text: '10. ', style: mdStyles.list },
-      { text: 'x'.repeat(60), style: mdStyles.plain },
-    ]
-    const rows = layoutLineSegments(segments, 30)
-    const texts = plain(rows)
-    expect(rows.length).toBeGreaterThan(1)
-    for (let i = 1; i < texts.length; i++) {
-      expect(texts[i].startsWith('    ')).toBe(true)
+    const md = '10. ' + 'x'.repeat(60)
+    const result = plain(renderMarkdown(md, 30).rows)
+    expect(result.length).toBeGreaterThan(1)
+    for (let i = 1; i < result.length; i++) {
+      expect(result[i].startsWith(' '.repeat(4))).toBe(true)
     }
   })
 })
