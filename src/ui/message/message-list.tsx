@@ -1,7 +1,9 @@
 import { Box, useInput } from 'ink'
 import type { Message } from '../../model/message.ts'
-import { rowIndexFor } from './layout.ts'
+import { rowIndexFor, scrollbarGeometry } from './layout.ts'
 import { MessageRow } from './message-row.tsx'
+import { colors } from '../../theme.ts'
+import { SCROLLBAR_COL_FROM_EDGE } from '../../core/metrics.ts'
 import { Region } from '../region.tsx'
 
 interface MessageListProps {
@@ -31,11 +33,32 @@ export function MessageList({ messages, height, width, scrollTop, onScroll, inte
     const info = index.rowAt(row)
     if (info) rows.push(<MessageRow key={row} info={info} row={row} themeTick={themeTick} />)
   }
+  const scrollbar = scrollbarGeometry(total, height, scrollTop)
   return (
-    <Box height={height} flexDirection="column" overflow="hidden">
+    <Box width={width} height={height} flexDirection="column" overflow="hidden">
       <Region y={-scrollTop}>
         {rows}
       </Region>
+      {scrollbar !== null && (
+        <>
+          <Box
+            position="absolute"
+            top={0}
+            left={width - SCROLLBAR_COL_FROM_EDGE}
+            width={1}
+            height={height}
+            backgroundColor={colors.scrollTrackBackground}
+          />
+          <Box
+            position="absolute"
+            top={scrollbar.top}
+            left={width - SCROLLBAR_COL_FROM_EDGE}
+            width={1}
+            height={scrollbar.height}
+            backgroundColor={colors.scrollThumbBackground}
+          />
+        </>
+      )}
     </Box>
   )
 }

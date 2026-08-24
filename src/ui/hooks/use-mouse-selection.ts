@@ -6,13 +6,15 @@ import { CHROME_FRAME_ROWS, HINT_INPUT_GAP_ROWS, MESSAGE_INPUT_GAP_ROWS } from '
 import { hintBlockTop } from '../../core/metrics.ts'
 import { clampFocusRow, toScreenSelection } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
-import { rowInfoAt } from '../message/layout.ts'
+import { rowInfoAt, rowCount, scrollbarGeometry } from '../message/layout.ts'
+import { SCROLLBAR_COL_FROM_EDGE } from '../../core/metrics.ts'
 import type { InputBarHandle } from '../input/input-bar.tsx'
 import type { PanelPointerHandle } from '../panels/approval-panel.tsx'
 import type { CommandHintState } from '../input/commands.ts'
 import type { Message } from '../../model/message.ts'
 
 const WHEEL_SCROLL_LINES = 3
+const DRAG_SCROLL_INTERVAL_MS = 15
 
 export interface HintRegion {
   top: number
@@ -77,6 +79,11 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
   const onScrollRef = useRef(onScroll)
   const onToggleMessageRef = useRef(onToggleMessage)
   const onDialogClickRef = useRef(onDialogClick)
+  const selectionRef = useRef<LineSelection | null>(null)
+  const autoScrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const autoScrollDirRef = useRef<-1 | 1>(1)
+  const pointerSessionRef = useRef({ inMessageArea: false })
+  const scrollbarSessionRef = useRef<{ grabOffset: number } | null>(null)
   messagesRef.current = messages
   widthRef.current = columns
   rowsRef.current = rows
@@ -94,10 +101,91 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
   onScrollRef.current = onScroll
   onToggleMessageRef.current = onToggleMessage
   onDialogClickRef.current = onDialogClick
+  selectionRef.current = selection
   useEffect(() => {
+    const stopDragScroll = (): void => {
+      if (autoScrollTimerRef.current !== null) {
+        clearInterval(autoScrollTimerRef.current)
+        autoScrollTimerRef.current = null
+      }
+    }
+    const extendSelectionTo = (row: number): void => {
+      setSelection(current => current === null || !current.inMessage
+        ? current
+        : { ...current, focusRow: Math.max(0, row) })
+    }
+    const startDragScroll = (dir: -1 | 1): void => {
+      if (autoScrollTimerRef.current !== null && autoScrollDirRef.current === dir) return
+      stopDragScroll()
+      autoScrollDirRef.current = dir
+      autoScrollTimerRef.current = setInterval(() => {
+        const scrollTop = scrollTopRef.current
+        const totalRows = rowCount(messagesRef.current, widthRef.current)
+        const maxScroll = Math.max(0, totalRows - messageHeightRef.current)
+        if ((dir === -1 && scrollTop <= 0) || (dir === 1 && scrollTop >= maxScroll)) {
+          stopDragScroll()
+          return
+        }
+        const next = scrollTop + dir
+        onScrollRef.current(next)
+        extendSelectionTo(dir === 1 ? next + messageHeightRef.current - 1 : next)
+      }, DRAG_SCROLL_INTERVAL_MS)
+    }
+    const updateDragScroll = (eventY: number): void => {
+      if (!pointerSessionRef.current.inMessageArea || dialogOpenRef.current) {
+        stopDragScroll()
+        return
+      }
+      let dir: -1 | 1 | 0 = 0
+      if (eventY <= 0) dir = -1
+      else if (eventY >= messageHeightRef.current - 1) dir = 1
+      if (dir === 0) stopDragScroll()
+      else startDragScroll(dir)
+    }
     const inInputContent = (y: number): boolean => {
       const top = rowsRef.current - inputHeightRef.current
       return y >= top && y <= top + inputHeightRef.current - CHROME_FRAME_ROWS
+    }
+    const scrollbarInfo = (): { geom: { top: number; height: number }; maxScroll: number; travel: number } | null => {
+      if (dialogOpenRef.current) return null
+      const mh = messageHeightRef.current
+      if (mh < 1) return null
+      const totalRows = rowCount(messagesRef.current, widthRef.current)
+      if (totalRows <= mh) return null
+      const geom = scrollbarGeometry(totalRows, mh, scrollTopRef.current)
+      if (geom === null) return null
+      return { geom, maxScroll: totalRows - mh, travel: Math.max(1, mh - geom.height) }
+    }
+    const onScrollbarDown = (x: number, y: number): boolean => {
+      if (x !== widthRef.current - SCROLLBAR_COL_FROM_EDGE || y >= messageHeightRef.current) return false
+      const info = scrollbarInfo()
+      if (info === null) return false
+      stopDragScroll()
+      setSelection(null)
+      let grabOffset: number
+      if (y >= info.geom.top && y < info.geom.top + info.geom.height) {
+        grabOffset = y - info.geom.top
+      } else {
+        const centered = Math.max(0, Math.min(info.maxScroll,
+          Math.round(((y - info.geom.height / 2) / info.travel) * info.maxScroll)))
+        onScrollRef.current(centered)
+        grabOffset = y - Math.round((info.travel * centered) / info.maxScroll)
+      }
+      scrollbarSessionRef.current = { grabOffset }
+      pointerSessionRef.current = { inMessageArea: false }
+      return true
+    }
+    const onScrollbarDrag = (y: number): void => {
+      const session = scrollbarSessionRef.current
+      if (session === null) return
+      const info = scrollbarInfo()
+      if (info === null) {
+        scrollbarSessionRef.current = null
+        return
+      }
+      const thumbTop = Math.max(0, Math.min(info.travel, y - session.grabOffset))
+      const target = Math.max(0, Math.min(info.maxScroll, Math.round((thumbTop / info.travel) * info.maxScroll)))
+      onScrollRef.current(target)
     }
     const inMessageArea = (screenRow: number): boolean => {
       if (screenRow >= messageHeightRef.current) return false
@@ -166,10 +254,12 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
           const anchorable = screenRef.current?.rowHasText(y) ?? false
           if (hit?.clickable) {
             clickCandidateRef.current = { messageId: hit.messageId, y, x, moved: false }
+            pointerSessionRef.current = { inMessageArea: inMessageArea(y) }
             return
           }
           if (anchorable) {
             const anchorInMessage = inMessageArea(y)
+            pointerSessionRef.current = { inMessageArea: anchorInMessage }
             setSelection({ anchorRow: contentRow, anchorCol: x, focusRow: contentRow, focusCol: x, inMessage: anchorInMessage })
           }
         },
@@ -216,10 +306,13 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
       switch (event.type) {
         case 'down': {
           if (event.button !== 0) return
+          if (onScrollbarDown(event.x, event.y)) return
           clickCandidateRef.current = null
           dialogClickCandidateRef.current = null
           panelClickCandidateRef.current = null
           inputClickCandidateRef.current = null
+          stopDragScroll()
+          pointerSessionRef.current = { inMessageArea: false }
           setSelection(null)
           for (const region of clickRegions) {
             if (!region.contains(event.y)) continue
@@ -229,6 +322,10 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
           return
         }
         case 'drag': {
+          if (scrollbarSessionRef.current !== null) {
+            onScrollbarDrag(event.y)
+            return
+          }
           const inputCandidate = inputClickCandidateRef.current
           if (inputCandidate !== null) {
             inputClickCandidateRef.current = null
@@ -258,6 +355,7 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
             candidate.moved = true
             clickCandidateRef.current = null
             const anchorInMessage = inMessageArea(candidate.y)
+            pointerSessionRef.current = { inMessageArea: anchorInMessage }
             setSelection({
               anchorRow: toContentRow(candidate.y),
               anchorCol: candidate.x,
@@ -284,9 +382,13 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
             focusRow: focusRowFor(current, event.y),
             focusCol: event.x,
           }))
+          updateDragScroll(event.y)
           return
         }
         case 'up': {
+          stopDragScroll()
+          scrollbarSessionRef.current = null
+          pointerSessionRef.current = { inMessageArea: false }
           const inputCandidate = inputClickCandidateRef.current
           if (inputCandidate !== null) {
             inputClickCandidateRef.current = null
@@ -326,7 +428,10 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
       }
     })
     controller.enable()
-    return () => controller.disable()
+    return () => {
+      controller.disable()
+      stopDragScroll()
+    }
   }, [])
   const screenSelection = useMemo(
     () => toScreenSelection(selection, scrollTop, messageHeight),

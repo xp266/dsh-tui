@@ -33,6 +33,9 @@ const palette = {
   thinkingLabel: '#0f9fcf',
   toolBodyText: '#808080',
 
+  scrollTrackBackground: '#383838',
+  scrollThumbBackground: '#9a9a9a',
+
   selectionBg: '#577187',
   selectionFg: '#000000',
 

@@ -268,6 +268,20 @@ export function headerSymbol(collapsed: boolean): string {
   return collapsed ? '-' : '↓'
 }
 
+export interface ScrollbarGeometry {
+  top: number
+  height: number
+}
+
+export function scrollbarGeometry(total: number, height: number, scrollTop: number): ScrollbarGeometry | null {
+  if (total <= height || height < 1) return null
+  const thumbHeight = Math.max(1, Math.floor((height * height) / total))
+  const maxScroll = total - height
+  const travel = height - thumbHeight
+  const top = maxScroll === 0 ? 0 : Math.min(travel, Math.round((travel * scrollTop) / maxScroll))
+  return { top, height: thumbHeight }
+}
+
 export function selectionText(messages: Message[], width: number, selection: LineSelection): string {
   const index = rowIndexFor(messages, width)
   const total = index.total
