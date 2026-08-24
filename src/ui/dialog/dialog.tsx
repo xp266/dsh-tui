@@ -135,13 +135,14 @@ export function Dialog({
       setCursor(currentText.value.length)
     }
   }, [current?.type, safeFocus.row, safeFocus.col, displayRows.length])
-  if (search && safeFocus.row === 0) {
+  const editingFormInput = current !== undefined && current.type !== 'search' && asTextItem(current) !== null
+  if (search && !editingFormInput) {
+    const onSearchRow = safeFocus.row === 0
+    const caret = onSearchRow ? Math.min(cursor, searchValue.length) : searchValue.length
     setCursorPosition({
-      x: left + frameLeft + textWidth(searchValue.slice(0, Math.min(cursor, searchValue.length))),
+      x: left + frameLeft + textWidth(searchValue.slice(0, Math.max(0, caret))),
       y: top + headerBottom,
     })
-  } else if (search) {
-    setCursorPosition(undefined)
   } else {
     const caretOffset = current === undefined ? undefined : widgetOf(current.type).caret?.(current, cursor, contentWidth)
     if (caretOffset === undefined) {

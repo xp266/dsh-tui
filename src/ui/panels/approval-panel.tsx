@@ -12,8 +12,8 @@ export const APPROVAL_SECTION_ROWS = 3
 const BUTTON_GAP_TEXT = ' '.repeat(8)
 const BUTTON_ALLOW_TEXT = 'Allow once'
 export const APPROVAL_BUTTON_COLS = {
-  allow: CHROME_TEXT_X + 1,
-  reject: CHROME_TEXT_X + 1 + BUTTON_ALLOW_TEXT.length + BUTTON_GAP_TEXT.length,
+  allow: CHROME_TEXT_X,
+  reject: CHROME_TEXT_X + BUTTON_ALLOW_TEXT.length + BUTTON_GAP_TEXT.length,
 }
 
 export interface PanelPointerHandle {
@@ -41,13 +41,13 @@ function section(text: string | undefined, innerWidth: number): string[] {
 }
 
 export function buildApprovalBody(innerWidth: number, reason: string[], command: string[]): string[] {
-  const lines = reason.slice(0, APPROVAL_SECTION_ROWS).map(line => ' ' + padToWidth(line, innerWidth - 1))
+  const lines = reason.slice(0, APPROVAL_SECTION_ROWS).map(line => padToWidth(line, innerWidth))
   lines.push('')
   if (command.some(line => line.trim() !== '')) {
-    lines.push(...command.slice(0, APPROVAL_SECTION_ROWS).map(line => ' ' + padToWidth(line, innerWidth - 1)))
+    lines.push(...command.slice(0, APPROVAL_SECTION_ROWS).map(line => padToWidth(line, innerWidth)))
     lines.push('')
   }
-  lines.push(' ' + BUTTON_ALLOW_TEXT + BUTTON_GAP_TEXT + 'Reject')
+  lines.push(BUTTON_ALLOW_TEXT + BUTTON_GAP_TEXT + 'Reject')
   return lines
 }
 
@@ -145,7 +145,6 @@ export function ApprovalPanel({ handleRef, reason, command, background, active, 
       blockWidth={blockWidth}
       buttonRow={(
         <Box flexDirection="row">
-          <SelectableText y={buttonY} col={CHROME_TEXT_X} text=" " />
           <SelectableText y={buttonY} col={APPROVAL_BUTTON_COLS.allow} text={BUTTON_ALLOW_TEXT} inverse={focusAllow} />
           <SelectableText y={buttonY} col={APPROVAL_BUTTON_COLS.allow + BUTTON_ALLOW_TEXT.length} text={BUTTON_GAP_TEXT} />
           <SelectableText y={buttonY} col={APPROVAL_BUTTON_COLS.reject} text="Reject" inverse={!focusAllow} />

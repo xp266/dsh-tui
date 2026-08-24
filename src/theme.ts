@@ -13,6 +13,7 @@ const palette = {
   carouselCurrentBg: '#2e2e2e',
   carouselButtonBg: '#1a1a1a',
   carouselButtonPressedBg: '#3a3a3a',
+  carouselSelectedText: '#61afef',
 
   sectionHeader: '#cc7e25',
 

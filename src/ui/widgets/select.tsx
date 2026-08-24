@@ -32,7 +32,13 @@ function paintSelect(paint: PaintArgs<SelectItem>) {
         {hasArrows && (
           <Text backgroundColor={paint.pressed === 'left' ? colors.carouselButtonPressedBg : colors.carouselButtonBg}> ◀ </Text>
         )}
-        <SelectableText y={y} col={valueCol} text={valueText} backgroundColor={colors.carouselCurrentBg} />
+        <SelectableText
+          y={y}
+          col={valueCol}
+          text={valueText}
+          color={paint.focused ? colors.carouselSelectedText : undefined}
+          backgroundColor={colors.carouselCurrentBg}
+        />
         {hasArrows && (
           <Text backgroundColor={paint.pressed === 'right' ? colors.carouselButtonPressedBg : colors.carouselButtonBg}> ▶ </Text>
         )}
@@ -64,10 +70,6 @@ registerWidget<SelectItem>('select', {
   },
   paintWidth(item) {
     return textWidth(item.label)
-  },
-  caret(item, _cursor, width) {
-    const block = selectBlock(width, item.value)
-    return { dy: 0, dx: block.blockStart + block.cursorX }
   },
   render: paintSelect,
   onLeftRight(item, direction) {

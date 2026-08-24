@@ -18,28 +18,26 @@ function trailingFrame(seed: string): string {
   return fullscreenFrame(seed) + '\n'
 }
 
-describe('patched ink log-update cursor placement', () => {
-  it('repositions the cursor on frames rendered without a fresh setCursorPosition', () => {
+describe('patched ink log-update cursor governor', () => {
+  it('hides the cursor on frames rendered without a fresh setCursorPosition', () => {
     const stream = createStream()
     const render = logUpdate.create(stream as unknown as NodeJS.WriteStream)
     render.setCursorPosition({ x: 4, y: 7 })
     render(trailingFrame('a'))
-    expect(stream.writes[0]).toContain('\x1b[3A\x1b[5G')
+    expect(stream.writes[0]).toContain('\x1b[3A\x1b[5G\x1b[?25h')
     stream.writes.length = 0
     render(trailingFrame('b'))
     expect(stream.writes).toHaveLength(1)
-    expect(stream.writes[0]).toContain('\x1b[3A\x1b[5G')
-    stream.writes.length = 0
-    expect(render(trailingFrame('b'))).toBe(false)
-    expect(stream.writes).toHaveLength(0)
+    expect(stream.writes[0]).not.toContain('\x1b[?25h')
+    expect(stream.writes[0].endsWith('\x1b[?25l')).toBe(true)
   })
 
-  it('lands the suffix on the requested row for frames without trailing newline', () => {
+  it('lands the suffix on the requested row and shows the cursor', () => {
     const stream = createStream()
     const render = logUpdate.create(stream as unknown as NodeJS.WriteStream)
     render.setCursorPosition({ x: 2, y: 8 })
     render(fullscreenFrame('a'))
-    expect(stream.writes[0].endsWith('\x1b[1A\x1b[3G')).toBe(true)
+    expect(stream.writes[0].endsWith('\x1b[1A\x1b[3G\x1b[?25h')).toBe(true)
   })
 
   it('keeps sync() consistent with the no-trailing-newline base row', () => {
@@ -47,10 +45,10 @@ describe('patched ink log-update cursor placement', () => {
     const render = logUpdate.create(stream as unknown as NodeJS.WriteStream)
     render.setCursorPosition({ x: 2, y: 8 })
     render.sync(fullscreenFrame('a'))
-    expect(stream.writes[0]).toBe('\x1b[1A\x1b[3G')
+    expect(stream.writes[0]).toBe('\x1b[1A\x1b[3G\x1b[?25h')
   })
 
-  it('emits an absolute move for cursor-only updates', () => {
+  it('emits an absolute move plus show for cursor-only updates', () => {
     const stream = createStream()
     const render = logUpdate.create(stream as unknown as NodeJS.WriteStream)
     render.setCursorPosition({ x: 2, y: 8 })
@@ -58,6 +56,19 @@ describe('patched ink log-update cursor placement', () => {
     stream.writes.length = 0
     render.setCursorPosition({ x: 5, y: 3 })
     render(fullscreenFrame('a'))
-    expect(stream.writes).toEqual(['\x1b[4;6H'])
+    expect(stream.writes).toEqual(['\x1b[?25h\x1b[4;6H'])
+  })
+
+  it('hides once when frames repeat without a caret', () => {
+    const stream = createStream()
+    const render = logUpdate.create(stream as unknown as NodeJS.WriteStream)
+    render.setCursorPosition({ x: 1, y: 1 })
+    render(trailingFrame('a'))
+    stream.writes.length = 0
+    expect(render(trailingFrame('a'))).toBe(true)
+    expect(stream.writes).toEqual(['\x1b[?25l'])
+    stream.writes.length = 0
+    expect(render(trailingFrame('a'))).toBe(false)
+    expect(stream.writes).toHaveLength(0)
   })
 })

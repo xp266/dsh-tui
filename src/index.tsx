@@ -25,7 +25,6 @@ export function apply(ctx: Context) {
       incrementalRendering: false,
       maxFps: 60,
     })
-    capture.stream.write('\x1b[?25h')
     let lastColumns = capture.stream.columns
     let lastRows = capture.stream.rows
     const onResize = () => {

@@ -1,33 +1,27 @@
 diff --git a/build/cursor-helpers.js b/build/cursor-helpers.js
-index be493545f0a22d2972a36ad858d2e4bbc4c9326a..e5628c35a513428a8d4fd396f932bb4d6b720526 100644
+index be493545f0a22d2972a36ad858d2e4bbc4c9326a..d16e889d633a8538e8025a4d5d1f1cc1942aa498 100644
 --- a/build/cursor-helpers.js
 +++ b/build/cursor-helpers.js
-@@ -16,8 +16,7 @@ export const buildCursorSuffix = (visibleLineCount, cursorPosition) => {
-     }
-     const moveUp = visibleLineCount - cursorPosition.y;
-     return ((moveUp > 0 ? ansiEscapes.cursorUp(moveUp) : '') +
--        ansiEscapes.cursorTo(cursorPosition.x) +
--        showCursorEscape);
-+        ansiEscapes.cursorTo(cursorPosition.x));
+@@ -34,13 +34,13 @@ export const buildReturnToBottom = (previousLineCount, previousCursorPosition) =
  };
  /**
- Build escape sequence to move cursor from previousCursorPosition back to the bottom of output.
-@@ -38,9 +37,11 @@ Hides cursor if it was previously shown, returns to bottom, then repositions.
+ Build the escape sequence for cursor-only updates (output unchanged, cursor moved).
+-Hides cursor if it was previously shown, returns to bottom, then repositions.
++Repositions with an absolute CSI H move (1-based) and ensures the cursor is shown.
  */
  export const buildCursorOnlySequence = (input) => {
-     const hidePrefix = input.cursorWasShown ? hideCursorEscape : '';
+-    const hidePrefix = input.cursorWasShown ? hideCursorEscape : '';
 -    const returnToBottom = buildReturnToBottom(input.previousLineCount, input.previousCursorPosition);
 -    const cursorSuffix = buildCursorSuffix(input.visibleLineCount, input.cursorPosition);
 -    return hidePrefix + returnToBottom + cursorSuffix;
-+    // absolute move (CSI H is 1-based): matches the suffix base row semantics
 +    if (!input.cursorPosition) {
-+        return hidePrefix + showCursorEscape;
++        return input.cursorWasShown ? hideCursorEscape : '';
 +    }
-+    return `\x1b[${input.cursorPosition.y + 1};${input.cursorPosition.x + 1}H`;
++    return showCursorEscape + `\x1b[${input.cursorPosition.y + 1};${input.cursorPosition.x + 1}H`;
  };
  /**
  Build the prefix that hides cursor and returns to bottom before erasing or rewriting.
-@@ -50,7 +48,6 @@ export const buildReturnToBottomPrefix = (cursorWasShown, previousLineCount, pre
+@@ -50,7 +50,6 @@ export const buildReturnToBottomPrefix = (cursorWasShown, previousLineCount, pre
      if (!cursorWasShown) {
          return '';
      }
@@ -36,30 +30,42 @@ index be493545f0a22d2972a36ad858d2e4bbc4c9326a..e5628c35a513428a8d4fd396f932bb4d
 +    return buildReturnToBottom(previousLineCount, previousCursorPosition);
  };
  //# sourceMappingURL=cursor-helpers.js.map
-\ No newline at end of file
 diff --git a/build/log-update.js b/build/log-update.js
-index cdb5fc41f158304c4c4f230a765065ab1fe0a2f7..691e694f595d9b863835b2a97b164faf2d0e188b 100644
+index cdb5fc41f158304c4c4f230a765065ab1fe0a2f7..0d7cbc462b05dd80841b64d213816a3e4baecbbb 100644
 --- a/build/log-update.js
 +++ b/build/log-update.js
-@@ -12,16 +12,12 @@ const createStandard = (stream, { showCursor = false } = {}) => {
+@@ -12,27 +12,35 @@ const createStandard = (stream, { showCursor = false } = {}) => {
      let cursorDirty = false;
      let previousCursorPosition;
      let cursorWasShown = false;
--    const getActiveCursor = () => (cursorDirty ? cursorPosition : undefined);
-+    const getActiveCursor = () => (cursorDirty ? cursorPosition : previousCursorPosition);
++    // Governor semantics: a frame ends with the cursor visible ONLY when this
++    // frame declared a position; otherwise the cursor is hidden immediately.
+     const getActiveCursor = () => (cursorDirty ? cursorPosition : undefined);
      const hasChanges = (str, activeCursor) => {
          const cursorChanged = cursorPositionChanged(activeCursor, previousCursorPosition);
          return str !== previousOutput || cursorChanged;
      };
-     const render = (str) => {
+-    const render = (str) => {
 -        if (!showCursor && !hasHiddenCursor) {
 -            cliCursor.hide(stream);
 -            hasHiddenCursor = true;
--        }
-         // Only use cursor if setCursorPosition was called since last render.
-         // This ensures stale positions don't persist after component unmount.
++    const hideIfNeeded = () => {
++        if (cursorWasShown) {
++            stream.write(hideCursorEscape);
++            cursorWasShown = false;
+         }
+-        // Only use cursor if setCursorPosition was called since last render.
+-        // This ensures stale positions don't persist after component unmount.
++    };
++    const render = (str) => {
          const activeCursor = getActiveCursor();
-@@ -32,7 +28,10 @@ const createStandard = (stream, { showCursor = false } = {}) => {
+         cursorDirty = false;
+         const cursorChanged = cursorPositionChanged(activeCursor, previousCursorPosition);
+         if (!hasChanges(str, activeCursor)) {
++            if (!activeCursor) {
++                hideIfNeeded();
++            }
+             return false;
          }
          const lines = str.split('\n');
          const visibleCount = visibleLineCount(lines, str);
@@ -71,7 +77,17 @@ index cdb5fc41f158304c4c4f230a765065ab1fe0a2f7..691e694f595d9b863835b2a97b164faf
          if (str === previousOutput && cursorChanged) {
              stream.write(buildCursorOnlySequence({
                  cursorWasShown,
-@@ -80,16 +79,13 @@ const createStandard = (stream, { showCursor = false } = {}) => {
+@@ -48,7 +56,8 @@ const createStandard = (stream, { showCursor = false } = {}) => {
+             stream.write(returnPrefix +
+                 ansiEscapes.eraseLines(previousLineCount) +
+                 str +
+-                cursorSuffix);
++                cursorSuffix +
++                (activeCursor ? '' : hideCursorEscape));
+             previousLineCount = lines.length;
+         }
+         previousCursorPosition = activeCursor ? { ...activeCursor } : undefined;
+@@ -80,16 +89,16 @@ const createStandard = (stream, { showCursor = false } = {}) => {
          cursorWasShown = false;
      };
      render.sync = (str) => {
@@ -87,28 +103,40 @@ index cdb5fc41f158304c4c4f230a765065ab1fe0a2f7..691e694f595d9b863835b2a97b164faf
          if (activeCursor) {
 -            stream.write(buildCursorSuffix(visibleLineCount(lines, str), activeCursor));
 +            stream.write(buildCursorSuffix(lines.length - 1, activeCursor));
++        }
++        else {
++            hideIfNeeded();
          }
          previousCursorPosition = activeCursor ? { ...activeCursor } : undefined;
          cursorWasShown = activeCursor !== undefined;
-@@ -110,16 +106,12 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
-     let cursorDirty = false;
-     let previousCursorPosition;
-     let cursorWasShown = false;
--    const getActiveCursor = () => (cursorDirty ? cursorPosition : undefined);
-+    const getActiveCursor = () => (cursorDirty ? cursorPosition : previousCursorPosition);
-     const hasChanges = (str, activeCursor) => {
+@@ -115,17 +124,20 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
          const cursorChanged = cursorPositionChanged(activeCursor, previousCursorPosition);
          return str !== previousOutput || cursorChanged;
      };
-     const render = (str) => {
+-    const render = (str) => {
 -        if (!showCursor && !hasHiddenCursor) {
 -            cliCursor.hide(stream);
 -            hasHiddenCursor = true;
--        }
-         // Only use cursor if setCursorPosition was called since last render.
-         // This ensures stale positions don't persist after component unmount.
++    const hideIfNeeded = () => {
++        if (cursorWasShown) {
++            stream.write(hideCursorEscape);
++            cursorWasShown = false;
+         }
+-        // Only use cursor if setCursorPosition was called since last render.
+-        // This ensures stale positions don't persist after component unmount.
++    };
++    const render = (str) => {
          const activeCursor = getActiveCursor();
-@@ -145,7 +137,7 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
+         cursorDirty = false;
+         const cursorChanged = cursorPositionChanged(activeCursor, previousCursorPosition);
+         if (!hasChanges(str, activeCursor)) {
++            if (!activeCursor) {
++                hideIfNeeded();
++            }
+             return false;
+         }
+         const nextLines = str.split('\n');
+@@ -145,11 +157,12 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
          }
          const returnPrefix = buildReturnToBottomPrefix(cursorWasShown, previousLines.length, previousCursorPosition);
          if (str === '\n' || previousOutput.length === 0) {
@@ -117,16 +145,26 @@ index cdb5fc41f158304c4c4f230a765065ab1fe0a2f7..691e694f595d9b863835b2a97b164faf
              stream.write(returnPrefix +
                  ansiEscapes.eraseLines(previousLines.length) +
                  str +
-@@ -187,7 +179,7 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
+-                cursorSuffix);
++                cursorSuffix +
++                (activeCursor ? '' : hideCursorEscape));
+             cursorWasShown = activeCursor !== undefined;
+             previousCursorPosition = activeCursor ? { ...activeCursor } : undefined;
+             previousOutput = str;
+@@ -187,8 +200,11 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
                  // has no trailing newline (fullscreen mode).
                  (isLastLine && !hasTrailingNewline ? '' : '\n'));
          }
 -        const cursorSuffix = buildCursorSuffix(visibleCount, activeCursor);
 +        const cursorSuffix = buildCursorSuffix(nextLines.length - 1, activeCursor);
          buffer.push(cursorSuffix);
++        if (!activeCursor && cursorWasShown) {
++            buffer.push(hideCursorEscape);
++        }
          stream.write(buffer.join(''));
          cursorWasShown = activeCursor !== undefined;
-@@ -221,16 +213,13 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
+         previousCursorPosition = activeCursor ? { ...activeCursor } : undefined;
+@@ -221,16 +237,16 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
          cursorWasShown = false;
      };
      render.sync = (str) => {
@@ -142,6 +180,9 @@ index cdb5fc41f158304c4c4f230a765065ab1fe0a2f7..691e694f595d9b863835b2a97b164faf
          if (activeCursor) {
 -            stream.write(buildCursorSuffix(visibleLineCount(lines, str), activeCursor));
 +            stream.write(buildCursorSuffix(lines.length - 1, activeCursor));
++        }
++        else {
++            hideIfNeeded();
          }
          previousCursorPosition = activeCursor ? { ...activeCursor } : undefined;
          cursorWasShown = activeCursor !== undefined;

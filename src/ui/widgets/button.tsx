@@ -28,8 +28,9 @@ function paintButton(item: ButtonItem, paint: PaintArgs<ButtonItem>) {
       </Box>
     )
   }
-  if (focused) return <SelectableText y={y} col={x} text={padToWidth(truncate(item.label, width), width)} inverse />
-  return <SelectableText y={y} col={x} text={item.label} />
+  const label = ` ${truncate(item.label, Math.max(1, width - 2))} `
+  if (focused) return <SelectableText y={y} col={x} text={padToWidth(label, width)} inverse />
+  return <SelectableText y={y} col={x} text={label} />
 }
 
 registerWidget<ButtonItem>('button', {
@@ -38,7 +39,7 @@ registerWidget<ButtonItem>('button', {
     return 1
   },
   paintWidth(item) {
-    return textWidth(item.label + (item.right ?? ''))
+    return textWidth(item.label + (item.right ?? '')) + (item.right === undefined ? 2 : 0)
   },
   searchTexts(item, searchRight) {
     return searchRight && item.right !== undefined ? [item.label, item.right] : [item.label]

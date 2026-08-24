@@ -1,6 +1,6 @@
 import { Box, Text } from 'ink'
 import { colors } from '../../theme.ts'
-import { textWidth, truncate } from '../../core/text.ts'
+import { padToWidth, textWidth, truncate } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
 import { registerWidget } from './registry.ts'
 import type { DialogItem } from '../dialog/items.ts'
@@ -43,9 +43,9 @@ registerWidget<SearchItem>('search', {
     }
     return (
       <Box flexDirection="column">
-        <Box width={width} backgroundColor={colors.dialogInputBackground}>
-          <SelectableText y={y} col={x} text={text} color={isEmpty ? colors.dialogHintText : undefined} />
-        </Box>
+      <Box width={width} backgroundColor={colors.dialogInputBackground}>
+        <SelectableText y={y} col={x} text={padToWidth(text, width)} color={isEmpty ? colors.dialogHintText : undefined} />
+      </Box>
         <Box height={1}>
           <Text> </Text>
         </Box>
