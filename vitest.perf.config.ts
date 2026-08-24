@@ -2,8 +2,9 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
-    exclude: ['**/node_modules/**', 'tests/perf/**'],
+    include: ['tests/perf/**/*.perf.test.tsx', 'tests/perf/**/*.perf.test.ts'],
     setupFiles: ['tests/setup.ts'],
+    testTimeout: 120000,
+    hookTimeout: 120000,
   },
 })

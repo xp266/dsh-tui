@@ -12,6 +12,7 @@
     "build": "tsdown",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "perf": "vitest run --config vitest.perf.config.ts",
     "prepare": "tsdown"
   },
   "main": "lib/index.mjs",

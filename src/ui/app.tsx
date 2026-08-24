@@ -104,13 +104,6 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const todoActive = isTodoActive(todos)
   const todoBadge = todoProgress(todos)
   const running = activity.running
-  const [spinnerTick, setSpinnerTick] = useState(0)
-  useEffect(() => {
-    if (!running) return
-    setSpinnerTick(0)
-    const timer = setInterval(() => setSpinnerTick(tick => (tick + 1) % SPINNER_FRAMES.length), 100)
-    return () => clearInterval(timer)
-  }, [running])
   const dialogRef = useRef<DialogHandle | null>(null)
   const inputRef = useRef<InputBarHandle | null>(null)
   const panelHandleRef = useRef<PanelPointerHandle | null>(null)
@@ -378,14 +371,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
                   return (
                     <>
                       <Box position="absolute" top={0} left={CHROME_MARGIN_X} width={columns - CHROME_MARGIN_X}>
-                        {running && (
-                          <SelectableText
-                            y={0}
-                            col={CHROME_MARGIN_X}
-                            text={`${SPINNER_FRAMES[spinnerTick % SPINNER_FRAMES.length]} `}
-                            color={colors.workspaceWriteText}
-                          />
-                        )}
+                        {running && <SpinnerGlyph />}
                       </Box>
                       <Box position="absolute" top={0} left={CHROME_TEXT_X} width={columns - CHROME_TEXT_X}>
                         <SelectableText
@@ -468,6 +454,22 @@ function dialogView(kind: DialogKind, bridge: ChatBridge, cbs: DialogCallbacks, 
     case 'todo':
       return <TodoDialog ref={cbs.dialogRef} todos={todos} onClose={cbs.onClose} />
   }
+}
+
+function SpinnerGlyph() {
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    const timer = setInterval(() => setTick(t => (t + 1) % SPINNER_FRAMES.length), 100)
+    return () => clearInterval(timer)
+  }, [])
+  return (
+    <SelectableText
+      y={0}
+      col={CHROME_MARGIN_X}
+      text={`${SPINNER_FRAMES[tick % SPINNER_FRAMES.length]} `}
+      color={colors.workspaceWriteText}
+    />
+  )
 }
 
 function cwdLabel(bridge: ChatBridge | undefined): string {

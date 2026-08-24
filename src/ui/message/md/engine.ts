@@ -1,6 +1,5 @@
 import { marked } from 'marked'
 import type { Token } from 'marked'
-import { mergeRuns } from '../../../core/segments.ts'
 import type { Segment } from '../../../core/segments.ts'
 import { renderBlockRows } from './block.ts'
 import type { BlockContext } from './block.ts'
@@ -52,20 +51,41 @@ function healInlineTail(content: string): string {
   return suffix === '' ? content : head + tail + suffix
 }
 
-const blockCache = new Map<string, Segment[][]>()
+interface BlockEntry {
+  rows: Segment[][]
+  lines: string[]
+}
+
+const blockCache = new Map<string, BlockEntry>()
 
 export function clearMarkdownBlockCache(): void {
   blockCache.clear()
 }
 
-function cachedBlockRows(token: Token, ctx: BlockContext): Segment[][] {
+function evictBlockCacheIfNeeded(): void {
+  while (blockCache.size >= 512) {
+    const oldest = blockCache.keys().next()
+    if (oldest.done) return
+    blockCache.delete(oldest.value)
+  }
+}
+
+function cachedBlockRows(token: Token, ctx: BlockContext): BlockEntry {
   const key = `${ctx.thinking ? 't' : 'm'}\u0000${ctx.width}\u0000${token.raw}`
   const hit = blockCache.get(key)
   if (hit !== undefined) return hit
   const rows = renderBlockRows(token, ctx)
-  if (blockCache.size >= 512) blockCache.clear()
-  blockCache.set(key, rows)
-  return rows
+  const entry: BlockEntry = {
+    rows,
+    lines: rows.map(row => {
+      let line = ''
+      for (const segment of row) line += segment.text
+      return line
+    }),
+  }
+  evictBlockCacheIfNeeded()
+  blockCache.set(key, entry)
+  return entry
 }
 
 export function renderMarkdown(content: string, width: number, thinking = false): MarkdownRenderResult {
@@ -73,16 +93,24 @@ export function renderMarkdown(content: string, width: number, thinking = false)
   const ctx: BlockContext = { palette, thinking, width: Math.max(4, width) }
   const tokens = marked.lexer(healInlineTail(normalizeEol(content))) as Token[]
   const rows: Segment[][] = []
+  const lines: string[] = []
   let pendingSeparator = false
   for (const token of tokens) {
-    const blockRows = cachedBlockRows(token, ctx)
-    if (blockRows.length === 0) continue
-    if (pendingSeparator && rows.length > 0) rows.push([])
+    const entry = cachedBlockRows(token, ctx)
+    if (entry.rows.length === 0) continue
+    if (pendingSeparator && rows.length > 0) {
+      rows.push([])
+      lines.push('')
+    }
     pendingSeparator = true
-    rows.push(...blockRows)
+    rows.push(...entry.rows)
+    lines.push(...entry.lines)
   }
-  while (rows.length > 0 && rows[rows.length - 1]!.length === 0) rows.pop()
-  return { rows, lines: rows.map(row => mergeRuns(row).map(segment => segment.text).join('')) }
+  while (rows.length > 0 && rows[rows.length - 1]!.length === 0) {
+    rows.pop()
+    lines.pop()
+  }
+  return { rows, lines }
 }
 
 export function createMarkdownRenderer(width: number, thinking = false): MarkdownRenderer {

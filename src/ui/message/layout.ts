@@ -46,6 +46,14 @@ export function clearWrapCache(): void {
   wrapCache.clear()
 }
 
+function evictWrapCacheIfNeeded(): void {
+  while (wrapCache.size >= 16384) {
+    const oldest = wrapCache.keys().next()
+    if (oldest.done) return
+    wrapCache.delete(oldest.value)
+  }
+}
+
 function wrapFor(message: Message, width: number): WrapEntry {
   const key = `${message.id}:${width}`
   const entry = wrapCache.get(key)
@@ -70,8 +78,19 @@ function wrapFor(message: Message, width: number): WrapEntry {
     lines = wrapLines(content, width - BUBBLE_WIDTH_OFFSET)
   }
   const next: WrapEntry = { content, collapsed, lines, rows }
+  evictWrapCacheIfNeeded()
   wrapCache.set(key, next)
   return next
+}
+
+const segKeyMemo = new WeakMap<Segment[], string>()
+
+function segmentsKeyCached(segments: Segment[]): string {
+  const hit = segKeyMemo.get(segments)
+  if (hit !== undefined) return hit
+  const key = segmentsKey(segments)
+  segKeyMemo.set(segments, key)
+  return key
 }
 
 function isCompactBubble(message: Message): boolean {
@@ -170,7 +189,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
             colStart: 4,
             selectable: true,
             role: message.role,
-            ...segments === undefined ? {} : { segments, segKey: segmentsKey(segments) },
+            ...segments === undefined ? {} : { segments, segKey: segmentsKeyCached(segments) },
           }
         }
         return { ...base, kind: 'blank' }
@@ -191,7 +210,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
           background: true,
           muted,
           role: message.role,
-          ...segments === undefined ? {} : { segments, segKey: segmentsKey(segments) },
+          ...segments === undefined ? {} : { segments, segKey: segmentsKeyCached(segments) },
         }
       }
       return { ...base, kind: 'blank' }
@@ -222,7 +241,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
           colStart: message.bodyCol ?? 4,
           selectable: true,
           muted: true,
-          ...segments === undefined ? {} : { segments, segKey: segmentsKey(segments) },
+          ...segments === undefined ? {} : { segments, segKey: segmentsKeyCached(segments) },
         }
       }
       return { ...base, kind: 'blank' }

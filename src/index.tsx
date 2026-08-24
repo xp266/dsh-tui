@@ -7,6 +7,9 @@ import type { ChatBridge } from './chat/bridge.ts'
 import { createScreenCapture } from './terminal/screen.ts'
 import { writeCursorShape } from './terminal/cursor-shape.ts'
 import { startHotTheme } from './hot-theme.ts'
+import { warmLanguages, onLanguagesWarm, clearHighlightCache } from './ui/message/md/highlight.ts'
+import { clearMarkdownBlockCache } from './ui/message/md/engine.ts'
+import { clearWrapCache } from './ui/message/layout.ts'
 
 export const name = 'dsh-tui'
 
@@ -14,6 +17,12 @@ export const inject = ['agentLoop', 'agents', 'sessions', 'workspaceRegistry', '
 
 export function apply(ctx: Context) {
   ctx.effect(() => {
+    warmLanguages()
+    onLanguagesWarm(() => {
+      clearHighlightCache()
+      clearMarkdownBlockCache()
+      clearWrapCache()
+    })
     const capture = createScreenCapture()
     let bridge: ChatBridge | undefined
     let themeTick = 0

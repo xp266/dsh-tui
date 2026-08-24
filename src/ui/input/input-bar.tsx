@@ -1,6 +1,6 @@
 import { Box, Text, useCursor, useStdout } from 'ink'
 import type { Ref } from 'react'
-import { useImperativeHandle, useEffect } from 'react'
+import { useImperativeHandle, useEffect, memo } from 'react'
 import { colors, permissionModeInfo } from '../../theme.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
 import { CHROME_FRAME_ROWS, CHROME_MARGIN_X, CHROME_PAD_X, CHROME_TEXT_X, INPUT_WIDTH_OFFSET, inputFrameTop, inputStatusRow } from '../../core/metrics.ts'
@@ -39,7 +39,7 @@ interface InputBarProps {
   statusReady?: boolean
 }
 
-export function InputBar({
+export const InputBar = memo(function InputBar({
   ref,
   width,
   columns,
@@ -197,4 +197,4 @@ export function InputBar({
       </Box>
     </Region>
   )
-}
+})

@@ -3,12 +3,21 @@ import stringWidth from 'string-width'
 const widthCache = new Map<string, number>()
 
 export function textWidth(text: string): number {
+  if (isAsciiPrintable(text)) return text.length
   const cached = widthCache.get(text)
   if (cached !== undefined) return cached
   const width = stringWidth(text)
   if (widthCache.size >= 5000) widthCache.clear()
   widthCache.set(text, width)
   return width
+}
+
+function isAsciiPrintable(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i)
+    if (code < 0x20 || code > 0x7e) return false
+  }
+  return true
 }
 
 const charWidthCache = new Map<string, number>()
@@ -20,6 +29,10 @@ export function segmentGraphemes(text: string): Iterable<Intl.SegmentData> {
 }
 
 export function charWidth(cluster: string): number {
+  if (cluster.length === 1) {
+    const code = cluster.charCodeAt(0)
+    if (code >= 0x20 && code <= 0x7e) return 1
+  }
   const cached = charWidthCache.get(cluster)
   if (cached !== undefined) return cached
   const width = stringWidth(cluster)
@@ -45,7 +58,21 @@ function matchesAny(cluster: string, set: Set<string>): boolean {
   return false
 }
 
+const ASCII_NO_START = new Set<number>()
+for (const ch of "!%,.:;?)]}'\"") ASCII_NO_START.add(ch.charCodeAt(0))
+const ASCII_NO_END = new Set<number>()
+for (const ch of "([{'\"$#@`") ASCII_NO_END.add(ch.charCodeAt(0))
+
 function canBreakBefore(prev: string, cur: string): boolean {
+  if (prev.length === 1 && cur.length === 1) {
+    const pc = prev.charCodeAt(0)
+    const cc = cur.charCodeAt(0)
+    if (pc >= 0x20 && pc < 0x7f && cc >= 0x20 && cc < 0x7f) {
+      if (ASCII_NO_START.has(cc) || ASCII_NO_END.has(pc)) return false
+      if (pc === 0x20 || BREAK_DELIM_CHARS.has(prev)) return true
+      return false
+    }
+  }
   if (matchesAny(cur, NO_START_CHARS) || matchesAny(prev, NO_END_CHARS)) return false
   if (charWidth(prev) >= 2 || charWidth(cur) >= 2) return true
   if (prev === ' ' || prev === '\t') return true

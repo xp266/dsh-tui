@@ -16,30 +16,74 @@ export interface Segment {
 export function wrapSegments(segments: Segment[], width: number): Segment[][] {
   if (width <= 0) return [[]]
   const rows: Segment[][] = []
-  let line: Array<{ cluster: string; style: MarkStyle }> = []
+  let clusters: string[] = []
+  let styles: MarkStyle[] = []
   const flushLine = (): void => {
-    const clusters = line.map(cell => cell.cluster)
     const starts = computeWrapStarts(clusters, width)
     for (let r = 0; r < starts.length; r++) {
       const from = starts[r]!
-      const to = r + 1 < starts.length ? starts[r + 1]! : line.length
+      const to = r + 1 < starts.length ? starts[r + 1]! : clusters.length
+      if (from >= to) {
+        rows.push([])
+        continue
+      }
       const row: Segment[] = []
-      for (let k = from; k < to; k++) row.push({ text: line[k]!.cluster, style: line[k]!.style })
-      rows.push(mergeRuns(row))
+      let runText = ''
+      let runStyle = styles[from]!
+      for (let k = from; k < to; k++) {
+        const style = styles[k]!
+        if (k > from && !sameStyle(runStyle, style)) {
+          row.push({ text: runText, style: runStyle })
+          runText = ''
+          runStyle = style
+        }
+        runText += clusters[k]
+      }
+      row.push({ text: runText, style: runStyle })
+      rows.push(row)
     }
-    line = []
+    clusters = []
+    styles = []
   }
   for (const seg of segments) {
     const parts = seg.text.split('\n')
     for (let p = 0; p < parts.length; p++) {
       if (p > 0) flushLine()
-      for (const { segment } of segmentGraphemes(parts[p]!)) {
-        line.push({ cluster: segment, style: seg.style })
-      }
+      appendClusters(parts[p]!, seg.style, clusters, styles)
     }
   }
   flushLine()
   return rows
+}
+
+function sameStyle(a: MarkStyle, b: MarkStyle): boolean {
+  return a.color === b.color
+    && a.bold === b.bold
+    && a.italic === b.italic
+    && a.strike === b.strike
+    && a.underline === b.underline
+}
+
+function appendClusters(text: string, style: MarkStyle, clusters: string[], styles: MarkStyle[]): void {
+  let ascii = true
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i)
+    if (code < 0x20 || code > 0x7e) {
+      ascii = false
+      break
+    }
+  }
+  if (ascii) {
+    for (let i = 0; i < text.length; i++) {
+      clusters.push(text[i]!)
+      styles.push(style)
+    }
+    return
+  }
+  for (const { segment } of segmentGraphemes(text)) {
+    clusters.push(segment)
+    styles.push(style)
+  }
 }
 
 export function mergeRuns(segments: Segment[]): Segment[] {

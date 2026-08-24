@@ -1,122 +1,8 @@
+import { createRequire } from 'node:module'
+import { performance } from 'node:perf_hooks'
 import Prism from 'prismjs'
 import { colors } from '../../../theme.ts'
 import type { MarkStyle, Segment } from '../../../core/segments.ts'
-
-import 'prismjs/components/prism-clike.js'
-import 'prismjs/components/prism-markup.js'
-import 'prismjs/components/prism-css.js'
-import 'prismjs/components/prism-markup-templating.js'
-import 'prismjs/components/prism-javascript.js'
-import 'prismjs/components/prism-json.js'
-import 'prismjs/components/prism-ruby.js'
-import 'prismjs/components/prism-c.js'
-import 'prismjs/components/prism-bash.js'
-import 'prismjs/components/prism-python.js'
-import 'prismjs/components/prism-typescript.js'
-import 'prismjs/components/prism-jsx.js'
-import 'prismjs/components/prism-tsx.js'
-import 'prismjs/components/prism-coffeescript.js'
-import 'prismjs/components/prism-flow.js'
-import 'prismjs/components/prism-json5.js'
-import 'prismjs/components/prism-jsonp.js'
-import 'prismjs/components/prism-cpp.js'
-import 'prismjs/components/prism-objectivec.js'
-import 'prismjs/components/prism-hlsl.js'
-import 'prismjs/components/prism-php.js'
-import 'prismjs/components/prism-handlebars.js'
-import 'prismjs/components/prism-django.js'
-import 'prismjs/components/prism-ejs.js'
-import 'prismjs/components/prism-crystal.js'
-import 'prismjs/components/prism-haml.js'
-import 'prismjs/components/prism-gradle.js'
-import 'prismjs/components/prism-markdown.js'
-import 'prismjs/components/prism-go.js'
-import 'prismjs/components/prism-rust.js'
-import 'prismjs/components/prism-java.js'
-import 'prismjs/components/prism-csharp.js'
-import 'prismjs/components/prism-kotlin.js'
-import 'prismjs/components/prism-scala.js'
-import 'prismjs/components/prism-swift.js'
-import 'prismjs/components/prism-dart.js'
-import 'prismjs/components/prism-lua.js'
-import 'prismjs/components/prism-perl.js'
-import 'prismjs/components/prism-r.js'
-import 'prismjs/components/prism-groovy.js'
-import 'prismjs/components/prism-powershell.js'
-import 'prismjs/components/prism-sql.js'
-import 'prismjs/components/prism-yaml.js'
-import 'prismjs/components/prism-toml.js'
-import 'prismjs/components/prism-ini.js'
-import 'prismjs/components/prism-properties.js'
-import 'prismjs/components/prism-csv.js'
-import 'prismjs/components/prism-docker.js'
-import 'prismjs/components/prism-makefile.js'
-import 'prismjs/components/prism-git.js'
-import 'prismjs/components/prism-diff.js'
-import 'prismjs/components/prism-regex.js'
-import 'prismjs/components/prism-graphql.js'
-import 'prismjs/components/prism-http.js'
-import 'prismjs/components/prism-protobuf.js'
-import 'prismjs/components/prism-elixir.js'
-import 'prismjs/components/prism-erlang.js'
-import 'prismjs/components/prism-haskell.js'
-import 'prismjs/components/prism-ocaml.js'
-import 'prismjs/components/prism-pascal.js'
-import 'prismjs/components/prism-basic.js'
-import 'prismjs/components/prism-vbnet.js'
-import 'prismjs/components/prism-fsharp.js'
-import 'prismjs/components/prism-clojure.js'
-import 'prismjs/components/prism-scheme.js'
-import 'prismjs/components/prism-lisp.js'
-import 'prismjs/components/prism-julia.js'
-import 'prismjs/components/prism-matlab.js'
-import 'prismjs/components/prism-fortran.js'
-import 'prismjs/components/prism-latex.js'
-import 'prismjs/components/prism-rest.js'
-import 'prismjs/components/prism-asciidoc.js'
-import 'prismjs/components/prism-vim.js'
-import 'prismjs/components/prism-wasm.js'
-import 'prismjs/components/prism-zig.js'
-import 'prismjs/components/prism-nim.js'
-import 'prismjs/components/prism-nix.js'
-import 'prismjs/components/prism-v.js'
-import 'prismjs/components/prism-d.js'
-import 'prismjs/components/prism-qml.js'
-import 'prismjs/components/prism-glsl.js'
-import 'prismjs/components/prism-elm.js'
-import 'prismjs/components/prism-solidity.js'
-import 'prismjs/components/prism-verilog.js'
-import 'prismjs/components/prism-vhdl.js'
-import 'prismjs/components/prism-nginx.js'
-import 'prismjs/components/prism-apacheconf.js'
-import 'prismjs/components/prism-hcl.js'
-import 'prismjs/components/prism-cmake.js'
-import 'prismjs/components/prism-systemd.js'
-import 'prismjs/components/prism-editorconfig.js'
-import 'prismjs/components/prism-ignore.js'
-import 'prismjs/components/prism-gherkin.js'
-import 'prismjs/components/prism-mermaid.js'
-import 'prismjs/components/prism-plant-uml.js'
-import 'prismjs/components/prism-shell-session.js'
-import 'prismjs/components/prism-batch.js'
-import 'prismjs/components/prism-sass.js'
-import 'prismjs/components/prism-scss.js'
-import 'prismjs/components/prism-less.js'
-import 'prismjs/components/prism-stylus.js'
-import 'prismjs/components/prism-twig.js'
-import 'prismjs/components/prism-liquid.js'
-import 'prismjs/components/prism-pug.js'
-import 'prismjs/components/prism-awk.js'
-import 'prismjs/components/prism-jq.js'
-import 'prismjs/components/prism-applescript.js'
-import 'prismjs/components/prism-autohotkey.js'
-import 'prismjs/components/prism-autoit.js'
-import 'prismjs/components/prism-haxe.js'
-import 'prismjs/components/prism-cobol.js'
-import 'prismjs/components/prism-ada.js'
-import 'prismjs/components/prism-turtle.js'
-import 'prismjs/components/prism-sparql.js'
-import 'prismjs/components/prism-mongodb.js'
 
 type CodeRole =
   | 'comment'
@@ -465,10 +351,106 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   coffee: 'coffeescript',
 }
 
+const LANGUAGE_COMPONENTS: string[] = [
+  'clike', 'markup', 'css', 'markup-templating', 'javascript', 'json', 'ruby', 'c', 'bash',
+  'python', 'typescript', 'jsx', 'tsx', 'coffeescript', 'flow', 'json5', 'jsonp', 'cpp',
+  'objectivec', 'hlsl', 'php', 'handlebars', 'django', 'ejs', 'crystal', 'haml', 'gradle',
+  'markdown', 'go', 'rust', 'java', 'csharp', 'kotlin', 'scala', 'swift', 'dart', 'lua',
+  'perl', 'r', 'groovy', 'powershell', 'sql', 'yaml', 'toml', 'ini', 'properties', 'csv',
+  'docker', 'makefile', 'git', 'diff', 'regex', 'graphql', 'http', 'protobuf', 'elixir',
+  'erlang', 'haskell', 'ocaml', 'pascal', 'basic', 'vbnet', 'fsharp', 'clojure', 'scheme',
+  'lisp', 'julia', 'matlab', 'fortran', 'latex', 'rest', 'asciidoc', 'vim', 'wasm', 'zig',
+  'nim', 'nix', 'v', 'd', 'qml', 'glsl', 'elm', 'solidity', 'verilog', 'vhdl', 'nginx',
+  'apacheconf', 'hcl', 'cmake', 'systemd', 'editorconfig', 'ignore', 'gherkin', 'mermaid',
+  'plant-uml', 'shell-session', 'batch', 'sass', 'scss', 'less', 'stylus', 'twig', 'liquid',
+  'pug', 'awk', 'jq', 'applescript', 'autohotkey', 'autoit', 'haxe', 'cobol', 'ada',
+  'turtle', 'sparql', 'mongodb',
+]
+
+let ensured = false
+
+export function ensureGrammars(): void {
+  if (ensured) return
+  ensured = true
+  try {
+    const req = createRequire(import.meta.url)
+    for (const name of LANGUAGE_COMPONENTS) {
+      try {
+        req(`prismjs/components/prism-${name}.js`)
+      } catch {}
+    }
+  } catch {}
+}
+
+const WARM_SLICE_MS = 6
+
+let warmStarted = false
+const warmListeners: Array<() => void> = []
+
+export interface WarmState {
+  done: boolean
+  remaining: number
+}
+
+const warmState: WarmState = { done: false, remaining: LANGUAGE_COMPONENTS.length }
+
+export function warmProgress(): WarmState {
+  return { ...warmState }
+}
+
+function loadNext(names: string[]): void {
+  const t0 = performance.now()
+  while (names.length > 0) {
+    const name = names.shift()!
+    try {
+      createRequireOnce()(loadSpec(name))
+    } catch {}
+    warmState.remaining = names.length
+    if (performance.now() - t0 >= WARM_SLICE_MS) break
+  }
+  if (names.length > 0) {
+    setTimeout(() => loadNext(names), 0)
+    return
+  }
+  warmState.done = true
+  for (const cb of warmListeners.splice(0)) cb()
+}
+
+let requireFn: ReturnType<typeof createRequire> | undefined
+
+function createRequireOnce(): ReturnType<typeof createRequire> {
+  if (requireFn === undefined) requireFn = createRequire(import.meta.url)
+  return requireFn
+}
+
+function loadSpec(name: string): string {
+  return `prismjs/components/prism-${name}.js`
+}
+
+export function warmLanguages(): void {
+  if (warmStarted || ensured) return
+  warmStarted = true
+  const queue = [...LANGUAGE_COMPONENTS]
+  setTimeout(() => loadNext(queue), 0)
+}
+
+export function onLanguagesWarm(cb: () => void): void {
+  if (warmState.done) cb()
+  else warmListeners.push(cb)
+}
+
 const highlightCache = new Map<string, Segment[] | null>()
+
+interface StreamState {
+  source: string
+  segments: Segment[]
+}
+
+const streamStates = new Map<string, StreamState>()
 
 export function clearHighlightCache(): void {
   highlightCache.clear()
+  streamStates.clear()
 }
 
 function resolveGrammar(lang: string): Prism.Grammar | undefined {
@@ -481,32 +463,54 @@ export function highlightCodeBlock(text: string, lang: string, thinking = false)
   const key = `${thinking ? 'd' : 'l'}\x00${lang}\x00${text}`
   const cached = highlightCache.get(key)
   if (cached !== undefined) return cached
-  const grammar = resolveGrammar(lang)
+  let grammar = resolveGrammar(lang)
+  if (grammar === undefined && lang !== '') {
+    ensureGrammars()
+    grammar = resolveGrammar(lang)
+  }
   let result: Segment[] | null
   if (grammar === undefined) {
     result = null
   } else {
+    const stateKey = `${thinking ? 'd' : 'l'}\x00${lang}`
+    const state = streamStates.get(stateKey)
+    const incremental = state !== undefined
+      && text.length > state.source.length
+      && text.startsWith(state.source)
+      && state.source.endsWith('\n')
     try {
       const styles = thinking ? codeStylesDark : codeStyles
       const plain: MarkStyle = { color: thinking ? colors.thinkCodePlain : colors.mdCodePlain }
-      result = []
-      for (const token of Prism.tokenize(text, grammar)) {
-        if (typeof token === 'string') {
-          if (token !== '') result.push({ text: token, style: plain })
-        } else {
-          appendToken(result, token, styles, plain)
-        }
+      if (incremental) {
+        const delta = text.slice(state!.source.length)
+        const segments = state!.segments.slice()
+        appendTokens(segments, Prism.tokenize(delta, grammar!), styles, plain)
+        streamStates.set(stateKey, { source: text, segments })
+        result = segments
+      } else {
+        const segments: Segment[] = []
+        appendTokens(segments, Prism.tokenize(text, grammar!), styles, plain)
+        streamStates.set(stateKey, { source: text, segments })
+        result = segments
       }
     } catch {
+      streamStates.delete(stateKey!)
       result = null
     }
   }
-  if (highlightCache.size >= 4000) {
-    const oldest = highlightCache.keys().next()
-    if (!oldest.done) highlightCache.delete(oldest.value)
-  }
+  evictHighlightCacheIfNeeded()
   highlightCache.set(key, result)
   return result
+}
+
+const HIGHLIGHT_CACHE_MAX = 4000
+
+function evictHighlightCacheIfNeeded(): void {
+  while (highlightCache.size >= HIGHLIGHT_CACHE_MAX) {
+    const oldest = highlightCache.keys().next()
+    if (oldest.done) return
+    highlightCache.delete(oldest.value)
+  }
 }
 
 function styleForToken(token: Prism.Token, styles: Record<string, MarkStyle>): MarkStyle | undefined {
@@ -520,6 +524,16 @@ function styleForToken(token: Prism.Token, styles: Record<string, MarkStyle>): M
     }
   }
   return undefined
+}
+
+function appendTokens(segments: Segment[], tokens: Iterable<string | Prism.Token>, styles: Record<string, MarkStyle>, plain: MarkStyle): void {
+  for (const token of tokens) {
+    if (typeof token === 'string') {
+      if (token !== '') segments.push({ text: token, style: plain })
+    } else {
+      appendToken(segments, token, styles, plain)
+    }
+  }
 }
 
 function appendToken(segments: Segment[], token: Prism.Token, styles: Record<string, MarkStyle>, plain: MarkStyle): void {
