@@ -112,6 +112,13 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     command => command.id !== 'todo' || todoActive,
     [todoActive],
   )
+  const [uiTick, setUiTick] = useState(0)
+  useEffect(() => {
+    if (!running) return
+    setUiTick(0)
+    const timer = setInterval(() => setUiTick(tick => (tick + 1) % SPINNER_FRAMES.length), 100)
+    return () => clearInterval(timer)
+  }, [running])
   const [escArmed, setEscArmed] = useState(false)
   const escAtRef = useRef(0)
   const escTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -316,6 +323,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
           onScroll={applyScroll}
           interactive={dialog === null}
           themeTick={themeTick}
+          spinnerTick={running ? uiTick : 0}
         />
         <SelectionContext.Provider value={chromeSelection}>
           {panel === null && (
@@ -406,7 +414,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
                   return (
                     <>
                       <Box position="absolute" top={0} left={CHROME_MARGIN_X} width={columns - CHROME_MARGIN_X}>
-                        {running && <SpinnerGlyph />}
+                        {running && <SpinnerGlyph tick={uiTick} />}
                       </Box>
                       <Box position="absolute" top={0} left={CHROME_TEXT_X} width={columns - CHROME_TEXT_X}>
                         <SelectableText
@@ -491,12 +499,7 @@ function dialogView(kind: DialogKind, bridge: ChatBridge, cbs: DialogCallbacks, 
   }
 }
 
-function SpinnerGlyph() {
-  const [tick, setTick] = useState(0)
-  useEffect(() => {
-    const timer = setInterval(() => setTick(t => (t + 1) % SPINNER_FRAMES.length), 100)
-    return () => clearInterval(timer)
-  }, [])
+function SpinnerGlyph({ tick }: { tick: number }) {
   return (
     <SelectableText
       y={0}

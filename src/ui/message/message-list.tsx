@@ -14,9 +14,10 @@ interface MessageListProps {
   onScroll: (next: number) => void
   interactive?: boolean
   themeTick?: number
+  spinnerTick?: number
 }
 
-export function MessageList({ messages, height, width, scrollTop, onScroll, interactive = true, themeTick = 0 }: MessageListProps) {
+export function MessageList({ messages, height, width, scrollTop, onScroll, interactive = true, themeTick = 0, spinnerTick = 0 }: MessageListProps) {
   const index = rowIndexFor(messages, width)
   const total = index.total
   const halfPage = Math.max(1, Math.ceil(height / 2))
@@ -31,7 +32,7 @@ export function MessageList({ messages, height, width, scrollTop, onScroll, inte
   const endRow = Math.min(scrollTop + height, total)
   for (let row = scrollTop; row < endRow; row++) {
     const info = index.rowAt(row)
-    if (info) rows.push(<MessageRow key={row} info={info} row={row} themeTick={themeTick} />)
+    if (info) rows.push(<MessageRow key={row} info={info} row={row} themeTick={themeTick} spinnerTick={spinnerTick} />)
   }
   const scrollbar = scrollbarGeometry(total, height, scrollTop)
   return (

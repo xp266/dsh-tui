@@ -8,7 +8,7 @@ import type { MarkStyle, Segment } from '../../core/segments.ts'
 import { colors } from '../../theme.ts'
 import type { AskQuestionItemLike, AskUserQuestionAnswerItemLike, AskUserQuestionRequestLike } from '../../chat/interactions.ts'
 
-const questionStyle = (): MarkStyle => ({ color: colors.mdBold })
+const questionStyle = (): MarkStyle => ({ color: colors.panelQuestionText, bold: true })
 const focusedLabelStyle = (): MarkStyle => ({ color: colors.workspaceWriteText })
 const descriptionStyle = (): MarkStyle => ({ color: colors.toolBodyText })
 const checkStyle = (): MarkStyle => ({ color: colors.success })
@@ -276,10 +276,10 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
         body.push(lineOf([
           seg(marker, focused ? checkStyle() : undefined),
           ' ',
-          seg(num, focused || checked ? focusedLabelStyle() : undefined),
-          ...(box === '' ? [] : [seg(' ' + box, checked ? checkStyle() : undefined)]),
+          seg(num, focused ? focusedLabelStyle() : undefined),
+          ...(box === '' ? [] : [seg(' ' + box, focused ? focusedLabelStyle() : undefined)]),
           ' ',
-          seg('Custom input content', focused || checked ? focusedLabelStyle() : undefined),
+          seg('Custom input content', focused ? focusedLabelStyle() : undefined),
           ...(tail === '' ? [] : [seg(tail, checkStyle())]),
         ]))
         const editing = state.editing
@@ -309,10 +309,10 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
         body.push(lineOf([
           seg(marker, focused ? checkStyle() : undefined),
           ' ',
-          seg(num, focused || chosen ? focusedLabelStyle() : undefined),
-          ...(box === '' ? [] : [seg(' ' + box, chosen ? checkStyle() : undefined)]),
+          seg(num, focused ? focusedLabelStyle() : undefined),
+          ...(box === '' ? [] : [seg(' ' + box, focused ? focusedLabelStyle() : undefined)]),
           ' ',
-          seg(option.label, focused || chosen ? focusedLabelStyle() : undefined),
+          seg(option.label, focused ? focusedLabelStyle() : undefined),
           ...(tail === '' ? [] : [seg(tail, checkStyle())]),
         ]))
         if (option.description !== undefined && option.description !== '') {

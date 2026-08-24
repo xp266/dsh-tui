@@ -1,16 +1,11 @@
 import { Box, Text } from 'ink'
-import { memo, useEffect, useState } from 'react'
+import { memo } from 'react'
 import { colors } from '../../theme.ts'
 import { headerSymbol, SPINNER_FRAMES, HEADER_LABEL_COL } from './layout.ts'
 import type { RowInfo } from './layout.ts'
 import { SelectableText } from '../selection.tsx'
 
-function TickGlyph({ y, col, color }: { y: number; col: number; color?: string }): ReturnType<typeof SelectableText> {
-  const [tick, setTick] = useState(0)
-  useEffect(() => {
-    const timer = setInterval(() => setTick(t => (t + 1) % SPINNER_FRAMES.length), 100)
-    return () => clearInterval(timer)
-  }, [])
+function TickGlyph({ y, col, color, tick }: { y: number; col: number; color?: string; tick: number }): ReturnType<typeof SelectableText> {
   return (
     <SelectableText
       y={y}
@@ -26,10 +21,11 @@ interface MessageRowProps {
   info: RowInfo
   row: number
   themeTick?: number
+  spinnerTick?: number
 }
 
 export const MessageRow = memo(
-  function MessageRow({ info, row, themeTick = 0 }: MessageRowProps) {
+  function MessageRow({ info, row, themeTick = 0, spinnerTick = 0 }: MessageRowProps) {
   switch (info.kind) {
     case 'pad':
       return (
@@ -50,7 +46,7 @@ export const MessageRow = memo(
           paddingRight={2}
           backgroundColor={info.background ? backgroundFor(info.role) : undefined}
         >
-          {info.spinner && <TickGlyph y={row} col={col - 2} color={baseColor} />}
+          {info.spinner && <TickGlyph y={row} col={col - 2} color={baseColor} tick={spinnerTick} />}
           {info.segments !== undefined && info.segments.length > 0 ? (
             <SelectableText y={row} col={col} segments={info.segments} color={baseColor} messageLayer flow />
           ) : (
@@ -73,7 +69,7 @@ export const MessageRow = memo(
         return (
           <Box>
             <SelectableText y={row} col={0} text={'  '} color={color} messageLayer />
-            <TickGlyph y={row} col={2} color={color} />
+            <TickGlyph y={row} col={2} color={color} tick={spinnerTick} />
             <SelectableText y={row} col={HEADER_LABEL_COL} text={info.label} color={color} messageLayer />
           </Box>
         )
@@ -92,6 +88,7 @@ export const MessageRow = memo(
   (prev, next) => {
     if (prev.row !== next.row) return false
     if (prev.themeTick !== next.themeTick) return false
+    if ((prev.info.spinner ?? false) && prev.spinnerTick !== next.spinnerTick) return false
     const a = prev.info
     const b = next.info
     return (
