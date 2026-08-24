@@ -1,9 +1,0 @@
-{
-  "name": "dsh-tui-snapshot",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "build": "rolldown -c rolldown.config.mjs",
-    "cli": "node run.mjs"
-  }
-}
