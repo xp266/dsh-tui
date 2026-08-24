@@ -3,7 +3,32 @@ import { INPUT_WIDTH_OFFSET } from '../../core/metrics.ts'
 import { textWidth, wrapLines } from '../../core/text.ts'
 import { editInsert, editBackspace } from '../../core/edit.ts'
 import type { EditState } from '../../core/edit.ts'
+import { mergeRuns } from '../../core/segments.ts'
+import type { MarkStyle, Segment } from '../../core/segments.ts'
+import { colors } from '../../theme.ts'
 import type { AskQuestionItemLike, AskUserQuestionAnswerItemLike, AskUserQuestionRequestLike } from '../../chat/interactions.ts'
+
+const questionStyle = (): MarkStyle => ({ color: colors.mdBold })
+const focusedLabelStyle = (): MarkStyle => ({ color: colors.workspaceWriteText })
+const descriptionStyle = (): MarkStyle => ({ color: colors.toolBodyText })
+const checkStyle = (): MarkStyle => ({ color: colors.success })
+const unansweredStyle = (): MarkStyle => ({ color: colors.errorText })
+
+function seg(text: string, style?: MarkStyle): Segment {
+  return { text, style: style ?? {} }
+}
+
+function lineOf(parts: Array<string | Segment>): Segment[] {
+  return mergeRuns(parts.map(part => typeof part === 'string' ? seg(part) : part))
+}
+
+function pushWrapped(target: Segment[][], text: string, indent: number, width: number, style?: MarkStyle): void {
+  const lines = wrapLines(text, Math.max(4, width - indent))
+  target.push(lineOf([' '.repeat(indent), seg(lines[0]!, style)]))
+  for (const line of lines.slice(1)) {
+    target.push(lineOf([' '.repeat(indent), seg(line, style)]))
+  }
+}
 
 export const CURSOR_COL = 0
 export const NUMBER_COL = 2
@@ -202,7 +227,7 @@ export interface PanelHitRow {
 }
 
 export interface PanelLayout {
-  lines: string[]
+  lines: Segment[][]
   focusLine: number
   caret: { row: number; col: number } | null
   height: number
@@ -212,26 +237,29 @@ export interface PanelLayout {
 export function questionPanelLayout(state: QuestionPageState, innerWidth: number, scrollWindow: number = MAX_BODY_ROWS): PanelLayout {
   const total = state.request.questions.length + 1
   const isReview = state.page >= state.request.questions.length
-  const body: string[] = []
+  const body: Segment[][] = []
   const hitRows: PanelHitRow[] = []
   let focusLine = 0
   let caret: { row: number; col: number } | null = null
 
   if (isReview) {
-    body.push('Confirm Selection', '')
+    body.push(lineOf([seg('Confirm Selection', questionStyle())]))
+    body.push([])
     for (const [index, question] of state.request.questions.entries()) {
       pushWrapped(body, `${index + 1}. ${question.question}`, NUMBER_COL, innerWidth)
-      pushWrapped(body, reviewAnswerOf(question, state.drafts[index]!), SINGLE_LABEL_COL, innerWidth)
+      const answer = reviewAnswerOf(question, state.drafts[index]!)
+      const answerStyle = answer === '(Question not answered)' ? unansweredStyle() : descriptionStyle()
+      pushWrapped(body, answer, SINGLE_LABEL_COL, innerWidth, answerStyle)
     }
-    body.push('')
+    body.push([])
     body.push(legend(state.page, total))
   } else {
     const question = state.request.questions[state.page]!
     const multi = question.multiSelect === true
     const labX = labelCol(question)
     const fieldWidth = Math.max(8, innerWidth - labX)
-    pushWrapped(body, question.question, 0, innerWidth)
-    body.push('')
+    pushWrapped(body, question.question, 0, innerWidth, questionStyle())
+    body.push([])
     const rows = interactiveRowCount(question)
     const cursorRow = state.cursors[state.page]!
     const draft = state.drafts[state.page]!
@@ -242,9 +270,18 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
       if (focused) focusLine = body.length
       hitRows.push({ line: body.length, optionIndex: i })
       if (i === rows - 1) {
-        const box = multi ? (draft.customChecked ? '[✓]' : '[ ]') : ''
-        const tail = !multi && draft.customChecked ? '    ✓' : ''
-        body.push(`${marker} ${num}${box === '' ? '' : ' ' + box} Custom input content${tail}`)
+        const checked = draft.customChecked
+        const box = multi ? (checked ? '[✓]' : '[ ]') : ''
+        const tail = !multi && checked ? '  ✓' : ''
+        body.push(lineOf([
+          seg(marker, focused ? checkStyle() : undefined),
+          ' ',
+          seg(num, focused || checked ? focusedLabelStyle() : undefined),
+          ...(box === '' ? [] : [seg(' ' + box, checked ? checkStyle() : undefined)]),
+          ' ',
+          seg('Custom input content', focused || checked ? focusedLabelStyle() : undefined),
+          ...(tail === '' ? [] : [seg(tail, checkStyle())]),
+        ]))
         const editing = state.editing
         const value = editing ? state.editor.value : draft.customText
         const cursor = editing ? state.editor.cursor : value.length
@@ -256,7 +293,7 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
         const visible = field.lines.slice(firstVisible, firstVisible + MAX_FIELD_ROWS)
         const fieldStart = body.length
         for (const line of visible) {
-          body.push(' '.repeat(labX) + line)
+          body.push(lineOf([' '.repeat(labX), seg(line, descriptionStyle())]))
         }
         if (editing) {
           caret = {
@@ -266,15 +303,24 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
         }
       } else {
         const option = question.options![i]!
-        const box = multi ? (draft.selected.includes(option.label) ? '[✓]' : '[ ]') : ''
-        const tail = !multi && draft.selected.includes(option.label) ? '    ✓' : ''
-        body.push(`${marker} ${num}${box === '' ? '' : ' ' + box} ${option.label}${tail}`)
+        const chosen = draft.selected.includes(option.label)
+        const box = multi ? (chosen ? '[✓]' : '[ ]') : ''
+        const tail = !multi && chosen ? '  ✓' : ''
+        body.push(lineOf([
+          seg(marker, focused ? checkStyle() : undefined),
+          ' ',
+          seg(num, focused || chosen ? focusedLabelStyle() : undefined),
+          ...(box === '' ? [] : [seg(' ' + box, chosen ? checkStyle() : undefined)]),
+          ' ',
+          seg(option.label, focused || chosen ? focusedLabelStyle() : undefined),
+          ...(tail === '' ? [] : [seg(tail, checkStyle())]),
+        ]))
         if (option.description !== undefined && option.description !== '') {
-          pushWrapped(body, option.description, labX, innerWidth)
+          pushWrapped(body, option.description, labX, innerWidth, descriptionStyle())
         }
       }
     }
-    body.push('')
+    body.push([])
     body.push(legend(state.page, total))
   }
 
@@ -292,7 +338,7 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
 
 function finalizeCaret(
   caret: { row: number; col: number } | null,
-  body: string[],
+  body: Segment[][],
   start = 0,
 ): { row: number; col: number } | null {
   if (caret === null) return null
@@ -300,16 +346,10 @@ function finalizeCaret(
   return { row, col: caret.col }
 }
 
-function legend(page: number, total: number): string {
+function legend(page: number, total: number): Segment[] {
   const prefix = `${page + 1}/${total}`
-  if (page + 1 === total) return `${prefix}    ⇆ page    enter submit    esc close`
-  return `${prefix}    ⇆ page    ⇅ wrap    enter select    esc close`
-}
-
-function pushWrapped(target: string[], text: string, indent: number, width: number): void {
-  const lines = wrapLines(text, Math.max(4, width - indent))
-  target.push(' '.repeat(indent) + lines[0]!)
-  for (const line of lines.slice(1)) {
-    target.push(' '.repeat(indent) + line)
-  }
+  const text = page + 1 === total
+    ? `${prefix}  ⇆ page  enter submit  esc close`
+    : `${prefix}  ⇆ page  ⇅ wrap  enter select  esc close`
+  return lineOf([seg(text, descriptionStyle())])
 }

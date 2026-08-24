@@ -32,7 +32,8 @@ describe('approval panel', () => {
     )
     await settle()
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('escalate sandbox to danger-full-access: need network')
+    expect(frame).toContain('escalate sandbox to danger-full-access:')
+    expect(frame).toContain('need network')
     expect(frame).toContain('npm install left-pad')
     expect(frame).toContain('Allow once')
     expect(frame).toContain('Reject')
@@ -63,8 +64,8 @@ describe('approval panel', () => {
     stdin.write('\u001b[C')
     await settle()
     const frame = lastFrame() ?? ''
-    const allowInverse = frame.indexOf('\u001b[7mAllow once')
-    const rejectInverse = frame.indexOf('\u001b[7mReject')
+    const allowInverse = frame.indexOf('\u001b[7m Allow once')
+    const rejectInverse = frame.indexOf('\u001b[7m Reject')
     expect(rejectInverse).toBeGreaterThanOrEqual(0)
     expect(allowInverse).toBe(-1)
     stdin.write('\r')

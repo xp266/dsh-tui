@@ -27,6 +27,7 @@ const palette = {
 
   errorText: '#ff6b6b',
   success: '#4caf50',
+  warning: '#efa72e',
 
   toolLabel: '#4da0bc',
   thinkingLabel: '#0f9fcf',

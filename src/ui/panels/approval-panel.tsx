@@ -2,7 +2,10 @@ import { Box, Text, useInput } from 'ink'
 import { useEffect, useState } from 'react'
 import type { ReactNode, Ref } from 'react'
 import { useImperativeHandle } from 'react'
-import { wrapLines, padToWidth } from '../../core/text.ts'
+import { wrapLines, padToWidth, textWidth } from '../../core/text.ts'
+import { mergeRuns } from '../../core/segments.ts'
+import type { Segment } from '../../core/segments.ts'
+import { colors } from '../../theme.ts'
 import { CHROME_MARGIN_X, CHROME_PAD_X, CHROME_TEXT_X } from '../../core/metrics.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
 import { SelectableText } from '../selection.tsx'
@@ -11,9 +14,11 @@ import { Region } from '../region.tsx'
 export const APPROVAL_SECTION_ROWS = 3
 const BUTTON_GAP_TEXT = ' '.repeat(8)
 const BUTTON_ALLOW_TEXT = 'Allow once'
+const ALLOW_BLOCK = ` ${BUTTON_ALLOW_TEXT} `
+const REJECT_BLOCK = ' Reject '
 export const APPROVAL_BUTTON_COLS = {
   allow: CHROME_TEXT_X,
-  reject: CHROME_TEXT_X + BUTTON_ALLOW_TEXT.length + BUTTON_GAP_TEXT.length,
+  reject: CHROME_TEXT_X + ALLOW_BLOCK.length + BUTTON_GAP_TEXT.length,
 }
 
 export interface PanelPointerHandle {
@@ -40,15 +45,28 @@ function section(text: string | undefined, innerWidth: number): string[] {
   return wrapLines(text, innerWidth)
 }
 
-export function buildApprovalBody(innerWidth: number, reason: string[], command: string[]): string[] {
-  const lines = reason.slice(0, APPROVAL_SECTION_ROWS).map(line => padToWidth(line, innerWidth))
-  lines.push('')
-  if (command.some(line => line.trim() !== '')) {
-    lines.push(...command.slice(0, APPROVAL_SECTION_ROWS).map(line => padToWidth(line, innerWidth)))
-    lines.push('')
+function reasonSection(raw: string | undefined, innerWidth: number): Segment[][] {
+  if (raw === undefined || raw.trim() === '') return []
+  const colon = raw.indexOf(':')
+  const rows: Segment[][] = []
+  if (colon === -1) {
+    for (const line of wrapLines(raw, Math.max(4, innerWidth))) {
+      rows.push([{ text: line, style: { color: colors.errorText } }])
+    }
+    return rows
   }
-  lines.push(BUTTON_ALLOW_TEXT + BUTTON_GAP_TEXT + 'Reject')
-  return lines
+  rows.push([{ text: raw.slice(0, colon + 1), style: { color: colors.errorText } }])
+  const description = raw.slice(colon + 1).trim()
+  if (description !== '') {
+    for (const line of wrapLines(description, Math.max(4, innerWidth))) {
+      rows.push([{ text: line, style: {} }])
+    }
+  }
+  return rows
+}
+
+function commandSection(lines: string[]): Segment[][] {
+  return lines.map(line => [{ text: line, style: { color: colors.warning } }])
 }
 
 function clamp(value: number, max: number): number {
@@ -58,7 +76,7 @@ function clamp(value: number, max: number): number {
 export function ApprovalPanel({ handleRef, reason, command, background, active, columns, rows, innerWidth, blockWidth, onDecide, onResize }: ApprovalPanelProps) {
   const [focusAllow, setFocusAllow] = useState(true)
   const [scroll, setScroll] = useState({ reason: 0, command: 0 })
-  const allReason = section(reason, innerWidth)
+  const allReason = reasonSection(reason, innerWidth)
   const allCommand = section(command, innerWidth)
   const reasonOverflow = Math.max(0, allReason.length - APPROVAL_SECTION_ROWS)
   const commandOverflow = Math.max(0, allCommand.length - APPROVAL_SECTION_ROWS)
@@ -71,7 +89,13 @@ export function ApprovalPanel({ handleRef, reason, command, background, active, 
   const visibleReason = allReason.slice(scroll.reason, scroll.reason + APPROVAL_SECTION_ROWS)
   const visibleCommand = allCommand.slice(scroll.command, scroll.command + APPROVAL_SECTION_ROWS)
   const showCommand = visibleCommand.some(line => line.trim() !== '')
-  const body = buildApprovalBody(innerWidth, visibleReason, showCommand ? visibleCommand : [])
+  const body: Segment[][] = [...visibleReason]
+  body.push([])
+  if (showCommand) {
+    body.push(...commandSection(visibleCommand))
+    body.push([])
+  }
+  body.push([{ text: BUTTON_ALLOW_TEXT + BUTTON_GAP_TEXT + 'Reject', style: {} }])
   const bodyCount = body.length
   const totalHeight = bodyCount + 2
   const bodyStart = rows - 2 - bodyCount
@@ -89,11 +113,11 @@ export function ApprovalPanel({ handleRef, reason, command, background, active, 
     clickAt(y, x) {
       if (!active) return
       if (y !== bodyStart + bodyCount - 1) return
-      if (x >= APPROVAL_BUTTON_COLS.allow && x <= APPROVAL_BUTTON_COLS.allow + BUTTON_ALLOW_TEXT.length) {
+      if (x >= APPROVAL_BUTTON_COLS.allow && x < APPROVAL_BUTTON_COLS.allow + ALLOW_BLOCK.length) {
         onDecide(focusAllow ? 'allowed-once' : 'rejected')
         return
       }
-      if (x >= APPROVAL_BUTTON_COLS.reject && x <= APPROVAL_BUTTON_COLS.reject + 'Reject'.length) {
+      if (x >= APPROVAL_BUTTON_COLS.reject && x < APPROVAL_BUTTON_COLS.reject + REJECT_BLOCK.length) {
         onDecide(focusAllow ? 'rejected' : 'allowed-once')
       }
     },
@@ -145,9 +169,9 @@ export function ApprovalPanel({ handleRef, reason, command, background, active, 
       blockWidth={blockWidth}
       buttonRow={(
         <Box flexDirection="row">
-          <SelectableText y={buttonY} col={APPROVAL_BUTTON_COLS.allow} text={BUTTON_ALLOW_TEXT} inverse={focusAllow} />
-          <SelectableText y={buttonY} col={APPROVAL_BUTTON_COLS.allow + BUTTON_ALLOW_TEXT.length} text={BUTTON_GAP_TEXT} />
-          <SelectableText y={buttonY} col={APPROVAL_BUTTON_COLS.reject} text="Reject" inverse={!focusAllow} />
+          <SelectableText y={buttonY} col={APPROVAL_BUTTON_COLS.allow} text={ALLOW_BLOCK} inverse={focusAllow} />
+          <SelectableText y={buttonY} col={APPROVAL_BUTTON_COLS.allow + ALLOW_BLOCK.length} text={BUTTON_GAP_TEXT} />
+          <SelectableText y={buttonY} col={APPROVAL_BUTTON_COLS.reject} text={REJECT_BLOCK} inverse={!focusAllow} />
         </Box>
       )}
     />
@@ -157,7 +181,7 @@ export function ApprovalPanel({ handleRef, reason, command, background, active, 
 export function PanelSurface({ columns, rows, body, bodyStart, background, blockWidth, buttonRow }: {
   columns: number
   rows: number
-  body: string[]
+  body: Segment[][]
   bodyStart: number
   background: string
   blockWidth: number
@@ -169,22 +193,25 @@ export function PanelSurface({ columns, rows, body, bodyStart, background, block
         <Box position="absolute" top={bodyStart - 1} left={CHROME_MARGIN_X} width={blockWidth}>
           <Text color={background}>{'▄'.repeat(blockWidth)}</Text>
         </Box>
-        {body.map((line, index) => (
-          <Box
-            key={`panel-row-${index}`}
-            position="absolute"
-            top={bodyStart + index}
-            left={CHROME_MARGIN_X}
-            width={blockWidth}
-            paddingLeft={CHROME_PAD_X}
-            paddingRight={CHROME_PAD_X}
-            backgroundColor={background}
-          >
-            {buttonRow !== undefined && index === body.length - 1
-              ? buttonRow
-              : <SelectableText y={bodyStart + index} col={CHROME_TEXT_X} text={line === '' ? ' ' : line} />}
-          </Box>
-        ))}
+        {body.map((row, index) => {
+          const padded = padRow(row, blockWidth - CHROME_PAD_X * 2)
+          return (
+            <Box
+              key={`panel-row-${index}`}
+              position="absolute"
+              top={bodyStart + index}
+              left={CHROME_MARGIN_X}
+              width={blockWidth}
+              paddingLeft={CHROME_PAD_X}
+              paddingRight={CHROME_PAD_X}
+              backgroundColor={background}
+            >
+              {buttonRow !== undefined && index === body.length - 1
+                ? buttonRow
+                : <SelectableText y={bodyStart + index} col={CHROME_TEXT_X} segments={padded.length > 0 ? padded : [{ text: ' ', style: {} }]} />}
+            </Box>
+          )
+        })}
         <Box position="absolute" top={bodyStart + body.length} left={CHROME_MARGIN_X} width={blockWidth}>
           <Text color={background}>{'▀'.repeat(blockWidth)}</Text>
         </Box>
@@ -193,6 +220,16 @@ export function PanelSurface({ columns, rows, body, bodyStart, background, block
   )
 }
 
+function padRow(row: Segment[], width: number): Segment[] {
+  const used = textWidth(row.map(segment => segment.text).join(''))
+  if (used >= width) return row
+  return mergeRuns([...row, { text: ' '.repeat(width - used), style: {} }])
+}
+
 export function approvalPanelHeight(innerWidth: number, reason?: string, command?: string): number {
-  return buildApprovalBody(innerWidth, section(reason, innerWidth), section(command, innerWidth)).length + 2
+  const reasonRows = reasonSection(reason, innerWidth).slice(0, APPROVAL_SECTION_ROWS)
+  const commandRows = commandSection(section(command, innerWidth)).slice(0, APPROVAL_SECTION_ROWS)
+  let count = reasonRows.length + 1
+  if (commandRows.some(row => row.some(seg => seg.text.trim() !== ''))) count += commandRows.length + 1
+  return count + 1 + 2
 }

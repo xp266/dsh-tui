@@ -9,6 +9,11 @@ import {
   SINGLE_LABEL_COL,
 } from '../src/ui/panels/question-model.ts'
 import type { QuestionPageState } from '../src/ui/panels/question-model.ts'
+import type { Segment } from '../src/core/segments.ts'
+
+function lineText(row: Segment[]): string {
+  return row.map(segment => segment.text).join('')
+}
 
 // No-options question page body:
 //   0 question, 1 blank, 2 custom option row, 3.. field lines, blank, legend
@@ -25,20 +30,20 @@ describe('question panel caret', () => {
     const state = beginEdit(initialPageState({ questions: [{ id: 'q', question: 'Q?' }] }))
     const layout = questionPanelLayout(state, 72)
     expect(layout.caret).toEqual({ row: FIELD_ROW, col: SINGLE_LABEL_COL })
-    expect(layout.lines[FIELD_ROW]).toBe(' '.repeat(SINGLE_LABEL_COL))
+    expect(lineText(layout.lines[FIELD_ROW])).toBe(' '.repeat(SINGLE_LABEL_COL))
   })
 
   it('tracks plain text length', () => {
     const layout = questionPanelLayout(editingState('abc'), 72)
-    expect(layout.lines[FIELD_ROW]).toBe(' '.repeat(SINGLE_LABEL_COL) + 'abc')
+    expect(lineText(layout.lines[FIELD_ROW])).toBe(' '.repeat(SINGLE_LABEL_COL) + 'abc')
     expect(layout.caret).toEqual({ row: FIELD_ROW, col: SINGLE_LABEL_COL + 3 })
   })
 
   it('moves to the second field row after a hard newline', () => {
     const state = editorInsert(editorInsert(editingState('ab'), '\n'), 'cd')
     const layout = questionPanelLayout(state, 72)
-    expect(layout.lines[FIELD_ROW]).toBe(' '.repeat(SINGLE_LABEL_COL) + 'ab')
-    expect(layout.lines[FIELD_ROW + 1]).toBe(' '.repeat(SINGLE_LABEL_COL) + 'cd')
+    expect(lineText(layout.lines[FIELD_ROW])).toBe(' '.repeat(SINGLE_LABEL_COL) + 'ab')
+    expect(lineText(layout.lines[FIELD_ROW + 1])).toBe(' '.repeat(SINGLE_LABEL_COL) + 'cd')
     expect(layout.caret).toEqual({ row: FIELD_ROW + 1, col: SINGLE_LABEL_COL + 2 })
   })
 
@@ -46,8 +51,8 @@ describe('question panel caret', () => {
     const value = 'x'.repeat(80)
     const layout = questionPanelLayout(editingState(value), 72)
     const fieldWidth = 72 - SINGLE_LABEL_COL
-    expect(layout.lines[FIELD_ROW]).toBe(' '.repeat(SINGLE_LABEL_COL) + 'x'.repeat(fieldWidth))
-    expect(layout.lines[FIELD_ROW + 1]).toBe(' '.repeat(SINGLE_LABEL_COL) + 'x'.repeat(80 - fieldWidth))
+    expect(lineText(layout.lines[FIELD_ROW])).toBe(' '.repeat(SINGLE_LABEL_COL) + 'x'.repeat(fieldWidth))
+    expect(lineText(layout.lines[FIELD_ROW + 1])).toBe(' '.repeat(SINGLE_LABEL_COL) + 'x'.repeat(80 - fieldWidth))
     expect(layout.caret).toEqual({ row: FIELD_ROW + 1, col: SINGLE_LABEL_COL + (80 - fieldWidth) })
   })
 
@@ -55,8 +60,8 @@ describe('question panel caret', () => {
     const value = 'd'.repeat(80)
     const layout = questionPanelLayout(editingState(value), 72)
     const fieldWidth = 72 - SINGLE_LABEL_COL
-    expect(layout.lines[FIELD_ROW]).toBe(' '.repeat(SINGLE_LABEL_COL) + 'd'.repeat(fieldWidth))
-    expect(layout.lines[FIELD_ROW + 1]).toBe(' '.repeat(SINGLE_LABEL_COL) + 'd'.repeat(value.length - fieldWidth))
+    expect(lineText(layout.lines[FIELD_ROW])).toBe(' '.repeat(SINGLE_LABEL_COL) + 'd'.repeat(fieldWidth))
+    expect(lineText(layout.lines[FIELD_ROW + 1])).toBe(' '.repeat(SINGLE_LABEL_COL) + 'd'.repeat(value.length - fieldWidth))
     expect(layout.caret).toEqual({ row: FIELD_ROW + 1, col: SINGLE_LABEL_COL + (value.length - fieldWidth) })
     const mid = editingState(value.slice(0, 60))
     const midLayout = questionPanelLayout(mid, 72)
@@ -65,7 +70,7 @@ describe('question panel caret', () => {
 
   it('counts wide characters as two columns for the caret', () => {
     const layout = questionPanelLayout(editingState('你好a'), 72)
-    expect(layout.lines[FIELD_ROW]).toBe(' '.repeat(SINGLE_LABEL_COL) + '你好a')
+    expect(lineText(layout.lines[FIELD_ROW])).toBe(' '.repeat(SINGLE_LABEL_COL) + '你好a')
     expect(layout.caret).toEqual({ row: FIELD_ROW, col: SINGLE_LABEL_COL + 5 })
   })
 
@@ -109,7 +114,7 @@ describe('question panel caret', () => {
     const finalValue = 'l0\nl1\nl2\nl3\nl4'
     const layout = questionPanelLayout(editingState(finalValue), 72)
     const fieldLines = layout.lines.slice(FIELD_ROW, FIELD_ROW + 3)
-    expect(fieldLines.map(line => line.trim())).toEqual(['l2', 'l3', 'l4'])
+    expect(fieldLines.map(row => lineText(row).trim())).toEqual(['l2', 'l3', 'l4'])
     expect(layout.caret).toEqual({ row: FIELD_ROW + 2, col: SINGLE_LABEL_COL + 2 })
   })
 })

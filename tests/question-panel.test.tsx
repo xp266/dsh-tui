@@ -4,6 +4,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { QuestionPanel } from '../src/ui/panels/question-panel.tsx'
 import type { QuestionPanelRequest } from '../src/chat/interactions.ts'
 
+const plain = (frame: string): string => frame.replace(/\u001b\[[0-9;]*m/g, '')
+
+
 const WIDTH = 80
 const INNER = WIDTH - 8
 const BLOCK = WIDTH - 4
@@ -45,16 +48,16 @@ describe('question panel', () => {
         </Box>,
     )
     await settle()
-    let frame = lastFrame() ?? ''
+    let frame = plain(lastFrame() ?? '')
     expect(frame).toContain('Which deployment target should I use?')
     expect(frame).toMatch(/❯\s+1\. Vercel/)
     expect(frame).toContain('2. Fly.io')
     expect(frame).toContain('edge network, fastest cold start')
-    expect(frame).toContain('1/2    ⇆ page    ⇅ wrap    enter select    esc close')
+    expect(frame).toContain('1/2  ⇆ page  ⇅ wrap  enter select  esc close')
     stdin.write('\r')
     await settle()
-    frame = lastFrame() ?? ''
-    expect(frame).toMatch(/1\. Vercel    ✓/)
+    frame = plain(lastFrame() ?? '')
+    expect(frame).toMatch(/1\. Vercel  ✓/)
   })
 
   it('moves the cursor down and selects the second option instead', async () => {
@@ -69,10 +72,10 @@ describe('question panel', () => {
     await settle()
     stdin.write('\u001b[B')
     await settle()
-    expect(lastFrame() ?? '').toMatch(/❯\s+2\. B/)
+    expect(plain(lastFrame() ?? '')).toMatch(/❯\s+2\. B/)
     stdin.write('\r')
     await settle()
-    const frame = lastFrame() ?? ''
+    const frame = plain(lastFrame() ?? '')
     expect(frame).toMatch(/1\. A(?!\s+✓)/)
     expect(frame).toMatch(/2\. B\s+✓/)
   })
@@ -88,11 +91,11 @@ describe('question panel', () => {
         </Box>,
     )
     await settle()
-    let frame = lastFrame() ?? ''
+    let frame = plain(lastFrame() ?? '')
     expect(frame).toMatch(/1\. \[ \] ESLint/)
     stdin.write('\r')
     await settle()
-    frame = lastFrame() ?? ''
+    frame = plain(lastFrame() ?? '')
     expect(frame).toMatch(/1\. \[✓\] ESLint/)
     expect(frame).toMatch(/2\. \[ \] Prettier/)
   })
@@ -109,23 +112,23 @@ describe('question panel', () => {
         </Box>,
     )
     await settle()
-    let frame = lastFrame() ?? ''
+    let frame = plain(lastFrame() ?? '')
     expect(frame).toMatch(/❯\s+1\. Custom input content/)
     stdin.write('\r')
     await settle()
     stdin.write('my custom answer')
     await settle()
-    frame = lastFrame() ?? ''
+    frame = plain(lastFrame() ?? '')
     expect(frame).toContain('my custom answer')
     expect(frame).not.toMatch(/Custom input content\s+✓/)
     stdin.write('\r')
     await settle()
-    frame = lastFrame() ?? ''
+    frame = plain(lastFrame() ?? '')
     expect(frame).toContain('my custom answer')
-    expect(frame).toMatch(/Custom input content    ✓/)
+    expect(frame).toMatch(/Custom input content  ✓/)
     stdin.write('\r')
     await settle()
-    frame = lastFrame() ?? ''
+    frame = plain(lastFrame() ?? '')
     expect(frame).toContain('my custom answer')
     expect(frame).not.toMatch(/Custom input content\s+✓/)
     stdin.write('\r')
@@ -134,9 +137,9 @@ describe('question panel', () => {
     await settle()
     stdin.write('\r')
     await settle()
-    frame = lastFrame() ?? ''
+    frame = plain(lastFrame() ?? '')
     expect(frame).toContain('my custom answer v2')
-    expect(frame).toMatch(/Custom input content    ✓/)
+    expect(frame).toMatch(/Custom input content  ✓/)
   })
 
   it('pages to the review page with unanswered marker and submits answers', async () => {
@@ -159,13 +162,13 @@ describe('question panel', () => {
     await settle()
     stdin.write('\u001b[C')
     await settle()
-    let frame = lastFrame() ?? ''
+    let frame = plain(lastFrame() ?? '')
     expect(frame).toContain('Confirm Selection')
     expect(frame).toContain('1. First question?')
     expect(frame).toContain('One')
     expect(frame).toContain('2. Second question?')
     expect(frame).toContain('(Question not answered)')
-    expect(frame).toContain('3/3    ⇆ page    enter submit    esc close')
+    expect(frame).toContain('3/3  ⇆ page  enter submit  esc close')
     stdin.write('\r')
     await settle()
     expect(submit).toHaveBeenCalledWith({

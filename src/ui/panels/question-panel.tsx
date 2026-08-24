@@ -2,7 +2,6 @@ import { Box, Text, useCursor, useInput } from 'ink'
 import { useEffect, useState } from 'react'
 import type { Ref } from 'react'
 import { useImperativeHandle } from 'react'
-import { padToWidth } from '../../core/text.ts'
 import { isMouseResidue } from '../../terminal/mouse.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
 import { CHROME_MARGIN_X, CHROME_TEXT_X } from '../../core/metrics.ts'
@@ -137,7 +136,7 @@ export function QuestionPanel({ handleRef, question: panel, background, active, 
     <PanelSurface
       columns={columns}
       rows={rows}
-      body={layout.lines.map(line => padToWidth(line, innerWidth))}
+      body={layout.lines}
       bodyStart={bodyStart}
       background={background}
       blockWidth={blockWidth}
