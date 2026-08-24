@@ -25,6 +25,15 @@ function textDelta(text: string, step = 1): SessionEvent {
   return { type: 'assistant/chunk', seq: 1, time: 0, data: { turn: 1, step, chunk: { type: 'text-delta', index: 0, text } } }
 }
 
+function toolCallDelta(callId: string, name: string): SessionEvent {
+  return {
+    type: 'assistant/chunk',
+    seq: 1,
+    time: 0,
+    data: { turn: 1, step: 1, chunk: { type: 'tool-call-delta', index: 0, id: CallId(callId), name, argumentsDelta: '{}' } },
+  }
+}
+
 function toolCall(callId: string): SessionEvent {
   return { type: 'tool/call', seq: 1, time: 0, data: { turn: 1, step: 1, callId: CallId(callId), name: 'bash', arguments: '{}' } }
 }
@@ -653,6 +662,26 @@ describe('agent activity tracking', () => {
   it('clears running at turn end', () => {
     const state = apply([], [turnStart(), textDelta('Hi'), turnEnd()])
     expect(state.turn).toMatchObject({ running: false, phase: 'awaiting-request' })
+  })
+
+  it('shows a streaming placeholder on the first tool-call-delta and commits in place', () => {
+    const state = apply([], [toolCallDelta('c7', 'bash'), toolCall('c7')])
+    expect(state.messages).toHaveLength(1)
+    expect(state.messages[0]).toMatchObject({ kind: 'collapsible', label: 'bash', running: true, collapsed: true })
+    const committed = state.messages[0]!
+    expect(committed.kind === 'collapsible' ? committed.streaming : undefined).toBe(false)
+    expect(committed.kind === 'collapsible' ? committed.label.startsWith('bash') : false).toBe(true)
+    expect(state.turn.toolIds.get('c7')).toBe(committed.id)
+  })
+
+  it('placeholder for ask-user uses the variant bubble with bare tool name', () => {
+    const state = apply([], [toolCallDelta('c8', 'ask_user_question')])
+    expect(state.messages[0]).toMatchObject({ kind: 'bubble', variant: 'ask-user', content: 'ask_user_question', streaming: true })
+  })
+
+  it('drops unresolved placeholders at turn end and clears streaming flags', () => {
+    const state = apply([], [toolCallDelta('c9', 'bash'), turnEnd()])
+    expect(state.messages).toHaveLength(0)
   })
 
   it('renders a registry command result as a labelled bubble', () => {

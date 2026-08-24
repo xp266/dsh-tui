@@ -11,7 +11,7 @@
   "scripts": {
     "build": "tsdown",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --no-file-parallelism",
     "perf": "vitest run --config vitest.perf.config.ts",
     "prepare": "tsdown"
   },

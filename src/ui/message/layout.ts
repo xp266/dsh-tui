@@ -31,6 +31,7 @@ export interface RowInfo {
   role: 'user' | 'assistant' | 'error' | undefined
   segments?: Segment[]
   segKey?: string
+  spinner?: boolean
 }
 
 interface WrapEntry {
@@ -210,6 +211,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
           background: true,
           muted,
           role: message.role,
+          ...(offset === 1 && message.streaming ? { spinner: true } : {}),
           ...segments === undefined ? {} : { segments, segKey: segmentsKeyCached(segments) },
         }
       }
@@ -221,10 +223,11 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
           ...base,
           kind: 'header',
           colStart: HEADER_LABEL_COL,
-          clickable: true,
+          clickable: !message.streaming,
           label: fitLabel(message.label, width),
           collapsed: message.collapsed,
           thinking: message.thinking === true,
+          ...(message.streaming ? { spinner: true } : {}),
         }
       }
       if (offset === 1 || message.collapsed) {

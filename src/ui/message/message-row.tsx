@@ -1,9 +1,26 @@
 import { Box, Text } from 'ink'
-import { memo } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { colors } from '../../theme.ts'
-import { headerSymbol, HEADER_LABEL_COL } from './layout.ts'
+import { headerSymbol, SPINNER_FRAMES, HEADER_LABEL_COL } from './layout.ts'
 import type { RowInfo } from './layout.ts'
 import { SelectableText } from '../selection.tsx'
+
+function TickGlyph({ y, col, color }: { y: number; col: number; color?: string }): ReturnType<typeof SelectableText> {
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    const timer = setInterval(() => setTick(t => (t + 1) % SPINNER_FRAMES.length), 100)
+    return () => clearInterval(timer)
+  }, [])
+  return (
+    <SelectableText
+      y={y}
+      col={col}
+      text={`${SPINNER_FRAMES[tick % SPINNER_FRAMES.length]} `}
+      color={color}
+      messageLayer
+    />
+  )
+}
 
 interface MessageRowProps {
   info: RowInfo
@@ -29,10 +46,11 @@ export const MessageRow = memo(
         <Box
           marginLeft={marginLeft}
           width={info.backgroundWidth}
-          paddingLeft={paddingLeft}
+          paddingLeft={info.spinner ? 0 : paddingLeft}
           paddingRight={2}
           backgroundColor={info.background ? backgroundFor(info.role) : undefined}
         >
+          {info.spinner && <TickGlyph y={row} col={col - 2} color={baseColor} />}
           {info.segments !== undefined && info.segments.length > 0 ? (
             <SelectableText y={row} col={col} segments={info.segments} color={baseColor} messageLayer flow />
           ) : (
@@ -51,6 +69,15 @@ export const MessageRow = memo(
     case 'header': {
       const symbol = headerSymbol(info.collapsed)
       const color = info.thinking ? colors.thinkingLabel : colors.toolLabel
+      if (info.spinner) {
+        return (
+          <Box>
+            <SelectableText y={row} col={0} text={'  '} color={color} messageLayer />
+            <TickGlyph y={row} col={2} color={color} />
+            <SelectableText y={row} col={HEADER_LABEL_COL} text={info.label} color={color} messageLayer />
+          </Box>
+        )
+      }
       return (
         <Box>
           <SelectableText y={row} col={0} text={`  ${symbol} `} color={color} messageLayer />
@@ -80,7 +107,8 @@ export const MessageRow = memo(
       a.clickable === b.clickable &&
       a.collapsed === b.collapsed &&
       a.thinking === b.thinking &&
-      a.segKey === b.segKey
+      a.segKey === b.segKey &&
+      a.spinner === b.spinner
     )
   },
 )

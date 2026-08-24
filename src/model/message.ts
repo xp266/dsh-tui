@@ -7,6 +7,7 @@ export interface BubbleMessage {
   content: string
   variant?: BubbleVariant
   hang?: number
+  streaming?: boolean
 }
 
 export interface CollapsibleMessage {
@@ -18,6 +19,7 @@ export interface CollapsibleMessage {
   collapsed: boolean
   bodyCol?: number
   thinking?: boolean
+  streaming?: boolean
 }
 
 export type Message = BubbleMessage | CollapsibleMessage

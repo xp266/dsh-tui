@@ -31,6 +31,7 @@ export interface TurnState {
   toolIds: Map<string, string>
   pendingText: Map<number, string>
   askArgs: Map<string, unknown>
+  pendingTools: Map<string, string>
   commandNames: Map<string, string>
   running: boolean
   phase: AgentPhase
@@ -43,6 +44,7 @@ export function initialTurnState(): TurnState {
     toolIds: new Map(),
     pendingText: new Map(),
     askArgs: new Map(),
+    pendingTools: new Map(),
     commandNames: new Map(),
     running: false,
     phase: 'awaiting-request',
@@ -98,6 +100,9 @@ export function reduceChatEvent(
       const chunk = event.data.chunk
       if (chunk.type === 'reasoning-delta') return appendChunk(messages, turn, chunk.text, event.data.step, 'thinking')
       if (chunk.type === 'text-delta') return appendChunk(messages, turn, chunk.text, event.data.step, 'assistant')
+      if (chunk.type === 'tool-call-delta') {
+        return appendToolDelta(messages, turn, chunk.id, chunk.name)
+      }
       return { messages, turn, changed: false }
     }
     case 'turn/start': {
@@ -107,48 +112,51 @@ export function reduceChatEvent(
     }
     case 'tool/call': {
       if (event.data.name === ASK_USER_TOOL_NAME) {
-        const id = nextId('ask')
+        const id = commitToolPlaceholder(messages, turn, event.data.callId, {
+          kind: 'bubble',
+          id: nextId('ask'),
+          role: 'assistant',
+          content: ASK_USER_TOOL_NAME,
+          variant: 'ask-user',
+        })
         turn.toolIds.set(event.data.callId, id)
         try {
           turn.askArgs.set(event.data.callId, JSON.parse(event.data.arguments))
         } catch {}
-        messages.push({ kind: 'bubble', id, role: 'assistant', content: ASK_USER_TOOL_NAME, variant: 'ask-user' })
         markRunning(turn, true)
         markPhase(turn, 'working')
         return { messages, turn, changed: true }
       }
       if (event.data.name === TODO_TOOL_NAME) {
-        const id = nextId('todo')
-        turn.toolIds.set(event.data.callId, id)
         let args: unknown
         try {
           args = JSON.parse(event.data.arguments)
         } catch {}
         const items = parseTodoArgs(args)
-        messages.push({
+        const id = commitToolPlaceholder(messages, turn, event.data.callId, {
           kind: 'bubble',
-          id,
+          id: nextId('todo'),
           role: 'assistant',
           content: items.length > 0 ? formatTodoBubble(items) : TODO_TOOL_NAME,
           variant: 'todo',
           hang: TODO_HANG_COLS,
         })
+        turn.toolIds.set(event.data.callId, id)
         markRunning(turn, true)
         markPhase(turn, 'working')
         return { messages, turn, changed: true }
       }
-      const id = nextId('tool')
-      turn.toolIds.set(event.data.callId, id)
       const view = presenter?.call(event.data.name, event.data.callId, event.data.arguments)
-      messages.push({
+      const id = commitToolPlaceholder(messages, turn, event.data.callId, {
         kind: 'collapsible',
-        id,
+        id: nextId('tool'),
         label: view?.label ?? event.data.name,
         body: view?.body ?? '',
         running: true,
         collapsed: true,
         ...view?.bodyCol === undefined ? {} : { bodyCol: view.bodyCol },
       })
+      turn.toolIds.set(event.data.callId, id)
       markRunning(turn, true)
       markPhase(turn, 'working')
       return { messages, turn, changed: true }
@@ -281,6 +289,19 @@ export function reduceChatEvent(
         message.running = false
         message.body = message.body === '' ? '(no result)' : `${message.body}\n(no result)`
       }
+      for (const [, pendingId] of turn.pendingTools) {
+        const index = messages.findIndex(message => message.id === pendingId)
+        if (index >= 0) {
+          messages.splice(index, 1)
+          changed = true
+        }
+      }
+      turn.pendingTools.clear()
+      for (const message of messages) {
+        if (!message.streaming) continue
+        changed = true
+        message.streaming = false
+      }
       const reason = event.data.reason
       if (reason.kind === 'error') {
         changed = true
@@ -373,6 +394,46 @@ function appendChunk(
     }
   }
   return { messages, turn, changed }
+}
+
+function commitToolPlaceholder(messages: Message[], turn: TurnState, callId: string, real: Message): string {
+  const committed = { ...real, streaming: false }
+  const pendingId = turn.pendingTools.get(callId)
+  turn.pendingTools.delete(callId)
+  if (pendingId === undefined) {
+    messages.push(committed)
+    return committed.id
+  }
+  const index = messages.findIndex(message => message.id === pendingId)
+  if (index >= 0) {
+    messages[index] = { ...committed, id: pendingId }
+    return pendingId
+  }
+  messages.push(committed)
+  return committed.id
+}
+
+function appendToolDelta(
+  messages: Message[],
+  turn: TurnState,
+  callId: string,
+  name: string | undefined,
+): { messages: Message[]; turn: TurnState; changed: boolean } {
+  markRunning(turn, true)
+  markPhase(turn, 'working')
+  if (name === undefined || name === '') return { messages, turn, changed: false }
+  if (turn.pendingTools.has(callId) || turn.toolIds.has(callId)) return { messages, turn, changed: false }
+  let placeholder: Message
+  if (name === ASK_USER_TOOL_NAME) {
+    placeholder = { kind: 'bubble', id: nextId('ask'), role: 'assistant', content: name, variant: 'ask-user', streaming: true }
+  } else if (name === TODO_TOOL_NAME) {
+    placeholder = { kind: 'bubble', id: nextId('todo'), role: 'assistant', content: name, variant: 'todo', hang: TODO_HANG_COLS, streaming: true }
+  } else {
+    placeholder = { kind: 'collapsible', id: nextId('tool'), label: name, body: '', running: true, collapsed: true, streaming: true }
+  }
+  messages.push(placeholder)
+  turn.pendingTools.set(callId, placeholder.id)
+  return { messages, turn, changed: true }
 }
 
 function collapsibleById(messages: Message[], id: string): CollapsibleMessage | undefined {
