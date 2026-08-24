@@ -47,7 +47,7 @@ const palette = {
   mdH3: '#5fd7ff',
   mdH4: '#61afef',
   mdCodePlain: '#d4d4d4',
-  mdCodeFallback: '#5fd7ff',
+  mdCodeFallback: '#b5bd68',
 
   thinkBold: '#8f6522',
   thinkLink: '#39698f',
@@ -62,7 +62,7 @@ const palette = {
   thinkH3: '#3f96b3',
   thinkH4: '#45608a',
   thinkCodePlain: '#9a9a9a',
-  thinkCodeFallback: '#3f96b3',
+  thinkCodeFallback: '#708258',
 
   codeComment: '#6a9955',
   codeString: '#ce9178',

@@ -74,10 +74,14 @@ function wrapFor(message: Message, width: number): WrapEntry {
   return next
 }
 
+function isCompactBubble(message: Message): boolean {
+  return message.kind === 'bubble' && message.role === 'assistant' && message.variant === undefined
+}
+
 export function lineCount(message: Message, width: number): number {
   switch (message.kind) {
     case 'bubble':
-      return wrapFor(message, width).lines.length + 3
+      return wrapFor(message, width).lines.length + (isCompactBubble(message) ? 1 : 3)
     case 'collapsible':
       return message.collapsed ? 2 : wrapFor(message, width).lines.length + 3
   }
@@ -155,6 +159,22 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
   }
   switch (message.kind) {
     case 'bubble': {
+      if (isCompactBubble(message)) {
+        const wrapped = wrapFor(message, width)
+        if (offset < count - 1) {
+          const segments = wrapped.rows?.[offset]
+          return {
+            ...base,
+            kind: 'text',
+            text: wrapped.lines[offset] ?? '',
+            colStart: 4,
+            selectable: true,
+            role: message.role,
+            ...segments === undefined ? {} : { segments, segKey: segmentsKey(segments) },
+          }
+        }
+        return { ...base, kind: 'blank' }
+      }
       const muted = message.variant !== undefined
       if (offset === 0 || offset === count - 2) {
         return { ...base, kind: 'pad', background: true, role: message.role }

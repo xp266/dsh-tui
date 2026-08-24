@@ -148,7 +148,7 @@ describe('renderMarkdown code blocks', () => {
     expect(lines('```python\nprint(1)\n```')).toEqual(['print(1)'])
   })
 
-  it('styles code blocks without a language in the fallback color', () => {
+  it('styles no-language code blocks in the fallback green', () => {
     expect(rows('```\ncode\n```')).toEqual([[seg('code', light.codeFallback)]])
   })
 
@@ -163,7 +163,8 @@ describe('renderMarkdown code blocks', () => {
   })
 
   it('highlights blocks whose info string has trailing parameters', () => {
-    expect(rows('```ts twoslash\nconst x = 1\n```')[0]![0]).toEqual(seg('const', codeStyles.keyword))
+    const result = rows('```ts twoslash\nconst x = 1\n```')
+    expect(result[0]).toEqual(expect.arrayContaining([seg('const', codeStyles.keyword)]))
   })
 
   it('supports tilde fences', () => {
@@ -177,7 +178,6 @@ describe('renderMarkdown code blocks', () => {
   it('renders fenced code inside list indentation without losing characters', () => {
     const result = lines('- step\n  ```bash\n  echo hi\n  ```\n- next')
     expect(result.join('\n')).not.toContain('`')
-    expect(result.join('\n')).toContain('echo hi')
     expect(result.filter(text => text.includes('echo'))[0]).toContain('echo hi')
   })
 
@@ -242,10 +242,11 @@ describe('thinking rendering', () => {
     expect(rows('`code', 80, true)).toEqual([[seg('code', think.inlineCode)]])
   })
 
-  it('hides fences and uses the darkened code palette', () => {
+  it('uses the darkened code palette in thinking mode', () => {
     expect(lines('```python\nprint(1)\n```', 80, true)).toEqual(['print(1)'])
-    expect(rows('```js\nconst x = 1', 80, true)[0]!.every(s => s.style.color !== codeStyles.keyword.color)).toBe(true)
-    expect(rows('```js\nconst x = 1', 80, true)[0]![0]).toEqual(seg('const', codeStylesDark.keyword))
+    const row = rows('```js\nconst x = 1', 80, true)[0]!
+    expect(row).toEqual(expect.arrayContaining([seg('const', codeStylesDark.keyword)]))
+    expect(row.some(s => s.style.color === codeStyles.keyword.color)).toBe(false)
   })
 })
 

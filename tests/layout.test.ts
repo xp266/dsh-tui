@@ -54,17 +54,19 @@ describe('row layout', () => {
     const messages: Message[] = [
       { kind: 'bubble', id: 'a', role: 'assistant', content: '**bold** text' },
     ]
-    const row = rowInfoAt(messages, WIDTH, 1)
+    const row = rowInfoAt(messages, WIDTH, 0)
     expect(row).toMatchObject({ kind: 'text', text: 'bold text', colStart: 4, selectable: true })
     expect(row?.segments).toEqual([seg('bold', light.bold), seg(' text')])
     expect(row?.segKey).toBeDefined()
+    expect(rowInfoAt(messages, WIDTH, 1)).toMatchObject({ kind: 'blank' })
+    expect(rowCount(messages, WIDTH)).toBe(2)
   })
 
   it('keeps plain assistant rows segment-free compatible', () => {
     const messages: Message[] = [
       { kind: 'bubble', id: 'a', role: 'assistant', content: 'plain text' },
     ]
-    const row = rowInfoAt(messages, WIDTH, 1)
+    const row = rowInfoAt(messages, WIDTH, 0)
     expect(row).toMatchObject({ kind: 'text', text: 'plain text' })
     expect(row?.segments).toEqual([seg('plain text')])
   })
@@ -184,7 +186,7 @@ describe('selection text extraction', () => {
     const messages: Message[] = [
       { kind: 'bubble', id: 'a', role: 'assistant', content: 'first long line aaaaaaaa\nshort\nsecond long line bbbbbbbb' },
     ]
-    expect(selectionText(messages, WIDTH, msgSel(1, 10, 5, 12))).toBe(
+    expect(selectionText(messages, WIDTH, msgSel(0, 10, 5, 12))).toBe(
       'long line aaaaaaaa\nshort\nsecond long line bbbbbbbb',
     )
   })
