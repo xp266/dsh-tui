@@ -8,13 +8,25 @@ import { App } from '../src/ui/app.tsx'
 vi.mock('../src/ui/input/commands.ts', async importOriginal => {
   const actual = await importOriginal<typeof import('../src/ui/input/commands.ts')>()
   const commands = Array.from({ length: 9 }, (_, i) => ({ command: `/c${i + 1}`, description: `d${i + 1}` }))
+  const filterCommands = (value: string) => {
+    const token = value.split(/\s+/, 1)[0] ?? ''
+    if (!token.startsWith('/')) return []
+    return commands.filter(command => command.command.startsWith(token))
+  }
   return {
     ...actual,
     COMMANDS: commands,
-    filterCommands: (value: string) => {
-      const token = value.split(/\s+/, 1)[0] ?? ''
-      if (!token.startsWith('/')) return []
-      return commands.filter(command => command.command.startsWith(token))
+    filterCommands,
+    visibleCommands: (value: string, isAvailable?: (command: (typeof commands)[number]) => boolean) => {
+      const matches = filterCommands(value)
+      return isAvailable === undefined ? matches : matches.filter(isAvailable)
+    },
+    matchCommand: (text: string) => commands.find(command => command.command === text),
+    matchAvailableCommand: (text: string, isAvailable?: (command: (typeof commands)[number]) => boolean) => {
+      const command = commands.find(entry => entry.command === text)
+      if (command === undefined) return undefined
+      if (isAvailable !== undefined && !isAvailable(command)) return undefined
+      return command
     },
   }
 })

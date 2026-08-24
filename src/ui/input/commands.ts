@@ -31,6 +31,21 @@ export function filterCommands(value: string): CommandDef[] {
   return COMMANDS.filter(command => command.command.startsWith(token))
 }
 
+export type CommandAvailability = (command: CommandDef) => boolean
+
+export function visibleCommands(value: string, isAvailable?: CommandAvailability): CommandDef[] {
+  const matches = filterCommands(value)
+  if (isAvailable === undefined) return matches
+  return matches.filter(isAvailable)
+}
+
+export function matchAvailableCommand(text: string, isAvailable?: CommandAvailability): CommandDef | undefined {
+  const command = matchCommand(text)
+  if (command === undefined) return undefined
+  if (isAvailable !== undefined && !isAvailable(command)) return undefined
+  return command
+}
+
 export interface CommandHintState {
   commands: CommandHintItem[]
   selectedIndex: number

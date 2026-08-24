@@ -1,6 +1,6 @@
 import { Box, Text, useInput } from 'ink'
 import type { ReactNode } from 'react'
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { RefObject } from 'react'
 import { colors, permissionModeInfo } from '../theme.ts'
 import { writeOsc52 } from '../terminal/clipboard.ts'
@@ -18,12 +18,11 @@ import { useScroll } from './hooks/use-scroll.ts'
 import { useMouseSelection, hintRegion } from './hooks/use-mouse-selection.ts'
 import { InputBar, inputLayout, INPUT_WIDTH_OFFSET, HINT_MAX_ROWS } from './input/input-bar.tsx'
 import type { InputBarHandle } from './input/input-bar.tsx'
-import { HINT_COMMAND_COL_WIDTH, matchCommand } from './input/commands.ts'
-import type { CommandId } from './input/commands.ts'
+import { HINT_COMMAND_COL_WIDTH, matchCommand, visibleCommands, matchAvailableCommand } from './input/commands.ts'
+import type { CommandAvailability, CommandId } from './input/commands.ts'
 import { CHROME_MARGIN_X, CHROME_TEXT_X, MESSAGE_INPUT_GAP_ROWS, hintBlockTop } from '../core/metrics.ts'
 import { useComposer } from './input/use-composer.ts'
 import { Region } from './region.tsx'
-import { filterCommands } from './input/commands.ts'
 import { MessageList } from './message/message-list.tsx'
 import { CloseGuardContext } from './dialog/dialog.tsx'
 import { ModelsDialog } from './dialog/models-dialog.tsx'
@@ -109,6 +108,10 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const panelHandleRef = useRef<PanelPointerHandle | null>(null)
   const exiting = useRef(false)
   const sendRef = useRef<(text: string) => void>(() => {})
+  const isCommandAvailable = useCallback<CommandAvailability>(
+    command => command.id !== 'todo' || todoActive,
+    [todoActive],
+  )
   const [escArmed, setEscArmed] = useState(false)
   const escAtRef = useRef(0)
   const escTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -133,6 +136,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     composerInteractive,
     contentWidth,
     () => bridge?.cyclePermission(),
+    isCommandAvailable,
   )
   const layout = inputLayout(value, cursor, columns)
   const permissionMode = bridge?.permissionMode() ?? 'workspace-write'
@@ -173,18 +177,19 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     }
   }
   const handleSend = (text: string) => {
-    const matched = matchCommand(text)
+    const matched = matchAvailableCommand(text, isCommandAvailable)
     if (matched !== undefined) {
       runCommand(matched.id)
       return
     }
+    if (matchCommand(text) !== undefined) return
     bridge?.send(text)
     applyScroll(Infinity)
   }
   sendRef.current = handleSend
   const commands = useMemo(
-    () => filterCommands(value).filter(command => command.id !== 'todo' || todoActive),
-    [value, todoActive],
+    () => visibleCommands(value, isCommandAvailable),
+    [value, isCommandAvailable],
   )
   const showHint = dialog === null && hintOpen && commands.length > 0
   const maxVisible = Math.max(1, Math.min(HINT_MAX_ROWS, rows - inputHeight - 1))

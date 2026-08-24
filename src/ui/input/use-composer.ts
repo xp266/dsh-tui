@@ -4,7 +4,8 @@ import { isMouseResidue } from '../../terminal/mouse.ts'
 import { colToCharIndex } from '../../core/text.ts'
 import { moveCaretLine } from '../../core/composer-layout.ts'
 import { editBackspace, editDelete, editInsert } from '../../core/edit.ts'
-import { filterCommands } from './commands.ts'
+import { visibleCommands } from './commands.ts'
+import type { CommandAvailability } from './commands.ts'
 
 export interface ComposerState {
   value: string
@@ -28,6 +29,7 @@ export function useComposer(
   interactive: boolean,
   contentWidth: number,
   onCycleMode?: () => void,
+  isCommandAvailable?: CommandAvailability,
 ): ComposerState {
   const [value, setValue] = useState('')
   const [cursor, setCursor] = useState(0)
@@ -38,11 +40,14 @@ export function useComposer(
   const hintOpenRef = useRef(false)
   const commandIndexRef = useRef(0)
   const widthRef = useRef(contentWidth)
+  const availabilityRef = useRef<CommandAvailability | undefined>(isCommandAvailable)
   widthRef.current = contentWidth
+  availabilityRef.current = isCommandAvailable
   valueRef.current = value
   cursorRef.current = cursor
   hintOpenRef.current = hintOpen
   commandIndexRef.current = commandIndex
+  const visibleFor = (text: string) => visibleCommands(text, availabilityRef.current)
   const apiRef = useRef<ComposerApi>({
     moveLineBy(delta) {
       const next = moveLine(valueRef.current, widthRef.current, cursorRef.current, delta)
@@ -55,13 +60,13 @@ export function useComposer(
       setCursor(clamped)
     },
     selectHint(absoluteIndex) {
-      const commands = filterCommands(valueRef.current)
+      const commands = visibleFor(valueRef.current)
       const clamped = Math.max(0, Math.min(absoluteIndex, commands.length - 1))
       commandIndexRef.current = clamped
       setCommandIndex(clamped)
     },
     confirmHint() {
-      const commands = filterCommands(valueRef.current)
+      const commands = visibleFor(valueRef.current)
       if (commands.length === 0) return
       const command = commands[Math.min(commandIndexRef.current, commands.length - 1)]?.command
       if (command === undefined) return
@@ -75,7 +80,7 @@ export function useComposer(
       commandIndexRef.current = 0
     },
     hintMove(delta) {
-      const commands = filterCommands(valueRef.current)
+      const commands = visibleFor(valueRef.current)
       if (commands.length === 0) return
       const next = (commandIndexRef.current + delta + commands.length) % commands.length
       commandIndexRef.current = next
@@ -124,7 +129,7 @@ export function useComposer(
     }
     const v = valueRef.current
     const c = cursorRef.current
-    const commands = filterCommands(v)
+    const commands = visibleFor(v)
     const showHint = hintOpenRef.current && commands.length > 0
     if (key.return && !key.shift && showHint) {
       apiRef.current.confirmHint()
