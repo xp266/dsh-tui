@@ -78,7 +78,11 @@ export interface MockBridge {
   defaultPresetId(): string
   setDefaultPreset(id: string): Promise<void>
   tokenStats(): { contextPercent: number; hitPercent: number; input: number; output: number }
-  toolPresenter: { argsJson(callId: string): string | undefined }
+  toolPresenter: {
+    argsJson(callId: string): string | undefined
+    call(name: string, callId: string, argumentsRaw: string): undefined
+    result(callId: string, result: unknown): undefined
+  }
   interactions: InteractionStore
 }
 
@@ -158,7 +162,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       argsJson: () => undefined,
       call: () => undefined,
       result: () => undefined,
-    },
+    } satisfies MockBridge['toolPresenter'],
     interactions,
   }
 }
