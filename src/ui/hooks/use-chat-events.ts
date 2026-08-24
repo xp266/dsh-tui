@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import type { ChatBridge, ChatToolPresenter } from '../../chat/bridge.ts'
+import type { ChatBridge, ChatToolPresenter, RegistryCommand } from '../../chat/bridge.ts'
 import { initialTurnState, reduceChatEvent } from '../../chat/store.ts'
 import { nextRetryStatus } from '../../chat/retry-status.ts'
 import type { RetryStatus } from '../../chat/retry-status.ts'
@@ -28,6 +28,7 @@ export interface ChatEvents {
   todos: TodoItemLike[]
   retryStatus?: RetryStatus
   streamedChars: number
+  registryCommands: readonly RegistryCommand[]
 }
 
 export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolean): ChatEvents {
@@ -37,6 +38,7 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
   const [todos, setTodos] = useState<TodoItemLike[]>(NO_TODOS)
   const [retryStatus, setRetryStatus] = useState<RetryStatus | undefined>(undefined)
   const [streamedChars, setStreamedChars] = useState(0)
+  const [registryCommands, setRegistryCommands] = useState<readonly RegistryCommand[]>([])
   const streamedCharsRef = useRef(0)
   const chatStateRef = useRef<{ messages: Message[]; turn: ReturnType<typeof initialTurnState> }>({
     messages: [],
@@ -49,6 +51,14 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
   dialogOpenRef.current = dialogOpen
   useEffect(() => {
     presenterRef.current = bridge?.toolPresenter
+    const list = bridge?.listRegistryCommands?.bind(bridge)
+    const onChanged = bridge?.onRegistryChanged?.bind(bridge)
+    if (bridge === undefined || list === undefined || onChanged === undefined) {
+      setRegistryCommands([])
+      return
+    }
+    setRegistryCommands(list())
+    return onChanged(() => setRegistryCommands(list()))
   }, [bridge])
   useEffect(() => {
     if (!bridge) return
@@ -131,5 +141,6 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
     todos,
     retryStatus,
     streamedChars,
+    registryCommands,
   }
 }

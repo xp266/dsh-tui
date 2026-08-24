@@ -654,4 +654,23 @@ describe('agent activity tracking', () => {
     const state = apply([], [turnStart(), textDelta('Hi'), turnEnd()])
     expect(state.turn).toMatchObject({ running: false, phase: 'awaiting-request' })
   })
+
+  it('renders a registry command result as a labelled bubble', () => {
+    function commandRun(id: string, name: string): SessionEvent {
+      return { type: 'command/run', seq: 1, time: 0, data: { commandId: id, name } } as unknown as SessionEvent
+    }
+    function commandDone(id: string, kind: 'success' | 'error', text?: string): SessionEvent {
+      return { type: 'command/done', seq: 2, time: 0, data: { commandId: id, kind, ...(text === undefined ? {} : { text }) } } as unknown as SessionEvent
+    }
+    const ok = apply([], [commandRun('k1', 'permission'), commandDone('k1', 'success', 'Permission preset: workspace-write.')])
+    expect(ok.messages.at(-1)).toMatchObject({ kind: 'bubble', role: 'assistant', content: 'permission · Permission preset: workspace-write.' })
+    expect(ok.messages).toHaveLength(1)
+
+    const silent = apply([], [commandRun('k2', 'silent'), commandDone('k2', 'success')])
+    expect(silent.messages).toHaveLength(0)
+    expect(silent.turn.commandNames.size).toBe(0)
+
+    const failed = apply([], [commandRun('k3', 'boom'), commandDone('k3', 'error', 'nope')])
+    expect(failed.messages.at(-1)).toMatchObject({ kind: 'bubble', role: 'error', content: 'boom · nope' })
+  })
 })

@@ -113,4 +113,43 @@ describe('command availability', () => {
     const frame = lastFrame() ?? ''
     expect(frame).toContain('/todo')
   })
+
+  it('merges host registry commands into hints and executes them on send', async () => {
+    const bridge = fakeBridge() as ChatBridge & {
+      listRegistryCommands(): unknown[]
+      onRegistryChanged(listener: () => void): () => void
+      executeCommandLine: ReturnType<typeof vi.fn>
+    }
+    const executed = vi.fn(async () => {})
+    let changeListener: (() => void) | undefined
+    bridge.executeCommandLine = executed
+    bridge.listRegistryCommands = () => [{ name: 'echo', description: 'Echo test command' }]
+    bridge.onRegistryChanged = listener => {
+      changeListener = listener
+      return () => {}
+    }
+    const { lastFrame, stdin } = render(<App bridge={bridge} />)
+    await type(stdin, '/')
+    expect(lastFrame() ?? '').toContain('/echo')
+    expect(lastFrame() ?? '').toContain('Echo test command')
+
+    act(() => {
+      changeListener?.()
+    })
+    await type(stdin, '\u001b[B')
+    await type(stdin, '\u001b[B')
+    let frame = lastFrame() ?? ''
+    while (!focusedSegment(frame).includes('/echo')) {
+      await type(stdin, '\u001b[B')
+      const next = lastFrame() ?? ''
+      if (next === frame) break
+      frame = next
+    }
+    expect(focusedSegment(frame)).toContain('/echo')
+
+    await type(stdin, '\r')
+    await type(stdin, '\r')
+    expect(executed).toHaveBeenCalledWith('/echo')
+    expect(bridge.send).not.toHaveBeenCalled()
+  })
 })

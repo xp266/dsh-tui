@@ -18,7 +18,7 @@ import { useScroll } from './hooks/use-scroll.ts'
 import { useMouseSelection, hintRegion } from './hooks/use-mouse-selection.ts'
 import { InputBar, inputLayout, INPUT_WIDTH_OFFSET, HINT_MAX_ROWS } from './input/input-bar.tsx'
 import type { InputBarHandle } from './input/input-bar.tsx'
-import { HINT_COMMAND_COL_WIDTH, matchCommand, visibleCommands, matchAvailableCommand } from './input/commands.ts'
+import { COMMANDS, HINT_COMMAND_COL_WIDTH, filterHintEntries, matchCommand, mergeCommandEntries, matchAvailableCommand } from './input/commands.ts'
 import type { CommandAvailability, CommandId } from './input/commands.ts'
 import { CHROME_MARGIN_X, CHROME_TEXT_X, MESSAGE_INPUT_GAP_ROWS, hintBlockTop } from '../core/metrics.ts'
 import { useComposer } from './input/use-composer.ts'
@@ -99,7 +99,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const overlays = useOverlayStack<DialogKind>()
   const dialog: DialogKind | null = overlays.top ?? null
   const [, setSessionTick] = useState(0)
-  const { messages, modelName, setModelName, updateMessages, resetChat, activity, todos, retryStatus, streamedChars } = useChatEvents(bridge, dialog !== null)
+  const { messages, modelName, setModelName, updateMessages, resetChat, activity, todos, retryStatus, streamedChars, registryCommands } = useChatEvents(bridge, dialog !== null)
   const todoActive = isTodoActive(todos)
   const todoBadge = todoProgress(todos)
   const running = activity.running
@@ -131,13 +131,22 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const panel = useActivePanel(bridge?.interactions)
   const [panelHeight, setPanelHeight] = useState(7)
   const composerInteractive = dialog === null && panel === null
+  const commandEntries = useMemo(
+    () => mergeCommandEntries(COMMANDS.filter(isCommandAvailable), registryCommands),
+    [isCommandAvailable, registryCommands],
+  )
+  const registryNames = useMemo(
+    () => new Set(registryCommands.map(entry => `/${entry.name}`)),
+    [registryCommands],
+  )
   const { value, cursor, hintOpen, commandIndex, api } = useComposer(
     text => sendRef.current(text),
     composerInteractive,
     contentWidth,
     () => bridge?.cyclePermission(),
-    isCommandAvailable,
+    commandEntries,
   )
+  const commands = useMemo(() => filterHintEntries(commandEntries, value), [commandEntries, value])
   const layout = inputLayout(value, cursor, columns)
   const permissionMode = bridge?.permissionMode() ?? 'workspace-write'
   const permissionChrome = permissionModeInfo(permissionMode)
@@ -183,14 +192,15 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
       return
     }
     if (matchCommand(text) !== undefined) return
+    if (registryNames.has(text.split(/\s+/, 1)[0] ?? '')) {
+      void bridge?.executeCommandLine?.(text)
+      applyScroll(Infinity)
+      return
+    }
     bridge?.send(text)
     applyScroll(Infinity)
   }
   sendRef.current = handleSend
-  const commands = useMemo(
-    () => visibleCommands(value, isCommandAvailable),
-    [value, isCommandAvailable],
-  )
   const showHint = dialog === null && hintOpen && commands.length > 0
   const maxVisible = Math.max(1, Math.min(HINT_MAX_ROWS, rows - inputHeight - 1))
   const hintStartRef = useRef(0)
@@ -216,14 +226,31 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
         : message,
     ))
   }
-  const handleHintClick = (y: number) => {
+  const hintIndexAt = (y: number): number | undefined => {
     const region = hintRegion(rows, hintState, dialog !== null, inputHeight)
-    if (region === null || hintState === null) return
-    const rel = y - region.top
-    if (rel < 0 || rel >= hintState.commands.length) return
-    inputRef.current?.hintClick((hintState.startIndex ?? 0) + rel)
+    if (region === null || hintState === null) return undefined
+    if (y < region.top || y > region.bottom) return undefined
+    const index = (hintState.startIndex ?? 0) + (y - region.top)
+    if (index < 0 || index >= commandEntries.length) return undefined
+    return index
   }
-  const { selection, messageAreaSelection, chromeSelection, clearSelection } = useMouseSelection({
+  const hintPendingPick = useRef<number | null>(null)
+  const handleHintPress = (_x: number, y: number): void => {
+    hintPendingPick.current = hintIndexAt(y) ?? null
+  }
+  const handleHintDragStart = (x: number, y: number): void => {
+    setSelection({ anchorRow: y, anchorCol: x, focusRow: y, focusCol: x, inMessage: false })
+  }
+  const handleHintDragMove = (x: number, y: number): void => {
+    setSelection(current => current === null || current.inMessage ? current : { ...current, focusRow: y, focusCol: x })
+  }
+  const handleHintRelease = (_x: number, _y: number, dragged: boolean): void => {
+    if (!dragged && hintPendingPick.current !== null) {
+      inputRef.current?.hintPick(hintPendingPick.current)
+    }
+    hintPendingPick.current = null
+  }
+  const { selection, messageAreaSelection, chromeSelection, setSelection, clearSelection } = useMouseSelection({
     messages,
     columns,
     rows,
@@ -236,7 +263,10 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     inputHandle: inputRef,
     panelActive: panel !== null,
     panelHandle: panelHandleRef,
-    onHintClick: handleHintClick,
+    onHintPress: handleHintPress,
+    onHintDragStart: handleHintDragStart,
+    onHintDragMove: handleHintDragMove,
+    onHintRelease: handleHintRelease,
     onDialogWheel: (y, dir) => dialogRef.current?.wheelAt(y, dir) === true,
     onScroll: applyScroll,
     onToggleMessage: handleToggle,

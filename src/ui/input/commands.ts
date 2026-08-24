@@ -46,6 +46,27 @@ export function matchAvailableCommand(text: string, isAvailable?: CommandAvailab
   return command
 }
 
+export function mergeCommandEntries(
+  local: CommandDef[],
+  remote: readonly { name: string; description: string }[],
+): CommandHintItem[] {
+  const taken = new Set(local.map(command => command.command))
+  const entries: CommandHintItem[] = local.map(({ command, description }) => ({ command, description }))
+  for (const entry of remote) {
+    const command = `/${entry.name}`
+    if (taken.has(command)) continue
+    taken.add(command)
+    entries.push({ command, description: entry.description })
+  }
+  return entries
+}
+
+export function filterHintEntries(entries: readonly CommandHintItem[], value: string): CommandHintItem[] {
+  const token = value.split(/\s+/, 1)[0] ?? ''
+  if (!token.startsWith('/')) return []
+  return entries.filter(entry => entry.command.startsWith(token))
+}
+
 export interface CommandHintState {
   commands: CommandHintItem[]
   selectedIndex: number

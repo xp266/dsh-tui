@@ -31,6 +31,7 @@ export interface TurnState {
   toolIds: Map<string, string>
   pendingText: Map<number, string>
   askArgs: Map<string, unknown>
+  commandNames: Map<string, string>
   running: boolean
   phase: AgentPhase
 }
@@ -42,6 +43,7 @@ export function initialTurnState(): TurnState {
     toolIds: new Map(),
     pendingText: new Map(),
     askArgs: new Map(),
+    commandNames: new Map(),
     running: false,
     phase: 'awaiting-request',
   }
@@ -287,6 +289,26 @@ export function reduceChatEvent(
       return { messages, turn: initialTurnState(), changed }
     }
     default: {
+      if ((event.type as string) === 'command/run') {
+        const data = (event.data as unknown as { commandId: string; name: string })
+        turn.commandNames.set(data.commandId, data.name)
+        return { messages, turn, changed: false }
+      }
+      if ((event.type as string) === 'command/done') {
+        const data = (event.data as unknown as { commandId: string; kind: "success" | "error"; text?: string })
+        const name = turn.commandNames.get(data.commandId) ?? ''
+        turn.commandNames.delete(data.commandId)
+        const text = data.text ?? ''
+        if (data.kind !== 'error' && text.trim() === '') return { messages, turn, changed: false }
+        const label = name === '' ? '' : `${name} · `
+        messages.push({
+          kind: 'bubble',
+          id: nextId('cmd'),
+          role: data.kind === 'error' ? 'error' : 'assistant',
+          content: data.kind === 'error' && text.trim() === '' ? `${name} failed` : `${label}${text}`,
+        })
+        return { messages, turn, changed: true }
+      }
       if ((event.type as string) === 'llm/retry-started') {
         const changed = dropStepMessages(messages, turn, (event.data as { step: number }).step)
         markRunning(turn, true)

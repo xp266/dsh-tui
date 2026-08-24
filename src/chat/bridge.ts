@@ -101,6 +101,17 @@ interface ToolsLike {
   } | undefined
 }
 
+export interface RegistryCommand {
+  name: string
+  description: string
+  hint?: string
+}
+
+interface CommandsServiceLike {
+  list(agent: unknown): readonly { name: string; description: string; input?: { hint: string } }[]
+  execute(agent: unknown, line: string, signal: AbortSignal): Promise<unknown>
+}
+
 export interface ChatBridge {
   modelName(): string
   send(text: string): void
@@ -138,6 +149,9 @@ export interface ChatBridge {
   tokenStats(): TokenStats
   toolPresenter: ChatToolPresenter
   interactions: InteractionStore
+  listRegistryCommands?(): readonly RegistryCommand[]
+  onRegistryChanged?(listener: () => void): () => void
+  executeCommandLine?(line: string): Promise<void>
 }
 
 let sessionCounter = 0
@@ -195,6 +209,26 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   void registerWorkspace(ctx, currentCwd)
   let activeHandle: AgentHandle | undefined = await createAgent(currentCwd)
   let activeAgent = activeHandle.agent
+  const commandsService = ctx.get('commands') as CommandsServiceLike | undefined
+  const registryListeners = new Set<() => void>()
+  let registryCommands: RegistryCommand[] = []
+  const syncRegistry = (): void => {
+    if (commandsService === undefined) return
+    try {
+      registryCommands = commandsService.list(activeAgent).map(entry => ({
+        name: entry.name,
+        description: entry.description,
+        ...(entry.input?.hint === undefined ? {} : { hint: entry.input.hint }),
+      }))
+    } catch {
+      registryCommands = []
+    }
+    for (const listener of [...registryListeners]) listener()
+  }
+  try {
+    ;(ctx as unknown as { on(name: string, listener: () => void): void }).on('commands/change', () => syncRegistry())
+  } catch {}
+  syncRegistry()
   const llm = ctx.llm
   const sessionList = cachedList(() => computeSessionList(ctx), SESSION_LIST_TTL_MS)
   const efforts = cachedList(() => resolveEffortSummaries(currentSelection()), EFFORT_LIST_TTL_MS)
@@ -351,6 +385,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       const previous = activeHandle
       activeHandle = undefined
       activeAgent = existing
+      syncRegistry()
       if (previous !== undefined) await previous.dispose()
       syncCwd()
       for (const event of activeAgent.session.events) emit(event)
@@ -363,6 +398,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     const previous = activeHandle
     activeHandle = handle
     activeAgent = handle.agent
+    syncRegistry()
     if (previous !== undefined) await previous.dispose()
     syncCwd()
     for (const event of activeAgent.session.events) emit(event)
@@ -382,6 +418,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     const previous = activeHandle
     activeHandle = handle
     activeAgent = handle.agent
+    syncRegistry()
     if (previous !== undefined) await previous.dispose()
     void repairEffortSelection()
     sessionList.invalidate()
@@ -618,6 +655,20 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       return () => {
         handlers.delete(handler)
       }
+    },
+    listRegistryCommands: () => registryCommands,
+    onRegistryChanged(listener: () => void) {
+      registryListeners.add(listener)
+      return () => {
+        registryListeners.delete(listener)
+      }
+    },
+    async executeCommandLine(line: string) {
+      if (commandsService === undefined) return
+      const controller = new AbortController()
+      try {
+        await commandsService.execute(activeAgent, line, controller.signal)
+      } catch {}
     },
     listSessions,
     openSession,

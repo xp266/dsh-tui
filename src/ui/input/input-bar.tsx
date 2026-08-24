@@ -21,6 +21,9 @@ export interface InputBarHandle {
   wheel(delta: -1 | 1): void
   hintWheel(delta: -1 | 1): void
   hintClick(absoluteIndex: number): void
+  hintSelectAt(absoluteIndex: number): void
+  hintConfirm(): void
+  hintPick(absoluteIndex: number): void
 }
 
 interface InputBarProps {
@@ -97,6 +100,15 @@ export const InputBar = memo(function InputBar({
     },
     hintClick(absoluteIndex) {
       api.hintClickAt(absoluteIndex)
+    },
+    hintSelectAt(absoluteIndex) {
+      api.selectHint(absoluteIndex)
+    },
+    hintConfirm() {
+      api.confirmHint()
+    },
+    hintPick(absoluteIndex) {
+      api.hintPick(absoluteIndex)
     },
   }))
   const statusSegments: Array<{ text: string; color: string }> = []

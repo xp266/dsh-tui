@@ -4,8 +4,8 @@ import { isMouseResidue } from '../../terminal/mouse.ts'
 import { colToCharIndex } from '../../core/text.ts'
 import { moveCaretLine } from '../../core/composer-layout.ts'
 import { editBackspace, editDelete, editInsert } from '../../core/edit.ts'
-import { visibleCommands } from './commands.ts'
-import type { CommandAvailability } from './commands.ts'
+import { COMMANDS, filterHintEntries } from './commands.ts'
+import type { CommandHintItem } from './commands.ts'
 
 export interface ComposerState {
   value: string
@@ -22,6 +22,7 @@ export interface ComposerApi {
   confirmHint(): void
   hintMove(delta: -1 | 1): void
   hintClickAt(absoluteIndex: number): void
+  hintPick(absoluteIndex: number): void
 }
 
 export function useComposer(
@@ -29,7 +30,7 @@ export function useComposer(
   interactive: boolean,
   contentWidth: number,
   onCycleMode?: () => void,
-  isCommandAvailable?: CommandAvailability,
+  entries?: readonly CommandHintItem[],
 ): ComposerState {
   const [value, setValue] = useState('')
   const [cursor, setCursor] = useState(0)
@@ -40,14 +41,14 @@ export function useComposer(
   const hintOpenRef = useRef(false)
   const commandIndexRef = useRef(0)
   const widthRef = useRef(contentWidth)
-  const availabilityRef = useRef<CommandAvailability | undefined>(isCommandAvailable)
+  const entriesRef = useRef<readonly CommandHintItem[] | undefined>(entries)
   widthRef.current = contentWidth
-  availabilityRef.current = isCommandAvailable
+  entriesRef.current = entries
   valueRef.current = value
   cursorRef.current = cursor
   hintOpenRef.current = hintOpen
   commandIndexRef.current = commandIndex
-  const visibleFor = (text: string) => visibleCommands(text, availabilityRef.current)
+  const visibleFor = (text: string) => filterHintEntries(entriesRef.current ?? COMMANDS, text)
   const apiRef = useRef<ComposerApi>({
     moveLineBy(delta) {
       const next = moveLine(valueRef.current, widthRef.current, cursorRef.current, delta)
@@ -93,6 +94,11 @@ export function useComposer(
         return
       }
       apiRef.current.selectHint(absoluteIndex)
+    },
+    hintPick(absoluteIndex) {
+      if (!hintOpenRef.current) return
+      apiRef.current.selectHint(absoluteIndex)
+      apiRef.current.confirmHint()
     },
   })
   usePaste(text => {

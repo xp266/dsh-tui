@@ -41,7 +41,10 @@ export interface MouseSelectionOptions {
   inputHandle?: RefObject<InputBarHandle | null>
   panelActive?: boolean
   panelHandle?: RefObject<PanelPointerHandle | null>
-  onHintClick?(y: number): void
+  onHintPress?(x: number, y: number): void
+  onHintDragStart?(x: number, y: number): void
+  onHintDragMove?(x: number, y: number): void
+  onHintRelease?(x: number, y: number, dragged: boolean): void
   onDialogWheel?(y: number, dir: -1 | 1): boolean
   onScroll(next: number): void
   onToggleMessage(id: string): void
@@ -52,11 +55,12 @@ export interface MouseSelectionState {
   selection: LineSelection | null
   messageAreaSelection: LineSelection | null
   chromeSelection: LineSelection | null
+  setSelection(next: LineSelection | null | ((current: LineSelection | null) => LineSelection | null)): void
   clearSelection(): void
 }
 
 export function useMouseSelection(options: MouseSelectionOptions): MouseSelectionState {
-  const { messages, columns, rows, scrollTop, messageHeight, inputHeight, dialogOpen, hint, screen, inputHandle, panelActive = false, panelHandle, onHintClick, onDialogWheel, onScroll, onToggleMessage, onDialogClick } = options
+  const { messages, columns, rows, scrollTop, messageHeight, inputHeight, dialogOpen, hint, screen, inputHandle, panelActive = false, panelHandle, onHintPress, onHintDragStart, onHintDragMove, onHintRelease, onDialogWheel, onScroll, onToggleMessage, onDialogClick } = options
   const [selection, setSelection] = useState<LineSelection | null>(null)
   const messagesRef = useRef(messages)
   const widthRef = useRef(columns)
@@ -70,7 +74,10 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
   const inputHandleRef = useRef(inputHandle)
   const panelActiveRef = useRef(panelActive)
   const panelHandleRef = useRef(panelHandle)
-  const onHintClickRef = useRef(onHintClick)
+  const onHintPressRef = useRef(onHintPress)
+  const onHintDragStartRef = useRef(onHintDragStart)
+  const onHintDragMoveRef = useRef(onHintDragMove)
+  const onHintReleaseRef = useRef(onHintRelease)
   const onDialogWheelRef = useRef(onDialogWheel)
   const clickCandidateRef = useRef<{ messageId: string; y: number; x: number; moved: boolean } | null>(null)
   const dialogClickCandidateRef = useRef<{ x: number; y: number } | null>(null)
@@ -96,7 +103,10 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
   inputHandleRef.current = inputHandle
   panelActiveRef.current = panelActive
   panelHandleRef.current = panelHandle
-  onHintClickRef.current = onHintClick
+  onHintPressRef.current = onHintPress
+  onHintDragStartRef.current = onHintDragStart
+  onHintDragMoveRef.current = onHintDragMove
+  onHintReleaseRef.current = onHintRelease
   onDialogWheelRef.current = onDialogWheel
   onScrollRef.current = onScroll
   onToggleMessageRef.current = onToggleMessage
@@ -211,15 +221,8 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
       onClick?(y: number, x: number): void
       onWheel?(dir: -1 | 1, y: number): boolean
     }
+    const hintGestureRef = { current: null as { x: number; y: number; dragged: boolean } | null }
     const clickRegions: MouseRegion[] = [
-      {
-        contains: y => {
-          if (dialogOpenRef.current) return false
-          const region = activeHintRegion()
-          return region !== null && y >= region.top && y <= region.bottom
-        },
-        onClick: y => onHintClickRef.current?.(y),
-      },
       {
         contains: y => !dialogOpenRef.current && !panelActiveRef.current && inInputContent(y),
         onClick: (y, x) => {
@@ -307,6 +310,23 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
         case 'down': {
           if (event.button !== 0) return
           if (onScrollbarDown(event.x, event.y)) return
+          const hintRegionActive = (() => {
+            if (dialogOpenRef.current || panelActiveRef.current) return false
+            const region = activeHintRegion()
+            return region !== null && event.y >= region.top && event.y <= region.bottom
+          })()
+          if (hintRegionActive) {
+            hintGestureRef.current = { x: event.x, y: event.y, dragged: false }
+            onHintPressRef.current?.(event.x, event.y)
+            clickCandidateRef.current = null
+            dialogClickCandidateRef.current = null
+            panelClickCandidateRef.current = null
+            inputClickCandidateRef.current = null
+            stopDragScroll()
+            pointerSessionRef.current = { inMessageArea: false }
+            setSelection(null)
+            return
+          }
           clickCandidateRef.current = null
           dialogClickCandidateRef.current = null
           panelClickCandidateRef.current = null
@@ -322,6 +342,16 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
           return
         }
         case 'drag': {
+          const gesture = hintGestureRef.current
+          if (gesture !== null) {
+            if (!gesture.dragged) {
+              gesture.dragged = true
+              onHintDragStartRef.current?.(event.x, event.y)
+            } else {
+              onHintDragMoveRef.current?.(event.x, event.y)
+            }
+            return
+          }
           if (scrollbarSessionRef.current !== null) {
             onScrollbarDrag(event.y)
             return
@@ -386,6 +416,12 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
           return
         }
         case 'up': {
+          const pendingGesture = hintGestureRef.current
+          if (pendingGesture !== null) {
+            hintGestureRef.current = null
+            onHintReleaseRef.current?.(event.x, event.y, pendingGesture.dragged)
+            return
+          }
           stopDragScroll()
           scrollbarSessionRef.current = null
           pointerSessionRef.current = { inMessageArea: false }
@@ -449,6 +485,7 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
     selection,
     messageAreaSelection,
     chromeSelection,
+    setSelection,
     clearSelection() {
       setSelection(null)
     },
