@@ -350,6 +350,27 @@ describe('App layout', () => {
     expect(frame).not.toContain('/home/user/py')
   })
 
+  it('shows the compacting status while a compaction is in flight and renders its bubble', async () => {
+    const bridge = fakeBridge()
+    let handler: ((event: SessionEvent) => void) | undefined
+    bridge.subscribe = cb => {
+      handler = cb
+      return () => {}
+    }
+    const { lastFrame } = render(<App bridge={bridge} />)
+    handler?.({ type: 'compaction/start', seq: 1, time: 0, data: { compactionId: 'cp9', turn: null } } as unknown as SessionEvent)
+    await new Promise(resolve => setTimeout(resolve, 120))
+    let frame = stripAnsi(lastFrame() ?? '')
+    expect(frame).toMatch(/Compacting/)
+    expect(frame).toContain('Compact')
+    handler?.({ type: 'compaction/summary', seq: 2, time: 0, data: { compactionId: 'cp9', summary: [{ type: 'text', text: 'kept the plan' }], shadowedSeqs: [1, 2], shadowedTokenCount: 900, provider: 'p', model: 'm' } } as unknown as SessionEvent)
+    handler?.({ type: 'compaction/end', seq: 3, time: 0, data: { compactionId: 'cp9', turn: null } } as unknown as SessionEvent)
+    await new Promise(resolve => setTimeout(resolve, 120))
+    frame = stripAnsi(lastFrame() ?? '')
+    expect(frame).toContain('kept the plan')
+    expect(frame).not.toMatch(/Compacting/)
+  })
+
   it('interrupts on the second esc within three seconds but not the first', async () => {
     const bridge = fakeBridge()
     let handler: ((event: SessionEvent) => void) | undefined

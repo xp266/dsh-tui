@@ -45,7 +45,7 @@ export const MessageRow = memo(
           paddingLeft={info.spinner ? 0 : paddingLeft}
           backgroundColor={info.lineBg ?? (info.background ? backgroundFor(info.role) : undefined)}
         >
-          {info.spinner && <TickGlyph y={row} col={col - 2} color={baseColor} tick={spinnerTick} />}
+          {info.spinner && <TickGlyph y={row} col={col - 2} color={info.accent ?? baseColor} tick={spinnerTick} />}
           {info.segments !== undefined && info.segments.length > 0 ? (
             <SelectableText y={row} col={col} segments={info.segments} color={baseColor} messageLayer flow />
           ) : (
@@ -105,6 +105,7 @@ export const MessageRow = memo(
       a.thinking === b.thinking &&
       a.segKey === b.segKey &&
       a.spinner === b.spinner &&
+      a.accent === b.accent &&
       a.lineBg === b.lineBg
     )
   },

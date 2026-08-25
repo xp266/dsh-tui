@@ -11,7 +11,7 @@ import type { Message } from '../../model/message.ts'
 
 const FRAME_MS = 33
 
-const IDLE_ACTIVITY: AgentActivity = { running: false, phase: 'awaiting-request' }
+const IDLE_ACTIVITY: AgentActivity = { running: false, phase: 'awaiting-request', compacting: false }
 const NO_TODOS: TodoItemLike[] = []
 
 function todosKey(todos: readonly TodoItemLike[]): string {
@@ -104,9 +104,9 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
       if (dirty) setMessages([...state.messages])
       if (retryDirty) setRetryStatus(retry)
       const turn = state.turn
-      setActivity(previous => previous.running === turn.running && previous.phase === turn.phase
+      setActivity(previous => previous.running === turn.running && previous.phase === turn.phase && previous.compacting === turn.compacting
         ? previous
-        : { running: turn.running, phase: turn.phase })
+        : { running: turn.running, phase: turn.phase, compacting: turn.compacting })
       if (latestTodos !== undefined) {
         setTodos(previous => todosKey(previous) === todosKey(latestTodos!) ? previous : latestTodos!)
       }

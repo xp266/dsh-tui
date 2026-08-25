@@ -7,6 +7,7 @@ import { renderMarkdown } from './md/index.ts'
 import { renderToolDiffBody, toolDiffHeader } from './tool-diff.ts'
 import { segmentsKey } from '../../core/segments.ts'
 import type { Segment } from '../../core/segments.ts'
+import { colors } from '../../theme.ts'
 import { BUBBLE_WIDTH_OFFSET, HEADER_LABEL_COL, CHROME_MARGIN_X, SCROLLBAR_COL_FROM_EDGE, SCROLLBAR_GAP_COLS } from '../../core/metrics.ts'
 
 export { HEADER_LABEL_COL }
@@ -34,6 +35,7 @@ export interface RowInfo {
   segments?: Segment[]
   segKey?: string
   spinner?: boolean
+  accent?: string
   lineBg?: string
 }
 
@@ -73,15 +75,21 @@ function wrapFor(message: Message, width: number): WrapEntry {
   const entry = wrapCache.get(key)
   const content = message.kind === 'bubble'
     ? message.content
-    : message.kind === 'collapsible' ? message.body : toolDiffKey(message)
+    : message.kind === 'collapsible' ? message.body
+      : message.kind === 'compaction' ? message.summary
+        : toolDiffKey(message)
+  const identity = message.kind === 'compaction' && message.running === true
+    ? `${content}\u0000running`
+    : content
   const collapsed = message.kind === 'collapsible' && message.collapsed
-  if (entry !== undefined && entry.content === content && entry.collapsed === collapsed) {
+  if (entry !== undefined && entry.content === identity && entry.collapsed === collapsed) {
     return entry
   }
   const plainBubble = message.kind === 'bubble' && message.variant !== undefined
   const useMarkdown = !plainBubble
     && (message.kind === 'bubble' && message.role === 'assistant'
-      || message.kind === 'collapsible' && message.thinking === true)
+      || message.kind === 'collapsible' && message.thinking === true
+      || message.kind === 'compaction')
   let lines: string[]
   let rows: Segment[][] | null = null
   let bgs: (string | undefined)[] | null = null
@@ -99,7 +107,7 @@ function wrapFor(message: Message, width: number): WrapEntry {
   } else {
     lines = wrapLines(content, width - BUBBLE_WIDTH_OFFSET)
   }
-  const next: WrapEntry = { content, collapsed, lines, rows, bgs }
+  const next: WrapEntry = { content: identity, collapsed, lines, rows, bgs }
   evictWrapCacheIfNeeded()
   wrapCache.set(key, next)
   return next
@@ -127,6 +135,10 @@ export function lineCount(message: Message, width: number): number {
       return message.collapsed ? 2 : wrapFor(message, width).lines.length + 3
     case 'tool-diff':
       return wrapFor(message, width).lines.length + 5
+    case 'compaction': {
+      const body = message.error !== undefined ? 1 : message.summary === '' ? 0 : wrapFor(message, width).lines.length
+      return body + 5
+    }
   }
 }
 
@@ -310,6 +322,73 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
         background: true,
         role,
         ...(bg === undefined ? {} : { lineBg: bg }),
+        ...segments === undefined ? {} : { segments, segKey: segmentsKeyCached(segments) },
+      }
+    }
+    case 'compaction': {
+      const innerWidth = Math.max(8, width - BUBBLE_WIDTH_OFFSET)
+      const errorLine = message.error === undefined ? undefined : truncate(`error: ${message.error}`, innerWidth)
+      const wrapped = message.summary === '' || errorLine !== undefined ? null : wrapFor(message, width)
+      const body = errorLine !== undefined ? 1 : wrapped?.lines.length ?? 0
+      if (offset === 0 || offset === count - 2) {
+        return { ...base, kind: 'pad', background: true, role: 'assistant' as const }
+      }
+      if (offset === count - 1) {
+        return { ...base, kind: 'blank' }
+      }
+      if (offset === 1) {
+        const segments: Segment[] = [{ text: 'Compact', style: { color: colors.sectionHeader, bold: true } }]
+        return {
+          ...base,
+          kind: 'text',
+          text: 'Compact',
+          colStart: HEADER_LABEL_COL,
+          background: true,
+          role: 'assistant' as const,
+          segments,
+          segKey: segmentsKeyCached(segments),
+          ...(message.running ? { spinner: true, accent: colors.sectionHeader } : {}),
+        }
+      }
+      if (offset === 2) {
+        const segments: Segment[] = [{ text: '─'.repeat(innerWidth), style: { color: colors.sectionHeader, bold: true } }]
+        return {
+          ...base,
+          kind: 'text',
+          text: segments[0]!.text,
+          colStart: 4,
+          selectable: true,
+          background: true,
+          role: 'assistant' as const,
+          segments,
+          segKey: segmentsKeyCached(segments),
+        }
+      }
+      const index = offset - 3
+      if (errorLine !== undefined) {
+        if (index > 0) return { ...base, kind: 'blank' }
+        const segments: Segment[] = [{ text: errorLine, style: { color: colors.errorText } }]
+        return {
+          ...base,
+          kind: 'text',
+          text: errorLine,
+          colStart: 4,
+          selectable: true,
+          background: true,
+          role: 'assistant' as const,
+          segments,
+          segKey: segmentsKeyCached(segments),
+        }
+      }
+      const segments = wrapped?.rows?.[index]
+      return {
+        ...base,
+        kind: 'text',
+        text: wrapped?.lines[index] ?? '',
+        colStart: 4,
+        selectable: true,
+        background: true,
+        role: 'assistant' as const,
         ...segments === undefined ? {} : { segments, segKey: segmentsKeyCached(segments) },
       }
     }

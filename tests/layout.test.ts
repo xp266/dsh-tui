@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Message } from '../src/model/message.ts'
-import { fitLabel, rowCount, rowInfoAt, rowIndexFor, selectionText } from '../src/ui/message/layout.ts'
+import { buildRowIndex, fitLabel, rowCount, rowInfoAt, rowIndexFor, selectionText } from '../src/ui/message/layout.ts'
 import type { LineSelection } from '../src/model/selection.ts'
 import { textWidth } from '../src/core/text.ts'
 import { createMdPalette } from '../src/ui/message/md/palette.ts'
@@ -209,5 +209,84 @@ describe('selection text extraction', () => {
     expect(rowIndexFor(next, WIDTH)).not.toBe(first)
     expect(rowIndexFor(messages, 40)).not.toBe(first)
     expect(rowIndexFor(messages, WIDTH).total).toBe(first.total)
+  })
+})
+
+describe('compaction bubble layout', () => {
+  const running: Message = {
+    kind: 'compaction',
+    id: 'c1',
+    compactionId: 'cp1',
+    running: true,
+    summary: '',
+  }
+
+  it('shows header and divider while running with no summary', () => {
+    expect(rowCount([running], WIDTH)).toBe(5)
+    expect(rowInfoAt([running], WIDTH, 0)).toMatchObject({ kind: 'pad', background: true })
+    const header = rowInfoAt([running], WIDTH, 1)
+    expect(header).toMatchObject({ kind: 'text', text: 'Compact', colStart: 4, spinner: true, accent: '#cc7e25' })
+    expect(header?.segments?.[0]).toMatchObject({ style: { color: '#cc7e25', bold: true } })
+    const divider = rowInfoAt([running], WIDTH, 2)
+    expect(divider?.segments?.[0]?.text).toBe('─'.repeat(WIDTH - 8))
+    expect(divider?.segments?.[0]?.style).toMatchObject({ color: '#cc7e25', bold: true })
+    expect(rowInfoAt([running], WIDTH, 3)).toMatchObject({ kind: 'pad' })
+    expect(rowInfoAt([running], WIDTH, 4)).toMatchObject({ kind: 'blank' })
+  })
+
+  it('renders the summary as markdown rows when done', () => {
+    const done: Message = {
+      kind: 'compaction',
+      id: 'c2',
+      compactionId: 'cp2',
+      running: false,
+      summary: 'plain **kept** tail',
+    }
+    const total = rowCount([done], WIDTH)
+    expect(total).toBe(6)
+    expect(rowInfoAt([done], WIDTH, 0)).toMatchObject({ kind: 'pad', background: true })
+    expect(rowInfoAt([done], WIDTH, 1)).toMatchObject({ kind: 'text', text: 'Compact' })
+    expect(rowInfoAt([done], WIDTH, 1)?.spinner).toBeUndefined()
+    expect(rowInfoAt([done], WIDTH, 2)?.segments?.[0]?.style).toMatchObject({ color: '#cc7e25', bold: true })
+    const bodyRow = rowInfoAt([done], WIDTH, 3)
+    expect(bodyRow).toMatchObject({ kind: 'text', colStart: 4, selectable: true, background: true })
+    expect(bodyRow?.text).toContain('kept')
+    expect(bodyRow?.segments?.some(segment => segment.style.bold === true)).toBe(true)
+    expect(rowInfoAt([done], WIDTH, total - 2)).toMatchObject({ kind: 'pad' })
+    expect(rowInfoAt([done], WIDTH, total - 1)).toMatchObject({ kind: 'blank' })
+  })
+
+  it('renders an end error as the body in the error color', () => {
+    const failed: Message = {
+      kind: 'compaction',
+      id: 'c3',
+      compactionId: 'cp3',
+      running: false,
+      summary: '',
+      error: 'summary diverged',
+    }
+    expect(rowCount([failed], WIDTH)).toBe(6)
+    const error = rowInfoAt([failed], WIDTH, 3)
+    expect(error?.text).toContain('error: summary diverged')
+    expect(error?.segments?.[0]?.style).toMatchObject({ color: '#ff6b6b' })
+  })
+
+  it('never emits control characters into rendered summary rows', () => {
+    const done: Message = {
+      kind: 'compaction',
+      id: 'c9',
+      compactionId: 'cp9',
+      running: false,
+      summary: 'kept **the** plan\n- second bullet wraps across the width boundary here',
+    }
+    const index = buildRowIndex([done], WIDTH)
+    for (let row = 0; row < index.total; row++) {
+      const info = index.rowAt(row)
+      if (info === null || info.kind !== 'text') continue
+      expect(info.text.includes('\u0000')).toBe(false)
+      for (const segment of info.segments ?? []) {
+        expect(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(segment.text)).toBe(false)
+      }
+    }
   })
 })

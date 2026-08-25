@@ -857,3 +857,77 @@ describe('agent activity tracking', () => {
     expect(failed.messages.at(-1)).toMatchObject({ kind: 'bubble', role: 'error', content: 'boom · nope' })
   })
 })
+
+describe('compaction events', () => {
+  function compactionStart(id: string): SessionEvent {
+    return { type: 'compaction/start', seq: 1, time: 0, data: { compactionId: id, turn: null } } as unknown as SessionEvent
+  }
+  function compactionSummary(id: string, text: string): SessionEvent {
+    return {
+      type: 'compaction/summary',
+      seq: 2,
+      time: 0,
+      data: {
+        compactionId: id,
+        summary: [{ type: 'text', text }],
+        shadowedRange: { start: 1, end: 9 },
+        shadowedSeqs: [1, 2, 3, 4],
+        shadowedTokenCount: 15300,
+        provider: 'deepseek',
+        model: 'deepseek-v4',
+      },
+    } as unknown as SessionEvent
+  }  function compactionEnd(id: string, error?: string): SessionEvent {
+    return { type: 'compaction/end', seq: 3, time: 0, data: { compactionId: id, turn: null, ...(error === undefined ? {} : { error }) } } as unknown as SessionEvent
+  }
+  function commandRun(commandId: string, name: string): SessionEvent {
+    return { type: 'command/run', seq: 1, time: 0, data: { commandId, name } } as unknown as SessionEvent
+  }
+  function commandDone(commandId: string, kind: 'success' | 'error', text?: string): SessionEvent {
+    return { type: 'command/done', seq: 2, time: 0, data: { commandId, kind, ...(text === undefined ? {} : { text }) } } as unknown as SessionEvent
+  }
+
+  it('shows a running bubble immediately and fills summary with stats when they arrive', () => {
+    const started = apply([], [compactionStart('cp1')])
+    expect(started.messages).toHaveLength(1)
+    expect(started.messages[0]).toMatchObject({ kind: 'compaction', running: true, summary: '' })
+    expect(started.turn.compacting).toBe(true)
+
+    const done = apply([], [compactionStart('cp1'), compactionSummary('cp1', '- kept the plan\n- dropped the noise')])
+    const message = done.messages[0]!
+    expect(message.kind === 'compaction' && message.summary).toContain('dropped the noise')
+
+    const ended = apply([], [compactionStart('cp1'), compactionSummary('cp1', 's'), compactionEnd('cp1')])
+    expect(ended.messages[0]).toMatchObject({ kind: 'compaction', running: false })
+    expect(ended.messages[0]!.kind === 'compaction' ? ended.messages[0]!.error : true).toBeUndefined()
+    expect(ended.turn.compacting).toBe(false)
+    expect(ended.turn.compactions.size).toBe(0)
+  })
+
+  it('records an end error on the bubble', () => {
+    const state = apply([], [compactionStart('cp2'), compactionSummary('cp2', 'partial'), compactionEnd('cp2', 'summary diverged')])
+    expect(state.messages[0]).toMatchObject({ kind: 'compaction', running: false, error: 'summary diverged' })
+  })
+
+  it('keeps the compaction alive across a turn boundary', () => {
+    const state = apply([], [compactionStart('cp3'), turnEnd(), compactionSummary('cp3', 'still here')])
+    expect(state.turn.compacting).toBe(true)
+    expect(state.messages[0]).toMatchObject({ kind: 'compaction', summary: 'still here' })
+  })
+
+  it('suppresses the duplicate success command bubble for compact but keeps failures', () => {
+    const manual = apply([], [
+      commandRun('cmd-1', 'compact'),
+      commandDone('cmd-1', 'success', 'Compacted 4 history items (~15.3k tokens).'),
+    ])
+    expect(manual.messages).toHaveLength(0)
+
+    const failed = apply([], [commandRun('cmd-2', 'compact'), commandDone('cmd-2', 'error', 'busy')])
+    expect(failed.messages.at(-1)).toMatchObject({ role: 'error', content: 'compact · busy' })
+  })
+
+  it('ignores orphan summary and end events for unknown compactions', () => {
+    const state = apply([], [compactionSummary('ghost', 'x'), compactionEnd('ghost')])
+    expect(state.messages).toHaveLength(0)
+  })
+})

@@ -39,6 +39,7 @@ function defaultReadFile(path: string): string | null {
 export interface AgentActivity {
   running: boolean
   phase: AgentPhase
+  compacting: boolean
 }
 
 export interface TurnState {
@@ -50,6 +51,8 @@ export interface TurnState {
   pendingTools: Map<string, string>
   pendingArgs: Map<string, string>
   commandNames: Map<string, string>
+  compactions: Map<string, string>
+  compacting: boolean
   running: boolean
   phase: AgentPhase
 }
@@ -64,6 +67,8 @@ export function initialTurnState(): TurnState {
     pendingTools: new Map(),
     pendingArgs: new Map(),
     commandNames: new Map(),
+    compactions: new Map(),
+    compacting: false,
     running: false,
     phase: 'awaiting-request',
   }
@@ -394,7 +399,7 @@ export function reduceChatEvent(
       }
       turn.pendingTools.clear()
       for (const message of messages) {
-        if (!message.streaming) continue
+        if (message.kind === 'compaction' || !message.streaming) continue
         changed = true
         message.streaming = false
       }
@@ -403,7 +408,7 @@ export function reduceChatEvent(
         changed = true
         messages.push({ kind: 'bubble', id: nextId('error'), role: 'error', content: `error: ${reason.error.message}` })
       }
-      return { messages, turn: initialTurnState(), changed }
+      return { messages, turn: { ...initialTurnState(), compactions: turn.compactions, compacting: turn.compacting }, changed }
     }
     default: {
       if ((event.type as string) === 'command/run') {
@@ -415,6 +420,7 @@ export function reduceChatEvent(
         const data = (event.data as unknown as { commandId: string; kind: "success" | "error"; text?: string })
         const name = turn.commandNames.get(data.commandId) ?? ''
         turn.commandNames.delete(data.commandId)
+        if (name === 'compact' && data.kind !== 'error') return { messages, turn, changed: false }
         const text = data.text ?? ''
         if (data.kind !== 'error' && text.trim() === '') return { messages, turn, changed: false }
         const label = name === '' ? '' : `${name} · `
@@ -430,6 +436,37 @@ export function reduceChatEvent(
         const changed = dropStepMessages(messages, turn, (event.data as { step: number }).step)
         markRunning(turn, true)
         return { messages, turn, changed }
+      }
+      if ((event.type as string) === 'compaction/start') {
+        const data = (event.data as unknown as { compactionId: string })
+        const id = nextId('cmp')
+        turn.compactions.set(data.compactionId, id)
+        turn.compacting = true
+        messages.push({ kind: 'compaction', id, compactionId: data.compactionId, running: true, summary: '' })
+        return { messages, turn, changed: true }
+      }
+      if ((event.type as string) === 'compaction/summary') {
+        const data = (event.data as unknown as {
+          compactionId: string
+          summary: Array<{ type: string; text?: string }>
+        })
+        const id = turn.compactions.get(data.compactionId)
+        if (id === undefined) return { messages, turn, changed: false }
+        updateById(messages, id, message => message.kind === 'compaction'
+          ? { ...message, summary: textFromBlocks(data.summary as Parameters<typeof textFromBlocks>[0]) }
+          : message)
+        return { messages, turn, changed: true }
+      }
+      if ((event.type as string) === 'compaction/end') {
+        const data = (event.data as unknown as { compactionId: string; error?: string })
+        const id = turn.compactions.get(data.compactionId)
+        if (id === undefined) return { messages, turn, changed: false }
+        turn.compactions.delete(data.compactionId)
+        turn.compacting = false
+        updateById(messages, id, message => message.kind === 'compaction'
+          ? { ...message, running: false, ...(data.error === undefined ? {} : { error: data.error }) }
+          : message)
+        return { messages, turn, changed: true }
       }
       return { messages, turn, changed: CHROME_EVENTS.has(event.type) }
     }

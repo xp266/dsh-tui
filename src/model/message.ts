@@ -40,4 +40,13 @@ export interface ToolDiffMessage {
   running?: boolean
 }
 
-export type Message = BubbleMessage | CollapsibleMessage | ToolDiffMessage
+export interface CompactionMessage {
+  kind: 'compaction'
+  id: string
+  compactionId: string
+  running: boolean
+  summary: string
+  error?: string
+}
+
+export type Message = BubbleMessage | CollapsibleMessage | ToolDiffMessage | CompactionMessage

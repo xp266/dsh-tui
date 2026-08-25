@@ -74,6 +74,7 @@ function commandForCall(bridge: ChatBridge | undefined, callId: string | undefin
 function agentStatusLabel(activity: AgentActivity, panel: ActivePanel, retryStatus?: RetryStatus): string {
   if (panel?.kind === 'approval') return 'Waiting for permission'
   if (panel?.kind === 'question') return 'Waiting for selection'
+  if (activity.compacting) return 'Compacting'
   if (retryStatus !== undefined) {
     const remain = retryStatus.untilTs === 0
       ? undefined
@@ -114,12 +115,13 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     [todoActive],
   )
   const [uiTick, setUiTick] = useState(0)
+  const busy = running || activity.compacting
   useEffect(() => {
-    if (!running) return
+    if (!busy) return
     setUiTick(0)
     const timer = setInterval(() => setUiTick(tick => (tick + 1) % SPINNER_FRAMES.length), 100)
     return () => clearInterval(timer)
-  }, [running])
+  }, [busy])
   const [escArmed, setEscArmed] = useState(false)
   const escAtRef = useRef(0)
   const escTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -285,7 +287,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   useInput((input, key) => {
     if (dialog !== null && !selection) return
     if (key.escape) {
-      if (panel === null && running && bridge !== undefined) {
+      if (panel === null && busy && bridge !== undefined) {
         const now = Date.now()
         if (escArmed && now - escAtRef.current <= INTERRUPT_ARM_MS) {
           disarmInterrupt()
@@ -326,7 +328,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
           onScroll={applyScroll}
           interactive={dialog === null}
           themeTick={themeTick}
-          spinnerTick={running ? uiTick : 0}
+          spinnerTick={busy ? uiTick : 0}
         />
         <SelectionContext.Provider value={chromeSelection}>
           {panel === null && (
@@ -407,8 +409,8 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
               <Region y={rows - 1}>
                 {(() => {
                   const badge = running && todoBadge !== undefined ? `[Task ${todoBadge.current}/${todoBadge.total}] ` : ''
-                  const leftText = running ? `${badge}${agentStatusLabel(activity, panel, retryStatus)}` : cwdLabel(bridge)
-                  const hint = running ? (escArmed ? WORKING_ARMED_HINT : WORKING_HINT) : undefined
+                  const leftText = busy ? `${badge}${agentStatusLabel(activity, panel, retryStatus)}` : cwdLabel(bridge)
+                  const hint = busy ? (escArmed ? WORKING_ARMED_HINT : WORKING_HINT) : undefined
                   const hintCol = CHROME_TEXT_X + textWidth(leftText) + 2
                   const leftWidth = textWidth(leftText) + (hint === undefined ? 0 : 2 + textWidth(hint))
                   const avail = columns - CHROME_MARGIN_X * 2 - CHROME_TEXT_X
@@ -417,14 +419,14 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
                   return (
                     <>
                       <Box position="absolute" top={0} left={CHROME_MARGIN_X} width={columns - CHROME_MARGIN_X}>
-                        {running && <SpinnerGlyph tick={uiTick} />}
+                        {busy && <SpinnerGlyph tick={uiTick} />}
                       </Box>
                       <Box position="absolute" top={0} left={CHROME_TEXT_X} width={columns - CHROME_TEXT_X}>
                         <SelectableText
                           y={0}
                           col={CHROME_TEXT_X}
                           text={leftText}
-                          color={running ? colors.workspaceWriteText : colors.cwdText}
+                          color={busy ? colors.workspaceWriteText : colors.cwdText}
                         />
                       </Box>
                       {hint !== undefined && (
