@@ -18,6 +18,7 @@ export type RowKind = 'pad' | 'text' | 'header' | 'blank'
 export interface RowInfo {
   messageIndex: number
   messageId: string
+  lineNo: number
   kind: RowKind
   text: string
   colStart: number
@@ -186,6 +187,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
   const base: RowInfo = {
     messageIndex: index,
     messageId: message.id,
+    lineNo: offset,
     kind: 'blank',
     text: '',
     colStart: 0,

@@ -36,7 +36,7 @@ export function MessageList({ messages, height, width, scrollTop, onScroll, inte
   const endRow = Math.min(scrollTop + height, total)
   for (let row = scrollTop; row < endRow; row++) {
     const info = index.rowAt(row)
-    if (info) rows.push(<MessageRow key={row} info={info} row={row} themeTick={themeTick} spinnerTick={spinnerTick} />)
+    if (info) rows.push(<MessageRow key={`${info.messageId}:${info.lineNo}`} info={info} row={row} themeTick={themeTick} spinnerTick={spinnerTick} />)
   }
   const scrollbar = scrollbarGeometry(total, height, scrollTop)
   return (
