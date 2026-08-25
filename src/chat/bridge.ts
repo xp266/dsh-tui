@@ -113,7 +113,7 @@ export interface RegistryCommand {
 
 interface CommandsServiceLike {
   list(agent: unknown): readonly { name: string; description: string; input?: { hint: string } }[]
-  execute(agent: unknown, line: string, signal: AbortSignal): Promise<unknown>
+  execute(agent: unknown, line: string, imagesOrSignal: unknown, maybeSignal?: AbortSignal): Promise<unknown>
 }
 
 export interface ChatBridge {
@@ -689,12 +689,14 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     },
     async executeCommandLine(line: string) {
       if (commandsService === undefined) return
+      const controller = new AbortController()
       try {
-        await commandsService.execute(activeAgent, line, new AbortController().signal)
-      } catch (error) {
-        const text = error instanceof Error ? error.message : String(error)
-        emit({ type: 'command/done', data: { commandId: '', kind: 'error', text } } as unknown as SessionEvent)
-      }
+        if (commandsService.execute.length >= 4) {
+          await commandsService.execute(activeAgent, line, [], controller.signal)
+        } else {
+          await commandsService.execute(activeAgent, line, controller.signal)
+        }
+      } catch {}
     },
     listSessions,
     openSession,
