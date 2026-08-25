@@ -628,6 +628,160 @@ describe('todo_write bubble', () => {
   })
 })
 
+describe('write and edit tool diff bubbles', () => {
+  function callDelta(callId: string, name: string, delta: string): SessionEvent {
+    return {
+      type: 'assistant/chunk',
+      seq: 1,
+      time: 0,
+      data: { turn: 1, step: 1, chunk: { type: 'tool-call-delta', index: 0, id: CallId(callId), name, argumentsDelta: delta } },
+    }
+  }
+
+  function commitCall(callId: string, name: string, args: object): SessionEvent {
+    return {
+      type: 'tool/call',
+      seq: 2,
+      time: 0,
+      data: { turn: 1, step: 1, callId: CallId(callId), name, arguments: JSON.stringify(args) },
+    }
+  }
+
+  function settleResult(
+    callId: string,
+    overrides: { meta?: { diffs: unknown }; error?: { name: string; code: string }; isError?: boolean } = {},
+  ): SessionEvent {
+    return {
+      type: 'tool/result',
+      seq: 3,
+      time: 0,
+      data: {
+        turn: 1,
+        step: 1,
+        ...(overrides.error === undefined ? {} : { error: overrides.error }),
+        ...(overrides.meta === undefined ? {} : { meta: overrides.meta as never }),
+        message: createToolResultMessage({
+          callId: CallId(callId),
+          content: [{ type: 'text', text: 'The file has been updated successfully.' }],
+          isError: overrides.isError === true,
+        }),
+      },
+    }
+  }
+
+  it('shows only the header while write arguments stream, without any body', () => {
+    const state = apply([], [
+      callDelta('w1', 'write', '{"file_path":"/w/a.ts","content":"const a = 1'),
+      callDelta('w1', 'write', '\\nconst b = 2'),
+    ])
+    expect(state.messages[0]).toMatchObject({ kind: 'tool-diff', tool: 'write', path: '/w/a.ts', streaming: true, hunks: [] })
+  })
+
+  it('computes the overwrite diff once at commit against the on-disk old text', () => {
+    const events = [
+      callDelta('w4', 'write', '{"file_path":"/w/over.ts","content":"keep\\nnew\\n'),
+      callDelta('w4', 'write', 'tail"}'),
+      commitCall('w4', 'write', { file_path: '/w/over.ts', content: 'keep\nnew\ntail' }),
+    ]
+    let messages: Message[] = []
+    let turn = initialTurnState()
+    for (const event of events) {
+      const next = reduceChatEvent(messages, event, turn, undefined, {
+        readFile: path => path === '/w/over.ts' ? 'keep\nold\ndropped' : null,
+      })
+      messages = next.messages
+      turn = next.turn
+    }
+    expect(messages[0]).toMatchObject({
+      kind: 'tool-diff',
+      streaming: false,
+      running: true,
+      hunks: [[
+        { kind: 'ctx', text: 'keep' },
+        { kind: 'del', text: 'old' },
+        { kind: 'del', text: 'dropped' },
+        { kind: 'add', text: 'new' },
+        { kind: 'add', text: 'tail' },
+      ]],
+    })
+  })
+
+  it('falls back to additions-only when the old file cannot be read', () => {
+    const state = apply([], [
+      commitCall('w5', 'write', { file_path: '/w/new-file.ts', content: 'a\nb' }),
+    ])
+    expect(state.messages[0]).toMatchObject({
+      hunks: [[{ kind: 'add', text: 'a' }, { kind: 'add', text: 'b' }]],
+    })
+  })
+
+  it('commits the full diff on tool/call and keeps the spinner off', () => {
+    const state = apply([], [
+      callDelta('w2', 'write', '{"file_path":"/w/b.py","content":"x = 1"}'),
+      commitCall('w2', 'write', { file_path: '/w/b.py', content: 'x = 1\ny = 2' }),
+    ])
+    expect(state.messages[0]).toMatchObject({
+      kind: 'tool-diff',
+      path: '/w/b.py',
+      streaming: false,
+      running: true,
+      hunks: [[{ kind: 'add', text: 'x = 1' }, { kind: 'add', text: 'y = 2' }]],
+    })
+  })
+
+  it('shows only the header for edit while arguments stream and renders the diff once on commit', () => {
+    const state = apply([], [
+      callDelta('e1', 'edit', '{"file_path":"/w/c.ts","old_string":"a")'),
+      commitCall('e1', 'edit', { file_path: '/w/c.ts', old_string: 'a', new_string: 'b' }),
+    ])
+    expect(state.messages).toHaveLength(1)
+    expect(state.messages[0]).toMatchObject({
+      kind: 'tool-diff',
+      tool: 'edit',
+      path: '/w/c.ts',
+      hunks: [[{ kind: 'del', text: 'a' }, { kind: 'add', text: 'b' }]],
+      streaming: false,
+    })
+  })
+
+  it('applies result meta diffs with context lines when the tool settles', () => {
+    const state = apply([], [
+      commitCall('e2', 'edit', { file_path: '/w/d.ts', old_string: 'a', new_string: 'b' }),
+      settleResult('e2', {
+        meta: { diffs: [{ path: '/w/d.ts', oldText: 'ctx\na\nctx', newText: 'ctx\nb\nctx' }] },
+      }),
+    ])
+    expect(state.messages[0]).toMatchObject({
+      running: false,
+      hunks: [[
+        { kind: 'ctx', text: 'ctx' },
+        { kind: 'del', text: 'a' },
+        { kind: 'add', text: 'b' },
+        { kind: 'ctx', text: 'ctx' },
+      ]],
+    })
+  })
+
+  it('records the error on the bubble when the result fails', () => {
+    const state = apply([], [
+      commitCall('e3', 'edit', { file_path: '/w/e.ts', old_string: 'a', new_string: 'b' }),
+      settleResult('e3', { error: { name: 'FS_NOT_FOUND', code: 'E_MISSING' } }),
+    ])
+    expect(state.messages[0]).toMatchObject({
+      running: false,
+      error: 'error: FS_NOT_FOUND The file has been updated successfully.',
+    })
+  })
+
+  it('keeps the committed bubble when no presenter supplies structured views', () => {
+    const state = apply([], [
+      commitCall('w3', 'write', { file_path: 'f.txt', content: 'hi' }),
+      settleResult('w3'),
+    ])
+    expect(state.messages[0]).toMatchObject({ kind: 'tool-diff', running: false, hunks: [[{ kind: 'add', text: 'hi' }]] })
+  })
+})
+
 describe('agent activity tracking', () => {
   function turnStart(): SessionEvent {
     return { type: 'turn/start', seq: 1, time: 0, data: { turn: 1 } }

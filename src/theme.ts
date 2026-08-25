@@ -34,6 +34,11 @@ const palette = {
   thinkingLabel: '#0f9fcf',
   toolBodyText: '#808080',
 
+  diffAdded: '#3fb950',
+  diffRemoved: '#f85149',
+  diffAddedBackground: '#12261a',
+  diffRemovedBackground: '#2d1517',
+
   scrollTrackBackground: '#383838',
   scrollThumbBackground: '#9a9a9a',
 

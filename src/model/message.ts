@@ -22,4 +22,22 @@ export interface CollapsibleMessage {
   streaming?: boolean
 }
 
-export type Message = BubbleMessage | CollapsibleMessage
+export type DiffLineKind = 'ctx' | 'del' | 'add'
+
+export interface DiffLine {
+  kind: DiffLineKind
+  text: string
+}
+
+export interface ToolDiffMessage {
+  kind: 'tool-diff'
+  id: string
+  tool: string
+  path: string
+  hunks: readonly (readonly DiffLine[])[]
+  error?: string
+  streaming?: boolean
+  running?: boolean
+}
+
+export type Message = BubbleMessage | CollapsibleMessage | ToolDiffMessage

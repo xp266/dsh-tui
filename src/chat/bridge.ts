@@ -24,8 +24,10 @@ import {
   saveCustomProvider,
 } from './models.ts'
 import type { ConfiguredModel, CustomProviderForm, OfficialProvider } from './models.ts'
-import { formatDiffDiffs, formatReadLines, readBodyCol, relativize, summarizeOthers, summarizeParams, truncateSummary } from './tool-view.ts'
-import type { DiffLike, ReadLineLike } from './tool-view.ts'
+import { formatDiffDiffs, diffLineGroups, formatReadLines, readBodyCol, relativize, summarizeOthers, summarizeParams, truncateSummary } from './tool-view.ts'
+import type { DiffLike, ReadLineLike, ToolDiffView } from './tool-view.ts'
+
+export const DIFF_TOOL_NAMES: ReadonlySet<string> = new Set(['write', 'edit'])
 import { computeSessionList } from './session-list.ts'
 import type { SessionSummary } from './session-list.ts'
 import { builtInPresetName, isBlankSession, presetDisplayName } from './presets.ts'
@@ -63,12 +65,14 @@ export interface ToolResultPresentation {
   exitCode?: number
   signal?: string
   bodyCol?: number
+  diff?: ToolDiffView
 }
 
 export interface ToolCallPresentation {
   label: string
   body: string
   bodyCol?: number
+  diff?: ToolDiffView
 }
 
 export interface ChatToolPresenter {
@@ -509,8 +513,16 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
         const rawPath = view.diffs[0]!.path
         const path = typeof rawPath === 'string' && rawPath !== '' ? rawPath
           : String((args as { file_path?: unknown }).file_path ?? (args as { path?: unknown }).path ?? '')
+        const display = truncateSummary(relativize(path, cwd))
+        if (DIFF_TOOL_NAMES.has(name)) {
+          return {
+            label: `${name}[${display}]`,
+            body: '',
+            diff: { path: relativize(path, cwd), hunks: diffLineGroups(view.diffs) },
+          }
+        }
         return {
-          label: `${name}[${truncateSummary(relativize(path, cwd))}]`,
+          label: `${name}[${display}]`,
           body: formatDiffDiffs(view.diffs),
           bodyCol: 2,
         }
@@ -544,7 +556,11 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
         return { kind: 'replace', text: formatReadLines(view.lines), bodyCol: readBodyCol(view.lines) }
       }
       if (view.card === 'diff' && view.diffs !== undefined) {
-        return { kind: 'replace', text: formatDiffDiffs(view.diffs), bodyCol: 2 }
+        const base = { kind: 'replace' as const, text: formatDiffDiffs(view.diffs), bodyCol: 2 }
+        if (!DIFF_TOOL_NAMES.has(call.name)) return base
+        const rawPath = view.diffs[0]!.path
+        const path = typeof rawPath === 'string' && rawPath !== '' ? rawPath : ''
+        return { ...base, diff: { path: relativize(path, currentCwd), hunks: diffLineGroups(view.diffs) } }
       }
       if (view.card === 'generic' && view.content !== undefined) {
         return { kind: 'append', text: textFromBlocks(view.content) }

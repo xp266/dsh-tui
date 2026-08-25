@@ -44,7 +44,7 @@ export const MessageRow = memo(
           width={info.backgroundWidth}
           paddingLeft={info.spinner ? 0 : paddingLeft}
           paddingRight={2}
-          backgroundColor={info.background ? backgroundFor(info.role) : undefined}
+          backgroundColor={info.lineBg ?? (info.background ? backgroundFor(info.role) : undefined)}
         >
           {info.spinner && <TickGlyph y={row} col={col - 2} color={baseColor} tick={spinnerTick} />}
           {info.segments !== undefined && info.segments.length > 0 ? (
@@ -105,7 +105,8 @@ export const MessageRow = memo(
       a.collapsed === b.collapsed &&
       a.thinking === b.thinking &&
       a.segKey === b.segKey &&
-      a.spinner === b.spinner
+      a.spinner === b.spinner &&
+      a.lineBg === b.lineBg
     )
   },
 )

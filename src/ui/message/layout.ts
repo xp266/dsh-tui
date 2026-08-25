@@ -4,6 +4,7 @@ import { selectedRange } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
 import { sliceByColumns } from '../selection-registry.ts'
 import { renderMarkdown } from './md/index.ts'
+import { renderToolDiffBody, toolDiffHeader } from './tool-diff.ts'
 import { segmentsKey } from '../../core/segments.ts'
 import type { Segment } from '../../core/segments.ts'
 import { BUBBLE_WIDTH_OFFSET, HEADER_LABEL_COL } from '../../core/metrics.ts'
@@ -32,6 +33,7 @@ export interface RowInfo {
   segments?: Segment[]
   segKey?: string
   spinner?: boolean
+  lineBg?: string
 }
 
 interface WrapEntry {
@@ -39,6 +41,7 @@ interface WrapEntry {
   collapsed: boolean
   lines: string[]
   rows: Segment[][] | null
+  bgs: (string | undefined)[] | null
 }
 
 const wrapCache = new Map<string, WrapEntry>()
@@ -55,10 +58,21 @@ function evictWrapCacheIfNeeded(): void {
   }
 }
 
+function toolDiffKey(message: Extract<Message, { kind: 'tool-diff' }>): string {
+  let key = `${message.tool}\u0000${message.path}\u0000${message.error ?? ''}`
+  for (const hunk of message.hunks) {
+    key += '\u0001'
+    for (const line of hunk) key += `${line.kind}\u0002${line.text}\n`
+  }
+  return key
+}
+
 function wrapFor(message: Message, width: number): WrapEntry {
   const key = `${message.id}:${width}`
   const entry = wrapCache.get(key)
-  const content = message.kind === 'bubble' ? message.content : message.body
+  const content = message.kind === 'bubble'
+    ? message.content
+    : message.kind === 'collapsible' ? message.body : toolDiffKey(message)
   const collapsed = message.kind === 'collapsible' && message.collapsed
   if (entry !== undefined && entry.content === content && entry.collapsed === collapsed) {
     return entry
@@ -69,7 +83,13 @@ function wrapFor(message: Message, width: number): WrapEntry {
       || message.kind === 'collapsible' && message.thinking === true)
   let lines: string[]
   let rows: Segment[][] | null = null
-  if (useMarkdown) {
+  let bgs: (string | undefined)[] | null = null
+  if (message.kind === 'tool-diff') {
+    const rendered = renderToolDiffBody(message, width - BUBBLE_WIDTH_OFFSET)
+    lines = rendered.lines
+    rows = rendered.rows
+    bgs = rendered.bgs
+  } else if (useMarkdown) {
     const rendered = renderMarkdown(content, width - BUBBLE_WIDTH_OFFSET, message.kind === 'collapsible')
     rows = rendered.rows
     lines = rendered.lines
@@ -78,7 +98,7 @@ function wrapFor(message: Message, width: number): WrapEntry {
   } else {
     lines = wrapLines(content, width - BUBBLE_WIDTH_OFFSET)
   }
-  const next: WrapEntry = { content, collapsed, lines, rows }
+  const next: WrapEntry = { content, collapsed, lines, rows, bgs }
   evictWrapCacheIfNeeded()
   wrapCache.set(key, next)
   return next
@@ -104,6 +124,8 @@ export function lineCount(message: Message, width: number): number {
       return wrapFor(message, width).lines.length + (isCompactBubble(message) ? 1 : 3)
     case 'collapsible':
       return message.collapsed ? 2 : wrapFor(message, width).lines.length + 3
+    case 'tool-diff':
+      return wrapFor(message, width).lines.length + 5
   }
 }
 
@@ -248,6 +270,46 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
         }
       }
       return { ...base, kind: 'blank' }
+    }
+    case 'tool-diff': {
+      const wrapped = wrapFor(message, width)
+      const role = 'assistant' as const
+      if (offset === 0 || offset === count - 2) {
+        return { ...base, kind: 'pad', background: true, role }
+      }
+      if (offset === count - 1) {
+        return { ...base, kind: 'blank' }
+      }
+      if (offset === 1) {
+        return {
+          ...base,
+          kind: 'text',
+          text: toolDiffHeader(message),
+          colStart: 4,
+          selectable: true,
+          background: true,
+          muted: true,
+          role,
+          ...(message.streaming ? { spinner: true } : {}),
+        }
+      }
+      if (offset === 2) {
+        return { ...base, kind: 'pad', background: true, role }
+      }
+      const index = offset - 3
+      const segments = wrapped.rows?.[index]
+      const bg = wrapped.bgs?.[index]
+      return {
+        ...base,
+        kind: 'text',
+        text: wrapped.lines[index] ?? '',
+        colStart: 4,
+        selectable: true,
+        background: true,
+        role,
+        ...(bg === undefined ? {} : { lineBg: bg }),
+        ...segments === undefined ? {} : { segments, segKey: segmentsKeyCached(segments) },
+      }
     }
   }
 }

@@ -135,4 +135,84 @@ describe('tool streaming bubble', () => {
     expect(settledLine).toBeTruthy()
     expect([...(settledLine ?? '')].some(ch => SPINNER_CHARS.has(ch))).toBe(false)
   })
+
+  it('holds the write body during argument streaming and shows the diff at commit', async () => {
+    const bridge = fakeBridge()
+    let handler: ((event: SessionEvent) => void) | undefined
+    bridge.subscribe = cb => {
+      handler = cb
+      return () => {}
+    }
+    const view = render(<App bridge={bridge} />)
+    await flush()
+
+    act(() => {
+      handler?.({
+        type: 'assistant/chunk',
+        seq: 1,
+        time: 0,
+        data: {
+          turn: 1,
+          step: 1,
+          chunk: { type: 'tool-call-delta', index: 0, id: CallId('c9'), name: 'write', argumentsDelta: '{"file_path":"src/none/a.ts","content":"const a = 1' },
+        },
+      } as unknown as SessionEvent)
+    })
+    await flush(250)
+    const streamingFrame = stripAnsi(view.lastFrame() ?? '')
+    expect(streamingFrame).toContain('write src/none/a.ts')
+    expect(streamingFrame).not.toContain('+ const a = 1')
+    expect([...streamingFrame].some(ch => SPINNER_CHARS.has(ch))).toBe(true)
+
+    act(() => {
+      handler?.({ type: 'tool/call', seq: 2, time: 0, data: { turn: 1, step: 1, callId: CallId('c9'), name: 'write', arguments: '{"file_path":"src/none/a.ts","content":"const a = 1\\nconst b = 2"}' } } as unknown as SessionEvent)
+    })
+    await flush(250)
+    const committedFrame = stripAnsi(view.lastFrame() ?? '')
+    expect(committedFrame).toContain('+ const b = 2')
+    const bubbleLines = committedFrame.split('\n').filter(line => line.includes('write src/none/a.ts') || line.trimStart().startsWith('+ const'))
+    expect(bubbleLines.length).toBeGreaterThan(0)
+    expect(bubbleLines.some(line => [...line].some(ch => SPINNER_CHARS.has(ch)))).toBe(false)
+  })
+
+  it('holds the edit body until the call commits, then shows the full diff at once', async () => {
+    const bridge = fakeBridge()
+    let handler: ((event: SessionEvent) => void) | undefined
+    bridge.subscribe = cb => {
+      handler = cb
+      return () => {}
+    }
+    const view = render(<App bridge={bridge} />)
+    await flush()
+
+    act(() => {
+      handler?.({
+        type: 'assistant/chunk',
+        seq: 1,
+        time: 0,
+        data: {
+          turn: 1,
+          step: 1,
+          chunk: { type: 'tool-call-delta', index: 0, id: CallId('c10'), name: 'edit', argumentsDelta: '{"file_path":"src/b.ts","old_string":"old",' },
+        },
+      } as unknown as SessionEvent)
+    })
+    await flush(250)
+    const streamingFrame = stripAnsi(view.lastFrame() ?? '')
+    expect(streamingFrame).toContain('edit src/b.ts')
+    expect(streamingFrame).not.toContain('- old')
+
+    act(() => {
+      handler?.({
+        type: 'tool/call',
+        seq: 2,
+        time: 0,
+        data: { turn: 1, step: 1, callId: CallId('c10'), name: 'edit', arguments: '{"file_path":"src/b.ts","old_string":"old","new_string":"new"}' },
+      } as unknown as SessionEvent)
+    })
+    await flush(250)
+    const committedFrame = stripAnsi(view.lastFrame() ?? '')
+    expect(committedFrame).toContain('- old')
+    expect(committedFrame).toContain('+ new')
+  })
 })

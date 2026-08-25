@@ -1,8 +1,12 @@
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import type { Message } from '../model/message.ts'
+import { readFileSync } from 'node:fs'
+import type { Message, ToolDiffMessage } from '../model/message.ts'
 import { reasoningFromBlocks, textFromBlocks } from './blocks.ts'
 import type { ChatToolPresenter, ToolResultLike } from './bridge.ts'
+import { DIFF_TOOL_NAMES } from './bridge.ts'
 import type { CollapsibleMessage } from '../model/message.ts'
+import { extractPartialJsonFields } from './partial-json.ts'
+import { diffCallFromArgs, diffGroupsFromTexts, diffsFromResultMeta, diffLineGroups, flattenText, truncateSummary } from './tool-view.ts'
 import {
   ASK_USER_TOOL_NAME,
   formatAskUserBubble,
@@ -20,6 +24,18 @@ import {
 
 export type AgentPhase = 'awaiting-request' | 'thinking' | 'working'
 
+export interface ReduceOptions {
+  readFile?: (path: string) => string | null
+}
+
+function defaultReadFile(path: string): string | null {
+  try {
+    return readFileSync(path, 'utf8')
+  } catch {
+    return null
+  }
+}
+
 export interface AgentActivity {
   running: boolean
   phase: AgentPhase
@@ -32,6 +48,7 @@ export interface TurnState {
   pendingText: Map<number, string>
   askArgs: Map<string, unknown>
   pendingTools: Map<string, string>
+  pendingArgs: Map<string, string>
   commandNames: Map<string, string>
   running: boolean
   phase: AgentPhase
@@ -45,6 +62,7 @@ export function initialTurnState(): TurnState {
     pendingText: new Map(),
     askArgs: new Map(),
     pendingTools: new Map(),
+    pendingArgs: new Map(),
     commandNames: new Map(),
     running: false,
     phase: 'awaiting-request',
@@ -89,6 +107,7 @@ export function reduceChatEvent(
   event: SessionEvent,
   turn: TurnState,
   presenter?: ChatToolPresenter,
+  options: ReduceOptions = {},
 ): { messages: Message[]; turn: TurnState; changed: boolean } {
   switch (event.type) {
     case 'user/message': {
@@ -101,7 +120,7 @@ export function reduceChatEvent(
       if (chunk.type === 'reasoning-delta') return appendChunk(messages, turn, chunk.text, event.data.step, 'thinking')
       if (chunk.type === 'text-delta') return appendChunk(messages, turn, chunk.text, event.data.step, 'assistant')
       if (chunk.type === 'tool-call-delta') {
-        return appendToolDelta(messages, turn, chunk.id, chunk.name)
+        return appendToolDelta(messages, turn, chunk.id, chunk.name, chunk.argumentsDelta)
       }
       return { messages, turn, changed: false }
     }
@@ -146,6 +165,36 @@ export function reduceChatEvent(
         markPhase(turn, 'working')
         return { messages, turn, changed: true }
       }
+      if (DIFF_TOOL_NAMES.has(event.data.name)) {
+        let args: unknown
+        try {
+          args = JSON.parse(event.data.arguments)
+        } catch {}
+        const view = presenter?.call(event.data.name, event.data.callId, event.data.arguments)
+        let diff = view?.diff ?? diffCallFromArgs(event.data.name, args)
+        if (event.data.name === 'write') {
+          const record = typeof args === 'object' && args !== null ? args as Record<string, unknown> : {}
+          const content = typeof record.content === 'string' ? record.content : ''
+          const filePath = typeof record.file_path === 'string' ? record.file_path : diff.path
+          const oldText = (options.readFile ?? defaultReadFile)(filePath)
+          if (oldText !== null) {
+            diff = { path: diff.path !== '' ? diff.path : filePath, hunks: diffGroupsFromTexts(oldText, content) }
+          }
+        }
+        const id = commitToolPlaceholder(messages, turn, event.data.callId, {
+          kind: 'tool-diff',
+          id: nextId('tdiff'),
+          tool: event.data.name,
+          path: diff.path,
+          hunks: diff.hunks,
+          running: true,
+        })
+        turn.toolIds.set(event.data.callId, id)
+        turn.pendingArgs.delete(event.data.callId)
+        markRunning(turn, true)
+        markPhase(turn, 'working')
+        return { messages, turn, changed: true }
+      }
       const view = presenter?.call(event.data.name, event.data.callId, event.data.arguments)
       const id = commitToolPlaceholder(messages, turn, event.data.callId, {
         kind: 'collapsible',
@@ -178,6 +227,47 @@ export function reduceChatEvent(
             ? { ...message, content: formatTodoBubble(items) }
             : message)
         }
+        return { messages, turn, changed: true }
+      }
+      if (target?.kind === 'tool-diff') {
+        turn.toolIds.delete(callId)
+        turn.pendingArgs.delete(callId)
+        markPhase(turn, 'awaiting-request')
+        const error = event.data.error
+        const failed = error !== undefined || event.data.message.content[0]?.isError === true
+        if (failed) {
+          const detail = truncateSummary(flattenText(textFromBlocks(event.data.message.content)))
+          updateById(messages, id, message => message.kind === 'tool-diff'
+            ? {
+                ...message,
+                streaming: false,
+                running: false,
+                error: `error: ${error?.name ?? error?.code ?? 'unknown'}${detail === '' ? '' : ` ${detail}`}`,
+              }
+            : message)
+          return { messages, turn, changed: true }
+        }
+        const result: ToolResultLike = {
+          content: event.data.message.content[0]?.content ?? [],
+          isError: false,
+          ...event.data.meta === undefined ? {} : { meta: event.data.meta },
+        }
+        const presentation = presenter?.result(callId, result)
+        const metaDiffs = presentation?.diff === undefined ? diffsFromResultMeta(event.data.meta) : undefined
+        const diff = presentation?.diff ?? (metaDiffs === undefined
+          ? undefined
+          : {
+              path: target.path !== '' ? target.path : metaDiffs[0]!.path,
+              hunks: diffLineGroups(metaDiffs),
+            })
+        updateById(messages, id, message => message.kind === 'tool-diff'
+          ? {
+              ...message,
+              streaming: false,
+              running: false,
+              ...(diff === undefined ? {} : { path: diff.path, hunks: diff.hunks }),
+            }
+          : message)
         return { messages, turn, changed: true }
       }
       const collapsible = collapsibleById(messages, id)
@@ -284,10 +374,16 @@ export function reduceChatEvent(
         else updateById(messages, id, message => ({ ...message, running: false }))
       }
       for (const message of messages) {
-        if (message.kind !== 'collapsible' || !message.running) continue
-        changed = true
-        message.running = false
-        message.body = message.body === '' ? '(no result)' : `${message.body}\n(no result)`
+        if (message.kind === 'collapsible' && message.running) {
+          changed = true
+          message.running = false
+          message.body = message.body === '' ? '(no result)' : `${message.body}\n(no result)`
+          continue
+        }
+        if (message.kind === 'tool-diff' && message.running) {
+          changed = true
+          message.running = false
+        }
       }
       for (const [, pendingId] of turn.pendingTools) {
         const index = messages.findIndex(message => message.id === pendingId)
@@ -418,11 +514,42 @@ function appendToolDelta(
   turn: TurnState,
   callId: string,
   name: string | undefined,
+  delta: string,
 ): { messages: Message[]; turn: TurnState; changed: boolean } {
   markRunning(turn, true)
   markPhase(turn, 'working')
   if (name === undefined || name === '') return { messages, turn, changed: false }
-  if (turn.pendingTools.has(callId) || turn.toolIds.has(callId)) return { messages, turn, changed: false }
+  const known = turn.pendingTools.has(callId) || turn.toolIds.has(callId)
+  if (DIFF_TOOL_NAMES.has(name)) {
+    let changed = false
+    if (!known) {
+      const placeholder: ToolDiffMessage = {
+        kind: 'tool-diff',
+        id: nextId('tdiff'),
+        tool: name,
+        path: '',
+        hunks: [],
+        streaming: true,
+      }
+      messages.push(placeholder)
+      turn.pendingTools.set(callId, placeholder.id)
+      changed = true
+    }
+    if (delta !== '') {
+      turn.pendingArgs.set(callId, (turn.pendingArgs.get(callId) ?? '') + delta)
+      const path = extractPartialJsonFields(turn.pendingArgs.get(callId) ?? '').file_path?.value
+      const id = turn.pendingTools.get(callId)
+      if (path !== undefined && path !== '' && id !== undefined) {
+        updateById(messages, id, message => message.kind === 'tool-diff' && message.path !== path
+          ? { ...message, path }
+          : message)
+        const target = messages.find(message => message.id === id)
+        if (target?.kind === 'tool-diff' && target.path === path) changed = true
+      }
+    }
+    return { messages, turn, changed }
+  }
+  if (known) return { messages, turn, changed: false }
   let placeholder: Message
   if (name === ASK_USER_TOOL_NAME) {
     placeholder = { kind: 'bubble', id: nextId('ask'), role: 'assistant', content: name, variant: 'ask-user', streaming: true }

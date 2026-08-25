@@ -1,4 +1,5 @@
 import { truncate } from '../core/text.ts'
+import type { DiffLine } from '../model/message.ts'
 
 export const SUMMARY_SAFETY_MAX = 300
 
@@ -12,6 +13,10 @@ export function relativize(path: string, cwd: string): string {
 export function truncateSummary(text: string, max = SUMMARY_SAFETY_MAX): string {
   const cut = truncate(text, max)
   return cut.length === text.length ? cut : `${cut}...`
+}
+
+export function flattenText(text: string): string {
+  return flat(text)
 }
 
 function flat(text: string): string {
@@ -115,6 +120,58 @@ export function formatDiffDiffs(diffs: readonly DiffLike[]): string {
     }
   }
   return lines.join('\n')
+}
+
+export function diffLineGroups(diffs: readonly DiffLike[]): DiffLine[][] {
+  const groups: DiffLine[][] = []
+  for (const diff of diffs) {
+    const oldLines = diff.oldText === null || diff.oldText === '' ? [] : diff.oldText.split('\n')
+    const newLines = diff.newText === '' ? [] : diff.newText.split('\n')
+    groups.push(alignDiff(oldLines, newLines).map(op => ({ kind: op.kind, text: op.text })))
+  }
+  return groups
+}
+
+export interface ToolDiffView {
+  path: string
+  hunks: readonly (readonly DiffLine[])[]
+}
+
+export function diffsFromResultMeta(meta: unknown): DiffLike[] | undefined {
+  if (typeof meta !== 'object' || meta === null || Array.isArray(meta)) return undefined
+  const raw = (meta as Record<string, unknown>).diffs
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const diffs: DiffLike[] = []
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) return undefined
+    const record = entry as Record<string, unknown>
+    if (typeof record.path !== 'string') return undefined
+    if (record.oldText !== null && typeof record.oldText !== 'string') return undefined
+    if (typeof record.newText !== 'string') return undefined
+    diffs.push({ path: record.path, oldText: record.oldText, newText: record.newText })
+  }
+  return diffs
+}
+
+export function diffCallFromArgs(tool: string, args: unknown): ToolDiffView {
+  const record = typeof args === 'object' && args !== null ? args as Record<string, unknown> : {}
+  const path = typeof record.file_path === 'string' ? record.file_path : ''
+  const oldString = typeof record.old_string === 'string' && record.old_string !== '' ? record.old_string : null
+  const newText = typeof record.content === 'string'
+    ? record.content
+    : typeof record.new_string === 'string' ? record.new_string : ''
+  return { path, hunks: diffLineGroups([{ path, oldText: tool === 'edit' ? oldString : null, newText }]) }
+}
+
+const DIFF_CELL_CAP = 4_000_000
+
+export function diffGroupsFromTexts(oldText: string | null, newText: string): DiffLine[][] {
+  const additionsOnly = (): DiffLine[][] => diffLineGroups([{ path: '', oldText: null, newText }])
+  if (oldText === null || oldText === '') return additionsOnly()
+  const oldLines = oldText.split('\n')
+  const newLines = newText === '' ? [] : newText.split('\n')
+  if (oldLines.length * Math.max(1, newLines.length) > DIFF_CELL_CAP) return additionsOnly()
+  return [alignDiff(oldLines, newLines).map(op => ({ kind: op.kind, text: op.text }))]
 }
 
 export interface ReadLineLike {
