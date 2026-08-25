@@ -395,7 +395,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
                   const filled = padToWidth(truncate(line, blockWidth), blockWidth)
                   return (
                     <Box key={command.command} width={blockWidth} backgroundColor={colors.dialogBackground}>
-                      <SelectableText y={index} col={0} text={filled} inverse={selected} />
+                      <SelectableText y={index} col={CHROME_MARGIN_X} text={filled} inverse={selected} />
                     </Box>
                   )
                 })}

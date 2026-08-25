@@ -26,14 +26,14 @@ import {
 import type { ConfiguredModel, CustomProviderForm, OfficialProvider } from './models.ts'
 import { formatDiffDiffs, diffLineGroups, formatReadLines, readBodyCol, relativize, summarizeOthers, summarizeParams, truncateSummary } from './tool-view.ts'
 import type { DiffLike, ReadLineLike, ToolDiffView } from './tool-view.ts'
-
-export const DIFF_TOOL_NAMES: ReadonlySet<string> = new Set(['write', 'edit'])
 import { computeSessionList } from './session-list.ts'
 import type { SessionSummary } from './session-list.ts'
 import { builtInPresetName, isBlankSession, presetDisplayName } from './presets.ts'
 import type { PresetSummary } from './presets.ts'
 import type { EffortSummary } from './efforts.ts'
 import { InteractionStore, registerInteractionChannels } from './interactions.ts'
+
+export const DIFF_TOOL_NAMES: ReadonlySet<string> = new Set(['write', 'edit'])
 
 export const PERMISSION_PRESETS = ['workspace-write', 'danger-full-access', 'read-only'] as const
 
@@ -489,6 +489,14 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
 
   const tools = ctx.get('tools') as ToolsLike | undefined
   const toolCalls = new Map<string, { name: string; args: unknown }>()
+  const MAX_TOOL_CALLS = 1000
+  const rememberToolCall = (callId: string, name: string, args: unknown): void => {
+    if (!toolCalls.has(callId) && toolCalls.size >= MAX_TOOL_CALLS) {
+      const oldest = toolCalls.keys().next()
+      if (!oldest.done) toolCalls.delete(oldest.value)
+    }
+    toolCalls.set(callId, { name, args })
+  }
   const argsJson = (callId: string): string | undefined => {
     const call = toolCalls.get(callId)
     if (call === undefined) return undefined
@@ -506,7 +514,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       } catch {
         return undefined
       }
-      toolCalls.set(callId, { name, args })
+      rememberToolCall(callId, name, args)
       const view = tools?.get?.(name, activeAgent)?.presentCall?.(args)
       const cwd = currentCwd
       if (view !== undefined && view.card === 'diff' && view.diffs !== undefined && view.diffs.length > 0) {
@@ -681,10 +689,12 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     },
     async executeCommandLine(line: string) {
       if (commandsService === undefined) return
-      const controller = new AbortController()
       try {
-        await commandsService.execute(activeAgent, line, controller.signal)
-      } catch {}
+        await commandsService.execute(activeAgent, line, new AbortController().signal)
+      } catch (error) {
+        const text = error instanceof Error ? error.message : String(error)
+        emit({ type: 'command/done', data: { commandId: '', kind: 'error', text } } as unknown as SessionEvent)
+      }
     },
     listSessions,
     openSession,

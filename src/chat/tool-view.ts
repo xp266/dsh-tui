@@ -111,9 +111,7 @@ function alignDiff(oldLines: string[], newLines: string[]): DiffOp[] {
 export function formatDiffDiffs(diffs: readonly DiffLike[]): string {
   const lines: string[] = []
   for (const diff of diffs) {
-    const oldLines = diff.oldText === null || diff.oldText === '' ? [] : diff.oldText.split('\n')
-    const newLines = diff.newText === '' ? [] : diff.newText.split('\n')
-    for (const op of alignDiff(oldLines, newLines)) {
+    for (const op of alignedOps(diff.oldText, diff.newText)) {
       if (op.kind === 'ctx') lines.push(`  ${op.text}`)
       else if (op.kind === 'del') lines.push(`- ${op.text}`)
       else lines.push(`+ ${op.text}`)
@@ -125,9 +123,7 @@ export function formatDiffDiffs(diffs: readonly DiffLike[]): string {
 export function diffLineGroups(diffs: readonly DiffLike[]): DiffLine[][] {
   const groups: DiffLine[][] = []
   for (const diff of diffs) {
-    const oldLines = diff.oldText === null || diff.oldText === '' ? [] : diff.oldText.split('\n')
-    const newLines = diff.newText === '' ? [] : diff.newText.split('\n')
-    groups.push(alignDiff(oldLines, newLines).map(op => ({ kind: op.kind, text: op.text })))
+    groups.push(alignedOps(diff.oldText, diff.newText).map(op => ({ kind: op.kind, text: op.text })))
   }
   return groups
 }
@@ -165,13 +161,17 @@ export function diffCallFromArgs(tool: string, args: unknown): ToolDiffView {
 
 const DIFF_CELL_CAP = 4_000_000
 
-export function diffGroupsFromTexts(oldText: string | null, newText: string): DiffLine[][] {
-  const additionsOnly = (): DiffLine[][] => diffLineGroups([{ path: '', oldText: null, newText }])
+function alignedOps(oldText: string | null, newText: string): DiffOp[] {
+  const additionsOnly = (): DiffOp[] => alignDiff([], newText === '' ? [] : newText.split('\n'))
   if (oldText === null || oldText === '') return additionsOnly()
   const oldLines = oldText.split('\n')
   const newLines = newText === '' ? [] : newText.split('\n')
   if (oldLines.length * Math.max(1, newLines.length) > DIFF_CELL_CAP) return additionsOnly()
-  return [alignDiff(oldLines, newLines).map(op => ({ kind: op.kind, text: op.text }))]
+  return alignDiff(oldLines, newLines)
+}
+
+export function diffGroupsFromTexts(oldText: string | null, newText: string): DiffLine[][] {
+  return [alignedOps(oldText, newText).map(op => ({ kind: op.kind, text: op.text }))]
 }
 
 export interface ReadLineLike {

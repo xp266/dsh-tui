@@ -84,6 +84,30 @@ function focusedSegment(frame: string): string {
   return (match?.[1] ?? '').replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').trim()
 }
 
+function selectionSpan(line: string): { text: string; startCol: number } {
+  let col = 0
+  let inSelection = false
+  let text = ''
+  let startCol = -1
+  const codes = line.match(/\x1b\[[0-9;]*[A-Za-z]/g) ?? []
+  const parts = line.split(/\x1b\[[0-9;]*[A-Za-z]/)
+  for (let i = 0; i < parts.length; i++) {
+    if (i > 0) {
+      const code = codes[i - 1]
+      if (code === '\x1b[48;5;103m') inSelection = true
+      else if (code.startsWith('\x1b[48;') || code === '\x1b[49m' || code === '\x1b[0m') inSelection = false
+    }
+    for (const ch of parts[i]) {
+      if (inSelection) {
+        if (startCol === -1) startCol = col
+        text += ch
+      }
+      col += 1
+    }
+  }
+  return { text, startCol }
+}
+
 async function openHints(view: { stdin: { write(data: string): void }; lastFrame(): string | undefined }) {
   act(() => {
     view.stdin.write('/')
@@ -161,5 +185,26 @@ describe('hint box gestures', () => {
     expect(/\x1b\[7m|\x1b\[48;5;\d+m/.test(frame)).toBe(true)
     expect(stripAnsi(frame)).toContain('/models')
     expect(bridge.send).not.toHaveBeenCalled()
+  })
+
+  it('drag selection aligns with the pressed screen columns', async () => {
+    const bridge = fakeBridge()
+    const view = render(<App bridge={bridge} />)
+    await flush()
+    const lines = await openHints(view)
+    const row = lines.findIndex(line => line.includes('/sessions'))
+    expect(row).toBeGreaterThan(0)
+
+    act(() => {
+      fakeStdin.emit('data', Buffer.from(mouse(0, 6, row + 1, true), 'latin1'))
+      fakeStdin.emit('data', Buffer.from(mouse(32, 7, row + 1, true), 'latin1'))
+      fakeStdin.emit('data', Buffer.from(mouse(32, 13, row + 1, true), 'latin1'))
+    })
+    await flush()
+
+    const rawRow = (view.lastFrame() ?? '').split('\n')[row] ?? ''
+    const span = selectionSpan(rawRow)
+    expect(span.startCol).toBe(6)
+    expect(span.text).toBe('ession')
   })
 })
