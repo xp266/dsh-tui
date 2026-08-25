@@ -558,11 +558,72 @@ index cdb5fc41f158304c4c4f230a765065ab1fe0a2f7..297502df0a13a62f47c1ab252a0485ca
          }
          previousCursorPosition = activeCursor ? { ...activeCursor } : undefined;
          cursorWasShown = activeCursor !== undefined;
+diff --git a/build/output.js b/build/output.js
+index c763b7763c5fc133c7fbb53c54c466cdf51c282b..b4b8341ff056da0ba47d8bc81e51b0f0a4495692 100644
+--- a/build/output.js
++++ b/build/output.js
+@@ -1,35 +1,47 @@
+ import sliceAnsi from 'slice-ansi';
+ import stringWidth from 'string-width';
+ import { styledCharsFromTokens, styledCharsToString, tokenize, } from '@alcalzone/ansi-tokenize';
++// Tokenization and width caches are shared across frames: scroll ticks
++// recreate the Output instance every time while >90% of lines are identical,
++// so per-instance caches were cold every frame and dominated frame cost.
++const sharedWidths = new Map();
++const sharedBlockWidths = new Map();
++const sharedStyledChars = new Map();
++const sharedCacheLimit = 16384;
++function evictSharedIfNeeded(cache) {
++    if (cache.size >= sharedCacheLimit) {
++        cache.clear();
++    }
++}
+ class OutputCaches {
+-    widths = new Map();
+-    blockWidths = new Map();
+-    styledChars = new Map();
+     getStyledChars(line) {
+-        let cached = this.styledChars.get(line);
++        let cached = sharedStyledChars.get(line);
+         if (cached === undefined) {
++            evictSharedIfNeeded(sharedStyledChars);
+             cached = styledCharsFromTokens(tokenize(line));
+-            this.styledChars.set(line, cached);
++            sharedStyledChars.set(line, cached);
+         }
+         return cached;
+     }
+     getStringWidth(text) {
+-        let cached = this.widths.get(text);
++        let cached = sharedWidths.get(text);
+         if (cached === undefined) {
++            evictSharedIfNeeded(sharedWidths);
+             cached = stringWidth(text);
+-            this.widths.set(text, cached);
++            sharedWidths.set(text, cached);
+         }
+         return cached;
+     }
+     getWidestLine(text) {
+-        let cached = this.blockWidths.get(text);
++        let cached = sharedBlockWidths.get(text);
+         if (cached === undefined) {
++            evictSharedIfNeeded(sharedBlockWidths);
+             let lineWidth = 0;
+             for (const line of text.split('\n')) {
+                 lineWidth = Math.max(lineWidth, this.getStringWidth(line));
+             }
+             cached = lineWidth;
+-            this.blockWidths.set(text, cached);
++            sharedBlockWidths.set(text, cached);
+         }
+         return cached;
+     }
 diff --git a/build/render.js b/build/render.js
-index 6f185f6212d7e1867fb5dc70d26cd64b3931c339..e211aeaf68d6ed62ab3b31b83476ccba343820bb 100644
+index 6f185f6212d7e1867fb5dc70d26cd64b3931c339..94ef9881415f8c80bae56c89102ed6acde227bcf 100644
 --- a/build/render.js
 +++ b/build/render.js
-@@ -28,10 +28,14 @@ const render = (node, options) => {
+@@ -28,10 +28,16 @@ const render = (node, options) => {
          },
          waitUntilExit: instance.waitUntilExit,
          waitUntilRenderFlush: instance.waitUntilRenderFlush,
@@ -574,6 +635,8 @@ index 6f185f6212d7e1867fb5dc70d26cd64b3931c339..e211aeaf68d6ed62ab3b31b83476ccba
 +        // Direct handle to the frame writer. Lets performance-critical callers
 +        // push pre-computed frames (e.g. scroll blits) without a React pass.
 +        log: instance.log,
++        // Exposed for diagnostics and low-level benchmarks.
++        rootNode: () => instance.rootNode,
      };
  };
  export default render;
