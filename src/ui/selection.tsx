@@ -25,7 +25,62 @@ export interface SelectableTextProps {
   flow?: boolean
 }
 
-export const SelectableText = memo(function SelectableText({ y, col, text, segments, color, bold = false, inverse = false, backgroundColor, messageLayer = false, flow = false }: SelectableTextProps) {
+interface SelectableContentProps {
+  content: string
+  segments?: Segment[]
+  color?: string
+  bold: boolean
+  inverse: boolean
+  backgroundColor?: string
+  sliceStart: number
+  sliceEnd: number
+}
+
+const SelectableContent = memo(function SelectableContent({ content, segments, color, bold, inverse, backgroundColor, sliceStart, sliceEnd }: SelectableContentProps) {
+  const hasSlice = sliceStart >= 0 && sliceEnd > sliceStart
+  if (hasSlice) {
+    const highlight = (
+      <Text backgroundColor={colors.selectionBg} color={colors.selectionFg}>
+        {content.slice(sliceStart, sliceEnd)}
+      </Text>
+    )
+    if (segments !== undefined) {
+      return (
+        <Text backgroundColor={backgroundColor}>
+          {renderSegments(segments, 0, sliceStart, color)}
+          {highlight}
+          {renderSegments(segments, sliceEnd, content.length, color)}
+        </Text>
+      )
+    }
+    return (
+      <Text backgroundColor={backgroundColor} inverse={inverse} color={color} bold={bold}>
+        {content.slice(0, sliceStart)}
+        {highlight}
+        {content.slice(sliceEnd)}
+      </Text>
+    )
+  }
+  if (segments !== undefined) {
+    return <Text backgroundColor={backgroundColor}>{renderSegments(segments, 0, content.length, color)}</Text>
+  }
+  return (
+    <Text backgroundColor={backgroundColor} inverse={inverse} color={color} bold={bold}>
+      {content}
+    </Text>
+  )
+}, (prev, next) => (
+  prev.content === next.content &&
+  prev.segments === next.segments &&
+  prev.color === next.color &&
+  prev.bold === next.bold &&
+  prev.inverse === next.inverse &&
+  prev.backgroundColor === next.backgroundColor &&
+  prev.sliceStart === next.sliceStart &&
+  prev.sliceEnd === next.sliceEnd
+))
+
+export const SelectableText = function SelectableText({ y, col, text, segments, color, bold = false, inverse = false, backgroundColor, messageLayer = false, flow = false }: SelectableTextProps) {
   const selection = useContext(SelectionContext)
   const origin = useOrigin()
   const absY = origin.y + y
@@ -36,47 +91,33 @@ export const SelectableText = memo(function SelectableText({ y, col, text, segme
     registerRowPiece(pieceId.current, absY, { col: absCol, text: content, ...(messageLayer ? { layer: 'message' as const } : {}) })
     return () => registerRowPiece(pieceId.current, absY, null)
   }, [absY, absCol, content, messageLayer])
-  const range = selection === null ? null : selectedRange(selection, absY)
-  const gated = !flow && selection !== null && range !== null && !envelopeOverlaps(selection, absCol, textWidth(content))
-  if (selection !== null && range !== null && !gated) {
-    const lineWidth = textWidth(content)
-    const start = Math.max(range.start, absCol)
-    const end = Math.min(range.end, absCol + lineWidth)
-    if (start < end) {
-      const startIndex = colToCharIndex(content, start - absCol)
-      const endIndex = colToCharIndex(content, end - absCol)
-      const highlight = (
-        <Text backgroundColor={colors.selectionBg} color={colors.selectionFg}>
-          {content.slice(startIndex, endIndex)}
-        </Text>
-      )
-      if (segments !== undefined) {
-        return (
-          <Text backgroundColor={backgroundColor}>
-            {renderSegments(segments, 0, startIndex, color)}
-            {highlight}
-            {renderSegments(segments, endIndex, content.length, color)}
-          </Text>
-        )
+  let sliceStart = -1
+  let sliceEnd = -1
+  if (selection !== null) {
+    const range = selectedRange(selection, absY)
+    if (range !== null && (flow || envelopeOverlaps(selection, absCol, textWidth(content)))) {
+      const lineWidth = textWidth(content)
+      const start = Math.max(range.start, absCol)
+      const end = Math.min(range.end, absCol + lineWidth)
+      if (start < end) {
+        sliceStart = colToCharIndex(content, start - absCol)
+        sliceEnd = colToCharIndex(content, end - absCol)
       }
-      return (
-        <Text backgroundColor={backgroundColor} inverse={inverse} color={color} bold={bold}>
-          {content.slice(0, startIndex)}
-          {highlight}
-          {content.slice(endIndex)}
-        </Text>
-      )
     }
   }
-  if (segments !== undefined) {
-    return <Text backgroundColor={backgroundColor}>{renderSegments(segments, 0, content.length, color)}</Text>
-  }
   return (
-    <Text backgroundColor={backgroundColor} inverse={inverse} color={color} bold={bold}>
-      {content}
-    </Text>
+    <SelectableContent
+      content={content}
+      segments={segments}
+      color={color}
+      bold={bold}
+      inverse={inverse}
+      backgroundColor={backgroundColor}
+      sliceStart={sliceStart}
+      sliceEnd={sliceEnd}
+    />
   )
-})
+}
 
 function renderSegments(segments: Segment[], start: number, end: number, baseColor?: string): ReactNode[] {
   const out: ReactNode[] = []

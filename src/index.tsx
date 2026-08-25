@@ -26,13 +26,13 @@ export function apply(ctx: Context) {
     const capture = createScreenCapture()
     let bridge: ChatBridge | undefined
     let themeTick = 0
-    let appNode = <App screen={capture} />
-    const app = render(appNode, {
+    const buildAppNode = () => <App bridge={bridge} screen={capture} themeTick={themeTick} />
+    const app = render(buildAppNode(), {
       stdout: capture.stream,
       alternateScreen: true,
       exitOnCtrlC: false,
       incrementalRendering: false,
-      maxFps: 60,
+      maxFps: 240,
     })
     let lastColumns = capture.stream.columns
     let lastRows = capture.stream.rows
@@ -41,7 +41,7 @@ export function apply(ctx: Context) {
       lastRows = capture.stream.rows
       capture.stream.write('\x1b[2J\x1b[3J\x1b[H')
       app.clear()
-      app.rerender(appNode)
+      app.rerender(buildAppNode())
     }
     capture.stream.on('resize', onResize)
     const sizePoll = setInterval(() => {
@@ -51,14 +51,12 @@ export function apply(ctx: Context) {
     void createChatBridge(ctx)
       .then(loaded => {
         bridge = loaded
-        appNode = <App bridge={loaded} screen={capture} />
-        app.rerender(appNode)
+        app.rerender(buildAppNode())
       })
       .catch(error => console.error('chat bridge init failed', error))
     const hotTheme = startHotTheme(() => {
       themeTick += 1
-      appNode = <App bridge={bridge} screen={capture} themeTick={themeTick} />
-      app.rerender(appNode)
+      app.rerender(buildAppNode())
     })
     return () => {
       clearInterval(sizePoll)

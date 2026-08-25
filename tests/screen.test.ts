@@ -97,4 +97,30 @@ describe('screen capture', () => {
     const selection = { anchorRow: 0, anchorCol: 0, focusRow: 1, focusCol: 9, inMessage: true }
     expect(capture.extractSelection(selection)).toBe('\nreal text')
   })
+
+  it('applies scroll-up and scroll-down within the full screen', () => {
+    const capture = createScreenCapture()
+    capture.feed('\x1b[Gone\ntwo\nthree')
+    capture.feed('\x1b[1S')
+    expect(capture.extract({ top: 0, bottom: 2, left: 0, right: 8 })).toBe('two\nthree')
+    capture.feed('\x1b[1T')
+    expect(capture.extract({ top: 0, bottom: 2, left: 0, right: 8 })).toBe('\ntwo\nthree')
+  })
+
+  it('restricts scrolling to the DECSTBM region', () => {
+    const capture = createScreenCapture()
+    capture.feed('\x1b[Gkeep\nr1\nr2\nr3\nlast')
+    capture.feed('\x1b[2;4r\x1b[1S')
+    expect(capture.extract({ top: 0, bottom: 4, left: 0, right: 8 })).toBe('keep\nr2\nr3\n\nlast')
+    capture.feed('\x1b[r\x1b[2T')
+    expect(capture.extract({ top: 0, bottom: 4, left: 0, right: 8 })).toBe('\n\nkeep\nr2\nr3')
+  })
+
+  it('homes the cursor after a scroll region reset', () => {
+    const capture = createScreenCapture()
+    capture.feed('\x1b[5;3Habc')
+    capture.feed('\x1b[rX')
+    expect(capture.extract({ top: 0, bottom: 0, left: 0, right: 4 })).toBe('X')
+    expect(capture.extract({ top: 4, bottom: 4, left: 2, right: 5 })).toBe('abc')
+  })
 })

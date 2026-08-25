@@ -10,6 +10,7 @@ import type { RetryStatus } from '../chat/retry-status.ts'
 import { rowIndexFor, selectionText, SPINNER_FRAMES } from './message/layout.ts'
 import { chromeSelectionText } from './selection-registry.ts'
 import type { ScreenCapture } from '../terminal/screen.ts'
+import type { LineSelection } from '../model/selection.ts'
 import { SelectionContext } from './selection.tsx'
 import { SelectableText } from './selection.tsx'
 import { useTerminalSize } from './hooks/use-terminal-size.ts'
@@ -257,6 +258,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     }
     hintPendingPick.current = null
   }
+  const selectionRef = useRef<LineSelection | null>(null)
   const { selection, messageAreaSelection, chromeSelection, setSelection, clearSelection } = useMouseSelection({
     messages,
     columns,
@@ -279,6 +281,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     onToggleMessage: handleToggle,
     onDialogClick: (y, x) => dialogRef.current?.clickAt(y, x),
   })
+  selectionRef.current = selection
   useInput((input, key) => {
     if (dialog !== null && !selection) return
     if (key.escape) {

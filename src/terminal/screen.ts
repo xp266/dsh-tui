@@ -12,6 +12,7 @@ export interface ScreenRect {
 
 export interface ScreenCapture {
   stream: NodeJS.WriteStream
+  feed(chunk: string): void
   extract(rect: ScreenRect): string
   extractSelection(selection: LineSelection): string
   rowHasText(y: number): boolean
@@ -23,9 +24,33 @@ export function createScreenCapture(): ScreenCapture {
   let cursorX = 0
   let cursorY = 0
   let pending = ''
+  let regionTop = 0
+  let regionBottom = -1
 
   function ensureRow(y: number): void {
     while (grid.length <= y) grid.push([])
+  }
+
+  function effectiveRegionBottom(): number {
+    const fallback = Math.max(real.rows ?? 24, grid.length) - 1
+    return regionBottom < 0 ? fallback : Math.min(regionBottom, Math.max(fallback, regionTop))
+  }
+
+  function scrollRegionLines(n: number, down: boolean): void {
+    if (n <= 0) return
+    const top = Math.max(0, Math.min(regionTop, grid.length))
+    const bottom = Math.max(top, effectiveRegionBottom())
+    ensureRow(bottom)
+    const count = Math.min(n, bottom - top)
+    for (let k = 0; k < count; k++) {
+      if (down) {
+        for (let y = bottom; y > top; y--) grid[y] = grid[y - 1] ?? []
+        grid[top] = []
+      } else {
+        for (let y = top; y < bottom; y++) grid[y] = grid[y + 1] ?? []
+        grid[bottom] = []
+      }
+    }
   }
 
   function setCell(y: number, x: number, ch: string): void {
@@ -113,6 +138,20 @@ export function createScreenCapture(): ScreenCapture {
       }
       case 'K':
         eraseLine(cursorY, params[0] ?? 0)
+        break
+      case 'r': {
+        regionTop = Math.max(0, (params[0] ?? 1) - 1)
+        const bottomParam = params[1] ?? 0
+        regionBottom = bottomParam > 0 ? Math.max(regionTop, bottomParam - 1) : -1
+        cursorX = 0
+        cursorY = 0
+        break
+      }
+      case 'S':
+        scrollRegionLines(Math.max(1, params[0] || 1), false)
+        break
+      case 'T':
+        scrollRegionLines(Math.max(1, params[0] || 1), true)
         break
       default:
         break
@@ -267,5 +306,5 @@ export function createScreenCapture(): ScreenCapture {
     }
   }
 
-  return { stream: new CaptureStream() as unknown as NodeJS.WriteStream, extract, extractSelection, rowHasText }
+  return { stream: new CaptureStream() as unknown as NodeJS.WriteStream, feed, extract, extractSelection, rowHasText }
 }

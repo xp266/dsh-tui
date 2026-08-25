@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useReducer, useRef } from 'react'
 import type { Message } from '../../model/message.ts'
 
 export interface ScrollState {
@@ -7,31 +7,35 @@ export interface ScrollState {
 }
 
 export function useScroll(total: number, messageHeight: number, messages: Message[]): ScrollState {
-  const [scrollTop, setScrollTop] = useState(0)
-  const [stickToBottom, setStickToBottom] = useState(true)
+  const maxScroll = Math.max(0, total - messageHeight)
+  const [, bump] = useReducer((count: number) => count + 1, 0)
   const scrollTopRef = useRef(0)
   const stickToBottomRef = useRef(true)
-  const maxScrollRef = useRef(0)
-  const maxScroll = Math.max(0, total - messageHeight)
+  const maxScrollRef = useRef(maxScroll)
   maxScrollRef.current = maxScroll
-  const applyScroll = useCallback((next: number) => {
+
+  const commit = useCallback((next: number, rerender: boolean): void => {
     const clamped = Math.max(0, Math.min(maxScrollRef.current, next))
-    setScrollTop(clamped)
     scrollTopRef.current = clamped
-    const atBottom = clamped >= maxScrollRef.current
-    setStickToBottom(atBottom)
-    stickToBottomRef.current = atBottom
-  }, [])
+    stickToBottomRef.current = clamped >= maxScrollRef.current
+    if (rerender) bump()
+  }, [bump])
+
+  const applyScroll = useCallback((next: number): void => {
+    commit(next === Infinity ? maxScrollRef.current : next, true)
+  }, [commit])
+
   useLayoutEffect(() => {
     if (stickToBottomRef.current) {
       applyScroll(Infinity)
-    } else {
-      setScrollTop(current => Math.min(current, maxScroll))
-      scrollTopRef.current = Math.min(scrollTopRef.current, maxScroll)
+    } else if (scrollTopRef.current > maxScroll) {
+      applyScroll(maxScroll)
     }
   }, [maxScroll])
+
   useLayoutEffect(() => {
     if (stickToBottomRef.current) applyScroll(Infinity)
   }, [messages])
-  return { scrollTop, applyScroll }
+
+  return { scrollTop: scrollTopRef.current, applyScroll }
 }

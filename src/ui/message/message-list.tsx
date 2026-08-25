@@ -23,10 +23,14 @@ export function MessageList({ messages, height, width, scrollTop, onScroll, inte
   const halfPage = Math.max(1, Math.ceil(height / 2))
   useInput((input, key) => {
     if (!interactive) return
-    if (key.pageUp) onScroll(scrollTop - height + 2)
-    if (key.pageDown) onScroll(scrollTop + height - 2)
-    if (key.ctrl && input === 'u') onScroll(scrollTop - halfPage)
-    if (key.ctrl && input === 'd') onScroll(scrollTop + halfPage)
+    const maxScroll = Math.max(0, total - height)
+    const scroll = (delta: number): void => {
+      onScroll(Math.max(0, Math.min(maxScroll, scrollTop + delta)))
+    }
+    if (key.pageUp) scroll(-(height - 2))
+    if (key.pageDown) scroll(height - 2)
+    if (key.ctrl && input === 'u') scroll(-halfPage)
+    if (key.ctrl && input === 'd') scroll(halfPage)
   })
   const rows = []
   const endRow = Math.min(scrollTop + height, total)

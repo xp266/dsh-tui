@@ -11,6 +11,7 @@ import { App } from '../src/ui/app.tsx'
 function fakeScreen(): ScreenCapture {
   return {
     stream: process.stdout,
+    feed: () => {},
     extract: () => '',
     extractSelection: () => '',
     rowHasText: () => true,

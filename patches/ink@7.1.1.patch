@@ -1,5 +1,5 @@
 diff --git a/build/cursor-helpers.js b/build/cursor-helpers.js
-index be493545f0a22d2972a36ad858d2e4bbc4c9326a..d16e889d633a8538e8025a4d5d1f1cc1942aa498 100644
+index be493545f0a22d2972a36ad858d2e4bbc4c9326a..8bccf6a7418b1d706770e633d8af3bf69ba7b68a 100644
 --- a/build/cursor-helpers.js
 +++ b/build/cursor-helpers.js
 @@ -34,13 +34,13 @@ export const buildReturnToBottom = (previousLineCount, previousCursorPosition) =
@@ -30,14 +30,241 @@ index be493545f0a22d2972a36ad858d2e4bbc4c9326a..d16e889d633a8538e8025a4d5d1f1cc1
 +    return buildReturnToBottom(previousLineCount, previousCursorPosition);
  };
  //# sourceMappingURL=cursor-helpers.js.map
+\ No newline at end of file
+diff --git a/build/ink.js b/build/ink.js
+index 0082666b281ec2db77b875d6b8460bcc19a59ce7..57bfc4183e328ab96949792c96b6fc065e462811 100644
+--- a/build/ink.js
++++ b/build/ink.js
+@@ -100,6 +100,12 @@ const shouldClearTerminalForFrame = ({ isTty, viewportRows, previousOutputHeight
+     if (isWindowsConsole && (wasFullscreen || isFullscreen)) {
+         return true;
+     }
++    // A steady fullscreen app (every frame fills the viewport) repaints
++    // identically through the normal diff paths; clearing here flashes the
++    // whole screen on transient layout blips.
++    if (!isUnmounting && wasFullscreen && isFullscreen) {
++        return false;
++    }
+     return (
+     // Overflowing frames still need full clear fallback.
+     wasOverflowing ||
+@@ -417,6 +423,57 @@ export default class Ink {
+         }
+         this.renderInteractiveFrame(output, outputHeight, hasStaticOutput ? staticOutput : '');
+     };
++    // Bypasses every scheduling layer: renders the current committed tree and
++    // writes the frame synchronously. Callers that need input-echo latency
++    // (e.g. scroll handlers) flush through this instead of waiting on the
++    // throttled commit path. Rare frame shapes (static output, terminal
++    // clears, non-interactive) fall back to the regular throttled path.
++    // Bypasses every scheduling layer: renders the current committed tree and
++    // writes the frame synchronously through the normal diff paths.
++    renderImmediate = () => {
++        if (this.isUnmounted || this.isSuspended || !this.interactive || this.isScreenReaderEnabled) {
++            return;
++        }
++        const { output, outputHeight, staticOutput } = render(this.rootNode, false);
++        if (staticOutput && staticOutput !== '\n') {
++            this.onRender();
++            return;
++        }
++        const stdout = this.options.stdout;
++        const viewportRows = stdout.isTTY ? getWindowSize(stdout).rows : 24;
++        const isFullscreen = stdout.isTTY && outputHeight >= viewportRows;
++        const shouldClear = shouldClearTerminalForFrame({
++            isTty: Boolean(stdout.isTTY),
++            viewportRows,
++            previousOutputHeight: this.lastOutputHeight,
++            nextOutputHeight: outputHeight,
++            isUnmounting: false,
++        });
++        const outputToRender = isFullscreen ? output : output + '\n';
++        if (shouldClear) {
++            stdout.write(ansiEscapes.clearTerminal + outputToRender);
++            this.lastOutput = output;
++            this.lastOutputToRender = outputToRender;
++            this.lastOutputHeight = outputHeight;
++            this.log.sync(outputToRender);
++            return;
++        }
++        const changed = output !== this.lastOutput || this.log.isCursorDirty();
++        if (!changed) {
++            return;
++        }
++        const sync = shouldSynchronize(stdout, this.interactive);
++        if (sync) {
++            stdout.write(bsu);
++        }
++        this.log(outputToRender);
++        if (sync) {
++            stdout.write(esu);
++        }
++        this.lastOutput = output;
++        this.lastOutputToRender = outputToRender;
++        this.lastOutputHeight = outputHeight;
++    };
+     render(node) {
+         const tree = (React.createElement(AccessibilityContext.Provider, { value: { isScreenReaderEnabled: this.isScreenReaderEnabled } },
+             React.createElement(App, { stdin: this.options.stdin, stdout: this.options.stdout, stderr: this.options.stderr, exitOnCtrlC: this.options.exitOnCtrlC, interactive: this.interactive, renderThrottleMs: this.renderThrottleMs, writeToStdout: this.writeToStdout, writeToStderr: this.writeToStderr, setCursorPosition: this.setCursorPosition, onExit: this.handleAppExit, onWaitUntilRenderFlush: this.waitUntilRenderFlush, onSuspendTerminal: this.suspendTerminal, onRegisterInputControl: this.registerInputControl }, node)));
 diff --git a/build/log-update.js b/build/log-update.js
-index cdb5fc41f158304c4c4f230a765065ab1fe0a2f7..0d7cbc462b05dd80841b64d213816a3e4baecbbb 100644
+index cdb5fc41f158304c4c4f230a765065ab1fe0a2f7..297502df0a13a62f47c1ab252a0485ca352059d4 100644
 --- a/build/log-update.js
 +++ b/build/log-update.js
-@@ -12,27 +12,35 @@ const createStandard = (stream, { showCursor = false } = {}) => {
+@@ -4,6 +4,149 @@ import { cursorPositionChanged, buildCursorSuffix, buildCursorOnlySequence, buil
+ // Count visible lines in a string, ignoring the trailing empty element
+ // that `split('\n')` produces when the string ends with '\n'.
+ const visibleLineCount = (lines, str) => str.endsWith('\n') ? lines.length - 1 : lines.length;
++// Scroll blit limits: shifts larger than maxShift, or windows where too many
++// lines would need repainting anyway, fall back to the line-diff path.
++const scrollBlitMaxShift = 16;
++const cupTo = (row, col) => `\u001B[${row + 1};${col + 1}H`;
++/**
++Detect whether `next` equals `prev` shifted vertically by d lines inside a
++contiguous window [first..last]. Returns null when no cheap blit applies,
++otherwise `{ up, top, bottom, delta, paints }`:
++- up=true means content moved up (terminal SU); fresh rows sit at the window
++  bottom. up=false means content moved down (terminal SD); fresh rows sit at
++  the window top.
++- paints lists absolute row indices to repaint after the blit: the fresh band
++  plus any stray mismatched lines (e.g. a scrollbar thumb) that break strict
++  equality but are cheap to redraw in place.
++*/
++const findScrollBlit = (next, prev) => {
++    if (process.platform === 'win32') {
++        return null;
++    }
++    const n = next.length;
++    if (n !== prev.length || n < 4) {
++        return null;
++    }
++    let first = -1;
++    let last = -1;
++    for (let i = 0; i < n; i++) {
++        if (next[i] !== prev[i]) {
++            last = i;
++            if (first < 0) {
++                first = i;
++            }
++        }
++    }
++    if (first < 0) {
++        return null;
++    }
++    const span = last - first + 1;
++    if (span < 3) {
++        return null;
++    }
++    // Tolerated outliers scale with the window: a scrollbar thumb moving
++    // between frames dirties a couple of edge rows, while a false-positive
++    // shift over repetitive filler rows mismatches far more.
++    const outlierBudget = Math.max(4, Math.floor(span * 0.15));
++    const maxShift = Math.min(scrollBlitMaxShift, span >> 1);
++    for (let d = 1; d <= maxShift; d++) {
++        // Content moved up: verify next[i] === prev[i + d] for [first, last - d].
++        let outliers = [];
++        let ok = true;
++        for (let i = first; i + d <= last && ok; i++) {
++            if (next[i] !== prev[i + d]) {
++                if (outliers.length >= outlierBudget) {
++                    ok = false;
++                }
++                else {
++                    outliers.push(i);
++                }
++            }
++        }
++        if (ok && (d + outliers.length) * 2 < span) {
++            const paints = outliers.slice();
++            for (let i = last - d + 1; i <= last; i++) {
++                paints.push(i);
++            }
++            return { up: true, top: first, bottom: last, delta: d, paints };
++        }
++        // Content moved down: verify next[i] === prev[i - d] for [first + d, last].
++        outliers = [];
++        ok = true;
++        for (let i = first + d; i <= last && ok; i++) {
++            if (next[i] !== prev[i - d]) {
++                if (outliers.length >= outlierBudget) {
++                    ok = false;
++                }
++                else {
++                    outliers.push(i);
++                }
++            }
++        }
++        if (ok && (d + outliers.length) * 2 < span) {
++            const paints = outliers.slice();
++            for (let i = first; i < first + d; i++) {
++                paints.push(i);
++            }
++            return { up: false, top: first, bottom: last, delta: d, paints };
++        }
++    }
++    return null;
++};
++/**
++Compose DECSTBM + SU/SD plus absolute repaints for a detected shift. The
++hardware scrolls the window in one blit; only freshly exposed (and outlier)
++rows are rewritten through absolute cursor positioning.
++*/
++const buildScrollBlitSequence = (blit, lines) => {
++    const parts = [];
++    parts.push(`\u001B[${blit.top + 1};${blit.bottom + 1}r`);
++    parts.push(`\u001B[${blit.delta}${blit.up ? 'S' : 'T'}`);
++    for (const row of blit.paints) {
++        parts.push(cupTo(row, 0), lines[row], '\u001B[K');
++    }
++    parts.push('\u001B[r');
++    return parts.join('');
++};
++/**
++Diff two line arrays and emit per-line updates: unchanged lines are stepped
++over, changed lines are rewritten in place with an erase-to-end-of-line.
++Falls back to a full erase-plus-rewrite when there is nothing to diff against
++or when the trailing-newline shape flips (fullscreen transitions).
++*/
++const buildLineDiff = (previousLines, previousOutput, nextLines, nextStr, previousLineCount) => {
++    const hadTrailingNewline = previousOutput.endsWith('\n');
++    const hasTrailingNewline = nextStr.endsWith('\n');
++    if (previousOutput.length === 0 || hadTrailingNewline !== hasTrailingNewline) {
++        return ansiEscapes.eraseLines(previousLineCount) + nextStr;
++    }
++    const visibleCount = visibleLineCount(nextLines, nextStr);
++    const previousVisible = visibleLineCount(previousLines, previousOutput);
++    const buffer = [];
++    if (visibleCount < previousVisible) {
++        const extraSlot = hadTrailingNewline ? 1 : 0;
++        buffer.push(ansiEscapes.eraseLines(previousVisible - visibleCount + extraSlot), ansiEscapes.cursorUp(visibleCount));
++    }
++    else {
++        buffer.push(ansiEscapes.cursorUp(previousLines.length - 1));
++    }
++    for (let i = 0; i < visibleCount; i++) {
++        const isLastLine = i === visibleCount - 1;
++        // Unchanged lines are stepped over. This prevents flicker and keeps
++        // the byte stream proportional to the actual change.
++        if (nextLines[i] === previousLines[i]) {
++            if (!isLastLine || hasTrailingNewline) {
++                buffer.push(ansiEscapes.cursorNextLine);
++            }
++            continue;
++        }
++        buffer.push(ansiEscapes.cursorTo(0) +
++            nextLines[i] +
++            ansiEscapes.eraseEndLine +
++            (isLastLine && !hasTrailingNewline ? '' : '\n'));
++    }
++    return buffer.join('');
++};
+ const createStandard = (stream, { showCursor = false } = {}) => {
+     let previousLineCount = 0;
+     let previousOutput = '';
+@@ -12,27 +155,36 @@ const createStandard = (stream, { showCursor = false } = {}) => {
      let cursorDirty = false;
      let previousCursorPosition;
      let cursorWasShown = false;
++    let previousLines = [];
 +    // Governor semantics: a frame ends with the cursor visible ONLY when this
 +    // frame declared a position; otherwise the cursor is hidden immediately.
      const getActiveCursor = () => (cursorDirty ? cursorPosition : undefined);
@@ -77,17 +304,58 @@ index cdb5fc41f158304c4c4f230a765065ab1fe0a2f7..0d7cbc462b05dd80841b64d213816a3e
          if (str === previousOutput && cursorChanged) {
              stream.write(buildCursorOnlySequence({
                  cursorWasShown,
-@@ -48,7 +56,8 @@ const createStandard = (stream, { showCursor = false } = {}) => {
+@@ -43,14 +195,26 @@ const createStandard = (stream, { showCursor = false } = {}) => {
+             }));
+         }
+         else {
+-            previousOutput = str;
++            const blit = findScrollBlit(lines, previousLines);
+             const returnPrefix = buildReturnToBottomPrefix(cursorWasShown, previousLineCount, previousCursorPosition);
++            let body;
++            if (blit !== null) {
++                // Hardware-scroll the shifted window and repaint only the exposed
++                // band plus outliers. Park the hardware cursor back on the base
++                // row afterwards so the relative suffix math stays valid.
++                body = buildScrollBlitSequence(blit, lines) + cupTo(lines.length - 1, 0);
++            }
++            else {
++                body = buildLineDiff(previousLines, previousOutput, lines, str, previousLineCount);
++            }
++            previousOutput = str;
              stream.write(returnPrefix +
-                 ansiEscapes.eraseLines(previousLineCount) +
-                 str +
+-                ansiEscapes.eraseLines(previousLineCount) +
+-                str +
 -                cursorSuffix);
++                body +
 +                cursorSuffix +
 +                (activeCursor ? '' : hideCursorEscape));
              previousLineCount = lines.length;
          }
++        previousLines = lines;
          previousCursorPosition = activeCursor ? { ...activeCursor } : undefined;
-@@ -80,16 +89,16 @@ const createStandard = (stream, { showCursor = false } = {}) => {
+         cursorWasShown = activeCursor !== undefined;
+         return true;
+@@ -60,12 +224,14 @@ const createStandard = (stream, { showCursor = false } = {}) => {
+         stream.write(prefix + ansiEscapes.eraseLines(previousLineCount));
+         previousOutput = '';
+         previousLineCount = 0;
++        previousLines = [];
+         previousCursorPosition = undefined;
+         cursorWasShown = false;
+     };
+     render.done = () => {
+         previousOutput = '';
+         previousLineCount = 0;
++        previousLines = [];
+         previousCursorPosition = undefined;
+         cursorWasShown = false;
+         if (!showCursor) {
+@@ -76,20 +242,22 @@ const createStandard = (stream, { showCursor = false } = {}) => {
+     render.reset = () => {
+         previousOutput = '';
+         previousLineCount = 0;
++        previousLines = [];
+         previousCursorPosition = undefined;
          cursorWasShown = false;
      };
      render.sync = (str) => {
@@ -100,6 +368,7 @@ index cdb5fc41f158304c4c4f230a765065ab1fe0a2f7..0d7cbc462b05dd80841b64d213816a3e
 -        if (!activeCursor && cursorWasShown) {
 -            stream.write(hideCursorEscape);
 -        }
++        previousLines = lines;
          if (activeCursor) {
 -            stream.write(buildCursorSuffix(visibleLineCount(lines, str), activeCursor));
 +            stream.write(buildCursorSuffix(lines.length - 1, activeCursor));
@@ -109,7 +378,81 @@ index cdb5fc41f158304c4c4f230a765065ab1fe0a2f7..0d7cbc462b05dd80841b64d213816a3e
          }
          previousCursorPosition = activeCursor ? { ...activeCursor } : undefined;
          cursorWasShown = activeCursor !== undefined;
-@@ -115,17 +124,20 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
+@@ -100,6 +268,73 @@ const createStandard = (stream, { showCursor = false } = {}) => {
+     };
+     render.isCursorDirty = () => cursorDirty;
+     render.willRender = (str) => hasChanges(str, getActiveCursor());
++    /**
++    Optimistic scroll fast path. Emits a hardware scroll of the window and
++    rotates the internal frame ledger to match, WITHOUT repainting exposed
++    rows. `rowRewrites` lets the caller repaint whole rows (e.g. scrollbar
++    thumb cells displaced by the hardware scroll) inside the same atomic
++    write; their ledger entries are replaced accordingly so the next React
++    frame only differs in the freshly exposed band. Returns false when the
++    shift cannot be applied safely.
++    */
++    render.notifyShift = (delta, top, bottom, rowRewrites) => {
++        if (process.platform === 'win32' || delta === 0 || previousOutput.length === 0) {
++            return false;
++        }
++        const n = previousLines.length;
++        if (n < 4 || previousLines.length !== previousLineCount) {
++            return false;
++        }
++        const t = Math.max(0, Math.min(top, n - 1));
++        const b = Math.max(t, Math.min(bottom, n - 1));
++        const ad = Math.abs(delta);
++        if (b - t + 1 < 4 || ad >= b - t + 1) {
++            return false;
++        }
++        // DECSTBM homes the hardware cursor on real terminals; park it back on
++        // the exact spot the ledger believes it occupies (the declared cursor
++        // position, or the base row where frames come to rest).
++        const homeY = previousCursorPosition ? previousCursorPosition.y : Math.max(0, previousLineCount - 1);
++        const homeX = previousCursorPosition ? previousCursorPosition.x : 0;
++        const parts = ['\u001B[?2026h',
++            `\u001B[${t + 1};${b + 1}r`,
++            `\u001B[${ad}${delta > 0 ? 'S' : 'T'}`,
++            '\u001B[r'];
++        if (rowRewrites !== undefined) {
++            for (const rewrite of rowRewrites) {
++                if (rewrite.row < t || rewrite.row > b || typeof rewrite.line !== 'string') {
++                    continue;
++                }
++                parts.push(cupTo(rewrite.row, 0), rewrite.line, '\u001B[K');
++            }
++        }
++        parts.push(cupTo(homeY, homeX), '\u001B[?2026l');
++        stream.write(parts.join(''));
++        const window_ = previousLines.slice(t, b + 1);
++        const span = window_.length;
++        const blank = '';
++        // Positive delta scrolls content up: the top rows leave and blank rows
++        // appear at the bottom of the window. Negative delta mirrors it.
++        const shifted = delta > 0
++            ? [...window_.slice(ad), ...Array(ad).fill(blank)]
++            : [...Array(ad).fill(blank), ...window_.slice(0, span - ad)];
++        const ledger = [
++            ...previousLines.slice(0, t),
++            ...shifted,
++            ...previousLines.slice(b + 1),
++        ];
++        if (rowRewrites !== undefined) {
++            for (const rewrite of rowRewrites) {
++                if (rewrite.row < t || rewrite.row > b || typeof rewrite.line !== 'string') {
++                    continue;
++                }
++                ledger[rewrite.row] = rewrite.line;
++            }
++        }
++        previousLines = ledger;
++        return true;
++    };
++    render.getRow = (y) => previousLines[y];
+     return render;
+ };
+ const createIncremental = (stream, { showCursor = false } = {}) => {
+@@ -115,17 +350,20 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
          const cursorChanged = cursorPositionChanged(activeCursor, previousCursorPosition);
          return str !== previousOutput || cursorChanged;
      };
@@ -136,7 +479,7 @@ index cdb5fc41f158304c4c4f230a765065ab1fe0a2f7..0d7cbc462b05dd80841b64d213816a3e
              return false;
          }
          const nextLines = str.split('\n');
-@@ -145,11 +157,12 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
+@@ -145,11 +383,12 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
          }
          const returnPrefix = buildReturnToBottomPrefix(cursorWasShown, previousLines.length, previousCursorPosition);
          if (str === '\n' || previousOutput.length === 0) {
@@ -151,7 +494,7 @@ index cdb5fc41f158304c4c4f230a765065ab1fe0a2f7..0d7cbc462b05dd80841b64d213816a3e
              cursorWasShown = activeCursor !== undefined;
              previousCursorPosition = activeCursor ? { ...activeCursor } : undefined;
              previousOutput = str;
-@@ -187,8 +200,11 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
+@@ -187,8 +426,11 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
                  // has no trailing newline (fullscreen mode).
                  (isLastLine && !hasTrailingNewline ? '' : '\n'));
          }
@@ -164,7 +507,7 @@ index cdb5fc41f158304c4c4f230a765065ab1fe0a2f7..0d7cbc462b05dd80841b64d213816a3e
          stream.write(buffer.join(''));
          cursorWasShown = activeCursor !== undefined;
          previousCursorPosition = activeCursor ? { ...activeCursor } : undefined;
-@@ -221,16 +237,16 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
+@@ -221,16 +463,16 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
          cursorWasShown = false;
      };
      render.sync = (str) => {
@@ -186,3 +529,22 @@ index cdb5fc41f158304c4c4f230a765065ab1fe0a2f7..0d7cbc462b05dd80841b64d213816a3e
          }
          previousCursorPosition = activeCursor ? { ...activeCursor } : undefined;
          cursorWasShown = activeCursor !== undefined;
+diff --git a/build/render.js b/build/render.js
+index 6f185f6212d7e1867fb5dc70d26cd64b3931c339..e211aeaf68d6ed62ab3b31b83476ccba343820bb 100644
+--- a/build/render.js
++++ b/build/render.js
+@@ -28,10 +28,14 @@ const render = (node, options) => {
+         },
+         waitUntilExit: instance.waitUntilExit,
+         waitUntilRenderFlush: instance.waitUntilRenderFlush,
++        renderImmediate: instance.renderImmediate,
+         cleanup() {
+             instance.unmount();
+         },
+         clear: instance.clear,
++        // Direct handle to the frame writer. Lets performance-critical callers
++        // push pre-computed frames (e.g. scroll blits) without a React pass.
++        log: instance.log,
+     };
+ };
+ export default render;

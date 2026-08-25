@@ -300,7 +300,11 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
         contains: () => true,
         onWheel: dir => {
           const delta = dir === -1 ? -WHEEL_SCROLL_LINES : WHEEL_SCROLL_LINES
-          onScrollRef.current(scrollTopRef.current + delta)
+          const prevTop = scrollTopRef.current
+          const totalRows = rowCount(messagesRef.current, widthRef.current)
+          const maxScroll = Math.max(0, totalRows - messageHeightRef.current)
+          const next = Math.max(0, Math.min(maxScroll, prevTop + delta))
+          if (next !== prevTop) onScrollRef.current(next)
           return true
         },
       },
