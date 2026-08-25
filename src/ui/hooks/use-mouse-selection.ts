@@ -6,6 +6,7 @@ import { CHROME_FRAME_ROWS, HINT_INPUT_GAP_ROWS, MESSAGE_INPUT_GAP_ROWS } from '
 import { hintBlockTop } from '../../core/metrics.ts'
 import { clampFocusRow, toScreenSelection } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
+import type { ScrollSnapshot } from './use-scroll.ts'
 import { rowInfoAt, rowCount, scrollbarGeometry } from '../message/layout.ts'
 import { SCROLLBAR_COL_FROM_EDGE } from '../../core/metrics.ts'
 import type { InputBarHandle } from '../input/input-bar.tsx'
@@ -41,6 +42,7 @@ export interface MouseSelectionOptions {
   inputHandle?: RefObject<InputBarHandle | null>
   panelActive?: boolean
   panelHandle?: RefObject<PanelPointerHandle | null>
+  getScroll(): ScrollSnapshot
   onHintPress?(x: number, y: number): void
   onHintDragStart?(x: number, y: number): void
   onHintDragMove?(x: number, y: number): void
@@ -60,7 +62,7 @@ export interface MouseSelectionState {
 }
 
 export function useMouseSelection(options: MouseSelectionOptions): MouseSelectionState {
-  const { messages, columns, rows, scrollTop, messageHeight, inputHeight, dialogOpen, hint, screen, inputHandle, panelActive = false, panelHandle, onHintPress, onHintDragStart, onHintDragMove, onHintRelease, onDialogWheel, onScroll, onToggleMessage, onDialogClick } = options
+  const { messages, columns, rows, scrollTop, messageHeight, inputHeight, dialogOpen, hint, screen, inputHandle, panelActive = false, panelHandle, getScroll, onHintPress, onHintDragStart, onHintDragMove, onHintRelease, onDialogWheel, onScroll, onToggleMessage, onDialogClick } = options
   const [selection, setSelection] = useState<LineSelection | null>(null)
   const messagesRef = useRef(messages)
   const widthRef = useRef(columns)
@@ -74,6 +76,7 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
   const inputHandleRef = useRef(inputHandle)
   const panelActiveRef = useRef(panelActive)
   const panelHandleRef = useRef(panelHandle)
+  const getScrollRef = useRef(getScroll)
   const onHintPressRef = useRef(onHintPress)
   const onHintDragStartRef = useRef(onHintDragStart)
   const onHintDragMoveRef = useRef(onHintDragMove)
@@ -103,6 +106,7 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
   inputHandleRef.current = inputHandle
   panelActiveRef.current = panelActive
   panelHandleRef.current = panelHandle
+  getScrollRef.current = getScroll
   onHintPressRef.current = onHintPress
   onHintDragStartRef.current = onHintDragStart
   onHintDragMoveRef.current = onHintDragMove
@@ -300,11 +304,9 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
         contains: () => true,
         onWheel: dir => {
           const delta = dir === -1 ? -WHEEL_SCROLL_LINES : WHEEL_SCROLL_LINES
-          const prevTop = scrollTopRef.current
-          const totalRows = rowCount(messagesRef.current, widthRef.current)
-          const maxScroll = Math.max(0, totalRows - messageHeightRef.current)
-          const next = Math.max(0, Math.min(maxScroll, prevTop + delta))
-          if (next !== prevTop) onScrollRef.current(next)
+          const live = getScrollRef.current()
+          const next = Math.max(0, Math.min(live.maxScroll, live.top + delta))
+          if (next !== live.top) onScrollRef.current(next)
           return true
         },
       },

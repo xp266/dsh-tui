@@ -1,8 +1,14 @@
 import { useCallback, useLayoutEffect, useReducer, useRef } from 'react'
 import type { Message } from '../../model/message.ts'
 
+export interface ScrollSnapshot {
+  top: number
+  maxScroll: number
+}
+
 export interface ScrollState {
   scrollTop: number
+  getScroll(): ScrollSnapshot
   applyScroll(next: number): void
 }
 
@@ -25,6 +31,8 @@ export function useScroll(total: number, messageHeight: number, messages: Messag
     commit(next === Infinity ? maxScrollRef.current : next, true)
   }, [commit])
 
+  const getScroll = useCallback((): ScrollSnapshot => ({ top: scrollTopRef.current, maxScroll: maxScrollRef.current }), [])
+
   useLayoutEffect(() => {
     if (stickToBottomRef.current) {
       applyScroll(Infinity)
@@ -37,5 +45,5 @@ export function useScroll(total: number, messageHeight: number, messages: Messag
     if (stickToBottomRef.current) applyScroll(Infinity)
   }, [messages])
 
-  return { scrollTop: scrollTopRef.current, applyScroll }
+  return { scrollTop: scrollTopRef.current, getScroll, applyScroll }
 }

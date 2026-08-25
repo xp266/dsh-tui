@@ -164,7 +164,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const inputHeight = bottomHeight
   const messageHeight = Math.max(1, rows - inputHeight - MESSAGE_INPUT_GAP_ROWS)
   const total = rowIndexFor(messages, columns).total
-  const { scrollTop, applyScroll } = useScroll(total, messageHeight, messages)
+  const { scrollTop, applyScroll, getScroll } = useScroll(total, messageHeight, messages)
   const startNewSession = () => {
     if (!bridge) return
     resetChat()
@@ -274,6 +274,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     inputHandle: inputRef,
     panelActive: panel !== null,
     panelHandle: panelHandleRef,
+    getScroll,
     onHintPress: handleHintPress,
     onHintDragStart: handleHintDragStart,
     onHintDragMove: handleHintDragMove,
