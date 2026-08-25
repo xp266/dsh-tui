@@ -7,7 +7,7 @@ import { renderMarkdown } from './md/index.ts'
 import { renderToolDiffBody, toolDiffHeader } from './tool-diff.ts'
 import { segmentsKey } from '../../core/segments.ts'
 import type { Segment } from '../../core/segments.ts'
-import { BUBBLE_WIDTH_OFFSET, HEADER_LABEL_COL } from '../../core/metrics.ts'
+import { BUBBLE_WIDTH_OFFSET, HEADER_LABEL_COL, CHROME_MARGIN_X, SCROLLBAR_COL_FROM_EDGE, SCROLLBAR_GAP_COLS } from '../../core/metrics.ts'
 
 export { HEADER_LABEL_COL }
 
@@ -192,7 +192,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
     selectable: false,
     clickable: false,
     background: false,
-    backgroundWidth: width - 4,
+    backgroundWidth: width - CHROME_MARGIN_X - SCROLLBAR_COL_FROM_EDGE - SCROLLBAR_GAP_COLS,
     muted: false,
     label: '',
     collapsed: false,

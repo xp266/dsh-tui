@@ -11,6 +11,7 @@ export const INPUT_WIDTH_OFFSET = CHROME_MARGIN_X * 2 + CHROME_PAD_X * 2
 export const BUBBLE_WIDTH_OFFSET = 8
 export const HEADER_LABEL_COL = 4
 export const SCROLLBAR_COL_FROM_EDGE = 3
+export const SCROLLBAR_GAP_COLS = 1
 
 export function inputFrameTop(rows: number, realRows: number): number {
   return rows - CHROME_FRAME_ROWS - realRows

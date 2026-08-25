@@ -43,7 +43,6 @@ export const MessageRow = memo(
           marginLeft={marginLeft}
           width={info.backgroundWidth}
           paddingLeft={info.spinner ? 0 : paddingLeft}
-          paddingRight={2}
           backgroundColor={info.lineBg ?? (info.background ? backgroundFor(info.role) : undefined)}
         >
           {info.spinner && <TickGlyph y={row} col={col - 2} color={baseColor} tick={spinnerTick} />}
