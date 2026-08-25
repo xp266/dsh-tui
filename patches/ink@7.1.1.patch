@@ -106,6 +106,35 @@ index 0082666b281ec2db77b875d6b8460bcc19a59ce7..57bfc4183e328ab96949792c96b6fc06
      render(node) {
          const tree = (React.createElement(AccessibilityContext.Provider, { value: { isScreenReaderEnabled: this.isScreenReaderEnabled } },
              React.createElement(App, { stdin: this.options.stdin, stdout: this.options.stdout, stderr: this.options.stderr, exitOnCtrlC: this.options.exitOnCtrlC, interactive: this.interactive, renderThrottleMs: this.renderThrottleMs, writeToStdout: this.writeToStdout, writeToStderr: this.writeToStderr, setCursorPosition: this.setCursorPosition, onExit: this.handleAppExit, onWaitUntilRenderFlush: this.waitUntilRenderFlush, onSuspendTerminal: this.suspendTerminal, onRegisterInputControl: this.registerInputControl }, node)));
+diff --git a/build/input-parser.js b/build/input-parser.js
+index 27446479b370b0f47f7c5d9a0d0b9014f26985fd..c68c9d7cc7e074d3f1c81bcd62f7b72391672b0d 100644
+--- a/build/input-parser.js
++++ b/build/input-parser.js
+@@ -102,19 +102,20 @@ const parseEscapeSequence = (input, escapeIndex) => {
+     return parseEscapedCodePoint(input, escapeIndex);
+ };
+ /**
+-Split a chunk of non-escape text so that backspace bytes (`0x7F` and `0x08`) become individual events. When a user holds the backspace key, the terminal sends repeated bytes in a single stdin chunk. Without splitting, `parseKeypress` receives the multi-byte string and fails to recognize it as a key event, corrupting the input state.
++Split a chunk of non-escape text so that C0 control bytes become individual events. When a user holds a modifier key (backspace, ctrl+letter), the terminal sends repeated bytes in a single stdin chunk. Without splitting, `parseKeypress` receives the multi-byte string and fails to recognize it as key events: the whole run is emitted as plain text with no ctrl flag, so consumers like scroll handlers ignore it while text inputs append it verbatim.
+ 
+ Other control characters like `\r` and `\t` are NOT split because they can legitimately appear inside pasted text.
+ */
+ const splitBackspaceBytes = (text, events) => {
+     let textSegmentStart = 0;
+     for (let index = 0; index < text.length; index++) {
+-        const character = text[index];
+-        if (character === '\u007F' || character === '\u0008') {
++        const code = text.charCodeAt(index);
++        const isSplitPoint = code === 0x7f || code === 0x08 || (code >= 1 && code <= 26 && code !== 9 && code !== 10 && code !== 13);
++        if (isSplitPoint) {
+             if (index > textSegmentStart) {
+                 events.push(text.slice(textSegmentStart, index));
+             }
+-            events.push(character);
++            events.push(text[index]);
+             textSegmentStart = index + 1;
+         }
+     }
 diff --git a/build/log-update.js b/build/log-update.js
 index cdb5fc41f158304c4c4f230a765065ab1fe0a2f7..297502df0a13a62f47c1ab252a0485ca352059d4 100644
 --- a/build/log-update.js

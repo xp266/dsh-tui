@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  ink@7.1.1: 9b4e426ca2e6a668aa42f7fb7cbc216b4401dbd1f3871502404706a1d6425465
+  ink@7.1.1: d06863dd6ecc0718152be750adbf02ee721fed79bf3550b88ba1eb91de211bf4
 
 importers:
 
@@ -19,7 +19,7 @@ importers:
         version: 5.6.2
       ink:
         specifier: ^7.1.1
-        version: 7.1.1(patch_hash=9b4e426ca2e6a668aa42f7fb7cbc216b4401dbd1f3871502404706a1d6425465)(@types/react@19.2.18)(react@19.2.8)
+        version: 7.1.1(patch_hash=d06863dd6ecc0718152be750adbf02ee721fed79bf3550b88ba1eb91de211bf4)(@types/react@19.2.18)(react@19.2.8)
       marked:
         specifier: ^18.0.10
         version: 18.0.10
@@ -1675,7 +1675,7 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.18
 
-  ink@7.1.1(patch_hash=9b4e426ca2e6a668aa42f7fb7cbc216b4401dbd1f3871502404706a1d6425465)(@types/react@19.2.18)(react@19.2.8):
+  ink@7.1.1(patch_hash=d06863dd6ecc0718152be750adbf02ee721fed79bf3550b88ba1eb91de211bf4)(@types/react@19.2.18)(react@19.2.8):
     dependencies:
       '@alcalzone/ansi-tokenize': 0.3.0
       ansi-escapes: 7.3.0

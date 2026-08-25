@@ -1,5 +1,5 @@
-import { EventEmitter } from 'node:events'
 import { describe, expect, it, vi } from 'vitest'
+import { FakeStdout, FakeStdin, installFakeStdin, restoreStdin, COLUMNS, ROWS } from './helpers/fake-stdio.ts'
 import { render } from 'ink'
 import type { RenderOptions } from 'ink'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
@@ -8,49 +8,6 @@ import type { ChatBridge } from '../src/chat/bridge.ts'
 import type { ScreenCapture } from '../src/terminal/screen.ts'
 import { createScreenCapture } from '../src/terminal/screen.ts'
 import { App } from '../src/ui/app.tsx'
-
-const COLUMNS = 100
-const ROWS = 30
-
-let fakeStdin: FakeStdin
-let originalStdinDescriptor: PropertyDescriptor | undefined
-
-class FakeStdout extends EventEmitter {
-  isTTY = true
-  columns = COLUMNS
-  rows = ROWS
-  chunks: string[] = []
-  write(chunk: string | Buffer): boolean {
-    this.chunks.push(typeof chunk === 'string' ? chunk : chunk.toString('utf8'))
-    return true
-  }
-}
-
-class FakeStdin extends EventEmitter {
-  isTTY = true
-  setEncoding(): void {}
-  setRawMode(): void {}
-  resume(): void {}
-  pause(): void {}
-  read(): null {
-    return null
-  }
-  ref(): void {}
-  unref(): void {}
-}
-
-function installFakeStdin(): FakeStdin {
-  const instance = new FakeStdin()
-  originalStdinDescriptor = Object.getOwnPropertyDescriptor(process, 'stdin')
-  Object.defineProperty(process, 'stdin', { value: instance, configurable: true, writable: true })
-  return instance
-}
-
-function restoreStdin(): void {
-  if (originalStdinDescriptor !== undefined) {
-    Object.defineProperty(process, 'stdin', originalStdinDescriptor)
-  }
-}
 
 function fakeScreenStub(): ScreenCapture {
   return {
@@ -125,13 +82,14 @@ interface MountedApp {
   app: ReturnType<typeof render>
   stdout: FakeStdout
   stdin: FakeStdin
+  originalDescriptor: PropertyDescriptor
   setBridge(bridge: ChatBridge): void
   pump(count: number, label?: string): Promise<void>
 }
 
 function mountApp(stdout: FakeStdout): MountedApp {
-  fakeStdin = installFakeStdin()
-  const stdin = fakeStdin
+  const stdin = new FakeStdin()
+  const originalDescriptor = installFakeStdin(stdin)
   let bridgeRef: ChatBridge | undefined
   let emitter: Emit | undefined
   const buildAppNode = (): React.ReactElement => <App bridge={bridgeRef} screen={fakeScreenStub()} />
@@ -147,6 +105,7 @@ function mountApp(stdout: FakeStdout): MountedApp {
     app,
     stdout,
     stdin,
+    originalDescriptor,
     setBridge(bridge: ChatBridge): void {
       bridgeRef = bridge
       if ('emit' in bridge) emitter = (bridge as { emit: Emit }).emit
@@ -180,7 +139,7 @@ describe('scroll frame integrity', () => {
 
     for (let tick = 0; tick < 6; tick++) {
       stdout.chunks.length = 0
-      fakeStdin.emit('data', Buffer.from(wheel('up', 40, 5), 'latin1'))
+      mounted.stdin.emit('data', Buffer.from(wheel('up', 40, 5), 'latin1'))
       await flush(60)
       const blob = stdout.chunks.join('')
       expect(blob).not.toContain('\x1b[2J')
@@ -189,14 +148,14 @@ describe('scroll frame integrity', () => {
 
     // Ledger consistency: a following keystroke repaints only the input row.
     stdout.chunks.length = 0
-    fakeStdin.emit('data', Buffer.from('x', 'utf8'))
+    mounted.stdin.emit('data', Buffer.from('x', 'utf8'))
     await flush(150)
     const typingBlob = stdout.chunks.join('')
     expect(typingBlob).not.toContain('tok-')
     expect(typingBlob.length).toBeLessThan(700)
 
     mounted.app.unmount()
-    restoreStdin()
+    restoreStdin(mounted.originalDescriptor)
   })
 
   it('keeps the parsed screen consistent with the target content', async () => {
@@ -210,7 +169,7 @@ describe('scroll frame integrity', () => {
     for (const chunk of stdout.chunks) capture.feed(chunk)
     stdout.chunks.length = 0
 
-    fakeStdin.emit('data', Buffer.from(wheel('up', 40, 5), 'latin1'))
+    mounted.stdin.emit('data', Buffer.from(wheel('up', 40, 5), 'latin1'))
     await flush(80)
     for (const chunk of stdout.chunks) capture.feed(chunk)
 
@@ -220,6 +179,6 @@ describe('scroll frame integrity', () => {
     expect(new Set(tokens).size).toBe(tokens.length)
 
     mounted.app.unmount()
-    restoreStdin()
+    restoreStdin(mounted.originalDescriptor)
   })
 })
