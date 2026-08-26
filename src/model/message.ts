@@ -8,6 +8,7 @@ export interface BubbleMessage {
   variant?: BubbleVariant
   hang?: number
   streaming?: boolean
+  origin?: 'command'
 }
 
 export interface CollapsibleMessage {
@@ -38,6 +39,7 @@ export interface ToolDiffMessage {
   error?: string
   streaming?: boolean
   running?: boolean
+  streamText?: string
 }
 
 export interface CompactionMessage {

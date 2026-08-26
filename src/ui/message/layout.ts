@@ -1,4 +1,4 @@
-import type { Message } from '../../model/message.ts'
+import type { Message, BubbleMessage } from '../../model/message.ts'
 import { colToCharIndex, textWidth, truncate, wrapIndented, wrapLines } from '../../core/text.ts'
 import { selectedRange } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
@@ -8,7 +8,7 @@ import { renderToolDiffBody, toolDiffHeader } from './tool-diff.ts'
 import { segmentsKey } from '../../core/segments.ts'
 import type { Segment } from '../../core/segments.ts'
 import { colors } from '../../theme.ts'
-import { BUBBLE_WIDTH_OFFSET, HEADER_LABEL_COL, CHROME_MARGIN_X, SCROLLBAR_COL_FROM_EDGE, SCROLLBAR_GAP_COLS } from '../../core/metrics.ts'
+import { BUBBLE_WIDTH_OFFSET, CHROME_MARGIN_X, HEADER_LABEL_COL, SCROLLBAR_COL_FROM_EDGE, SCROLLBAR_GAP_COLS } from '../../core/metrics.ts'
 
 export { HEADER_LABEL_COL }
 
@@ -39,18 +39,48 @@ export interface RowInfo {
   lineBg?: string
 }
 
-interface WrapEntry {
-  content: string
-  collapsed: boolean
+interface BodyRendered {
   lines: string[]
   rows: Segment[][] | null
   bgs: (string | undefined)[] | null
 }
 
-const wrapCache = new Map<string, WrapEntry>()
+type PlanRow =
+  | { type: 'pad'; role: RowInfo['role'] }
+  | { type: 'blank' }
+  | { type: 'header'; label: string; collapsed: boolean; clickable: boolean }
+  | {
+      type: 'body'
+      line: number
+      colStart: number
+      bg: boolean
+      muted: boolean
+      selectable: boolean
+      role: RowInfo['role']
+    }
+  | {
+      type: 'lit'
+      text: string
+      segments?: Segment[]
+      colStart: number
+      bg: boolean
+      muted: boolean
+      selectable: boolean
+      role: RowInfo['role']
+    }
+
+interface MessageRender extends BodyRendered {
+  plan: PlanRow[]
+}
+
+const wrapCache = new Map<string, MessageRender>()
 
 export function clearWrapCache(): void {
   wrapCache.clear()
+  cachedId = undefined
+  cachedKey = ''
+  cachedWidth = -1
+  cachedRender = undefined
 }
 
 function evictWrapCacheIfNeeded(): void {
@@ -62,7 +92,7 @@ function evictWrapCacheIfNeeded(): void {
 }
 
 function toolDiffKey(message: Extract<Message, { kind: 'tool-diff' }>): string {
-  let key = `${message.tool}\u0000${message.path}\u0000${message.error ?? ''}`
+  let key = `${message.tool}\u0000${message.path}\u0000${message.error ?? ''}\u0000${message.streaming ? 1 : 0}\u0000${message.streamText ?? ''}`
   for (const hunk of message.hunks) {
     key += '\u0001'
     for (const line of hunk) key += `${line.kind}\u0002${line.text}\n`
@@ -70,76 +100,177 @@ function toolDiffKey(message: Extract<Message, { kind: 'tool-diff' }>): string {
   return key
 }
 
-function wrapFor(message: Message, width: number): WrapEntry {
-  const key = `${message.id}:${width}`
-  const entry = wrapCache.get(key)
-  const content = message.kind === 'bubble'
-    ? message.content
-    : message.kind === 'collapsible' ? message.body
-      : message.kind === 'compaction' ? message.summary
-        : toolDiffKey(message)
-  const identity = message.kind === 'compaction' && message.running === true
-    ? `${content}\u0000running`
-    : content
-  const collapsed = message.kind === 'collapsible' && message.collapsed
-  if (entry !== undefined && entry.content === identity && entry.collapsed === collapsed) {
-    return entry
+const padRow = (role: RowInfo['role']): PlanRow => ({ type: 'pad', role })
+const blankRow = (): PlanRow => ({ type: 'blank' })
+
+function bodyRows(count: number, options: { colStart: number; bg: boolean; muted: boolean; selectable: boolean; role: RowInfo['role'] }): PlanRow[] {
+  const out: PlanRow[] = []
+  for (let line = 0; line < count; line++) {
+    out.push({ type: 'body', line, ...options })
   }
-  const plainBubble = message.kind === 'bubble' && message.variant !== undefined
-  const useMarkdown = !plainBubble
-    && (message.kind === 'bubble' && message.role === 'assistant'
-      || message.kind === 'collapsible' && message.thinking === true
-      || message.kind === 'compaction')
-  let lines: string[]
-  let rows: Segment[][] | null = null
-  let bgs: (string | undefined)[] | null = null
-  if (message.kind === 'tool-diff') {
-    const rendered = renderToolDiffBody(message, width - BUBBLE_WIDTH_OFFSET)
-    lines = rendered.lines
-    rows = rendered.rows
-    bgs = rendered.bgs
-  } else if (useMarkdown) {
-    const rendered = renderMarkdown(content, width - BUBBLE_WIDTH_OFFSET, message.kind === 'collapsible')
-    rows = rendered.rows
-    lines = rendered.lines
-  } else if (plainBubble) {
-    lines = wrapIndented(content, width - BUBBLE_WIDTH_OFFSET, message.kind === 'bubble' ? message.hang ?? 0 : 0)
-  } else {
-    lines = wrapLines(content, width - BUBBLE_WIDTH_OFFSET)
+  return out
+}
+
+function renderBody(message: Message, width: number): BodyRendered {
+  const inner = width - BUBBLE_WIDTH_OFFSET
+  switch (message.kind) {
+    case 'bubble': {
+      if (message.role !== 'user' && message.variant !== undefined) {
+        const lines = wrapIndented(message.content, inner, message.hang ?? 0)
+        return { lines, rows: null, bgs: null }
+      }
+      if (message.role !== 'user' && message.origin === 'command') {
+        const lines = wrapLines(message.content, inner)
+        return { lines, rows: null, bgs: null }
+      }
+      if (message.role === 'assistant') {
+        const rendered = renderMarkdown(message.content, inner)
+        return { lines: rendered.lines, rows: rendered.rows, bgs: null }
+      }
+      const lines = wrapLines(message.content, inner)
+      return { lines, rows: null, bgs: null }
+    }
+    case 'collapsible': {
+      if (message.thinking === true && !message.collapsed) {
+        const rendered = renderMarkdown(message.body, inner, true)
+        return { lines: rendered.lines, rows: rendered.rows, bgs: null }
+      }
+      const lines = wrapLines(message.body, inner)
+      return { lines, rows: null, bgs: null }
+    }
+    case 'tool-diff': {
+      if (message.hunks.length === 0 && message.tool === 'write' && message.streaming === true && message.streamText !== undefined && message.streamText !== '') {
+        const lines = wrapLines(message.streamText, Math.max(4, inner - 2))
+        return { lines, rows: null, bgs: null }
+      }
+      const rendered = renderToolDiffBody(message, inner)
+      return { lines: rendered.lines, rows: rendered.rows, bgs: rendered.bgs }
+    }
+    case 'compaction': {
+      if (message.summary === '' && message.error === undefined) return { lines: [], rows: null, bgs: null }
+      const rendered = message.summary === '' ? { lines: [], rows: [] } : renderMarkdown(message.summary, inner)
+      const lines = [...rendered.lines]
+      const rows = [...rendered.rows]
+      if (message.error !== undefined && message.error !== '') {
+        const text = truncate(`error: ${message.error}`, Math.max(8, inner))
+        lines.push(text)
+        rows.push([{ text, style: { color: colors.errorText } }])
+      }
+      return { lines, rows, bgs: null }
+    }
   }
-  const next: WrapEntry = { content: identity, collapsed, lines, rows, bgs }
+}
+
+function planFor(message: Message, body: BodyRendered): PlanRow[] {
+  switch (message.kind) {
+    case 'bubble': {
+      const floating = message.role === 'error' || message.origin === 'command'
+        || (message.role === 'assistant' && message.variant === undefined)
+      const texts = bodyRows(body.lines.length, {
+        colStart: 4,
+        bg: !floating,
+        muted: !floating && message.variant !== undefined,
+        selectable: true,
+        role: message.role,
+      })
+      return floating ? [...texts, blankRow()] : [padRow(message.role), ...texts, padRow(message.role), blankRow()]
+    }
+    case 'collapsible': {
+      const header: PlanRow = {
+        type: 'header',
+        label: message.label,
+        collapsed: message.collapsed,
+        clickable: !Boolean(message.streaming),
+      }
+      if (message.collapsed) return [header, blankRow()]
+      return [
+        header,
+        blankRow(),
+        ...bodyRows(body.lines.length, { colStart: HEADER_LABEL_COL, bg: false, muted: true, selectable: true, role: 'assistant' }),
+        blankRow(),
+      ]
+    }
+    case 'tool-diff': {
+      const header: PlanRow = {
+        type: 'lit',
+        text: toolDiffHeader(message),
+        colStart: 4,
+        bg: true,
+        muted: true,
+        selectable: true,
+        role: 'assistant',
+      }
+      const streamingShell = message.hunks.length === 0 && message.streaming === true
+      if (streamingShell && body.lines.length === 0) {
+        return [padRow('assistant'), header, padRow('assistant'), blankRow()]
+      }
+      return [
+        padRow('assistant'),
+        header,
+        padRow('assistant'),
+        ...bodyRows(body.lines.length, { colStart: streamingShell ? 6 : 4, bg: true, muted: streamingShell, selectable: !streamingShell, role: 'assistant' }),
+        padRow('assistant'),
+        blankRow(),
+      ]
+    }
+    case 'compaction': {
+      const header: PlanRow = {
+        type: 'lit',
+        text: 'Compact',
+        segments: [{ text: 'Compact', style: { color: colors.sectionHeader, bold: true } }],
+        colStart: 4,
+        bg: true,
+        muted: false,
+        selectable: false,
+        role: 'assistant',
+      }
+      if (message.running) {
+        return [padRow('assistant'), header, padRow('assistant'), blankRow()]
+      }
+      return [
+        padRow('assistant'),
+        header,
+        padRow('assistant'),
+        ...bodyRows(body.lines.length, { colStart: 4, bg: true, muted: false, selectable: true, role: 'assistant' }),
+        padRow('assistant'),
+        blankRow(),
+      ]
+    }
+  }
+}
+
+let cachedId: string | undefined
+let cachedKey = ''
+let cachedWidth = -1
+let cachedRender: MessageRender | undefined
+
+function cacheKeyOf(message: Message): string {
+  switch (message.kind) {
+    case 'bubble': return `${message.content}\u0000${message.variant ?? ''}`
+    case 'collapsible': return `${message.body}\u0000${message.collapsed ? 1 : 0}`
+    case 'tool-diff': return toolDiffKey(message)
+    case 'compaction': return `${message.summary}\u0000${message.running ? 1 : 0}\u0000${message.error ?? ''}`
+  }
+}
+
+function renderFor(message: Message, width: number): MessageRender {
+  const key = cacheKeyOf(message)
+  if (cachedRender !== undefined && cachedId === message.id && cachedKey === key && cachedWidth === width) {
+    return cachedRender
+  }
+  const body = renderBody(message, width)
+  const render: MessageRender = { ...body, plan: planFor(message, body) }
+  cachedId = message.id
+  cachedKey = key
+  cachedWidth = width
+  cachedRender = render
   evictWrapCacheIfNeeded()
-  wrapCache.set(key, next)
-  return next
-}
-
-const segKeyMemo = new WeakMap<Segment[], string>()
-
-function segmentsKeyCached(segments: Segment[]): string {
-  const hit = segKeyMemo.get(segments)
-  if (hit !== undefined) return hit
-  const key = segmentsKey(segments)
-  segKeyMemo.set(segments, key)
-  return key
-}
-
-function isCompactBubble(message: Message): boolean {
-  return message.kind === 'bubble' && message.role === 'assistant' && message.variant === undefined
+  wrapCache.set(`${message.id}:${width}`, render)
+  return render
 }
 
 export function lineCount(message: Message, width: number): number {
-  switch (message.kind) {
-    case 'bubble':
-      return wrapFor(message, width).lines.length + (isCompactBubble(message) ? 1 : 3)
-    case 'collapsible':
-      return message.collapsed ? 2 : wrapFor(message, width).lines.length + 3
-    case 'tool-diff':
-      return wrapFor(message, width).lines.length + 5
-    case 'compaction': {
-      const body = message.error !== undefined ? 1 : message.summary === '' ? 0 : wrapFor(message, width).lines.length
-      return body + 5
-    }
-  }
+  return renderFor(message, width).plan.length
 }
 
 export interface RowIndex {
@@ -168,7 +299,7 @@ export function buildRowIndex(messages: Message[], width: number): RowIndex {
         if (starts[mid]! <= row) low = mid
         else high = mid - 1
       }
-      return rowInfo(messages[low]!, low, row - starts[low]!, width, counts[low]!)
+      return rowInfo(messages[low]!, low, row - starts[low]!, width)
     },
   }
 }
@@ -195,7 +326,19 @@ export function rowInfoAt(messages: Message[], width: number, row: number): RowI
   return rowIndexFor(messages, width).rowAt(row)
 }
 
-function rowInfo(message: Message, index: number, offset: number, width: number, count: number): RowInfo {
+const segKeyMemo = new WeakMap<Segment[], string>()
+
+function segmentsKeyCached(segments: Segment[]): string {
+  const hit = segKeyMemo.get(segments)
+  if (hit !== undefined) return hit
+  const key = segmentsKey(segments)
+  segKeyMemo.set(segments, key)
+  return key
+}
+
+function rowInfo(message: Message, index: number, offset: number, width: number): RowInfo {
+  const render = renderFor(message, width)
+  const plan = render.plan[offset]
   const base: RowInfo = {
     messageIndex: index,
     messageId: message.id,
@@ -213,183 +356,48 @@ function rowInfo(message: Message, index: number, offset: number, width: number,
     thinking: false,
     role: undefined,
   }
-  switch (message.kind) {
-    case 'bubble': {
-      if (isCompactBubble(message)) {
-        const wrapped = wrapFor(message, width)
-        if (offset < count - 1) {
-          const segments = wrapped.rows?.[offset]
-          return {
-            ...base,
-            kind: 'text',
-            text: wrapped.lines[offset] ?? '',
-            colStart: 4,
-            selectable: true,
-            role: message.role,
-            ...segments === undefined ? {} : { segments, segKey: segmentsKeyCached(segments) },
-          }
-        }
-        return { ...base, kind: 'blank' }
+  if (plan === undefined) return base
+  switch (plan.type) {
+    case 'pad':
+      return { ...base, kind: 'pad', background: true, role: plan.role }
+    case 'blank':
+      return base
+    case 'header':
+      return {
+        ...base,
+        kind: 'header',
+        colStart: HEADER_LABEL_COL,
+        clickable: plan.clickable,
+        label: fitLabel(plan.label, width),
+        collapsed: plan.collapsed,
+        spinner: Boolean(message.kind === 'collapsible' && (message.running || message.streaming)) || undefined,
       }
-      const muted = message.variant !== undefined
-      if (offset === 0 || offset === count - 2) {
-        return { ...base, kind: 'pad', background: true, role: message.role }
-      }
-      if (offset <= count - 3) {
-        const wrapped = wrapFor(message, width)
-        const segments = wrapped.rows?.[offset - 1]
-        return {
-          ...base,
-          kind: 'text',
-          text: wrapped.lines[offset - 1] ?? '',
-          colStart: 4,
-          selectable: true,
-          background: true,
-          muted,
-          role: message.role,
-          ...(offset === 1 && message.streaming ? { spinner: true } : {}),
-          ...segments === undefined ? {} : { segments, segKey: segmentsKeyCached(segments) },
-        }
-      }
-      return { ...base, kind: 'blank' }
-    }
-    case 'collapsible': {
-      if (offset === 0) {
-        return {
-          ...base,
-          kind: 'header',
-          colStart: HEADER_LABEL_COL,
-          clickable: !message.streaming,
-          label: fitLabel(message.label, width),
-          collapsed: message.collapsed,
-          thinking: message.thinking === true,
-          ...(message.streaming ? { spinner: true } : {}),
-        }
-      }
-      if (offset === 1 || message.collapsed) {
-        return { ...base, kind: 'blank' }
-      }
-      const wrapped = wrapFor(message, width)
-      if (offset <= wrapped.lines.length + 1) {
-        const line = offset - 2
-        const segments = wrapped.rows?.[line]
-        return {
-          ...base,
-          kind: 'text',
-          text: wrapped.lines[line] ?? '',
-          colStart: message.bodyCol ?? 4,
-          selectable: true,
-          muted: true,
-          ...segments === undefined ? {} : { segments, segKey: segmentsKeyCached(segments) },
-        }
-      }
-      return { ...base, kind: 'blank' }
-    }
-    case 'tool-diff': {
-      const wrapped = wrapFor(message, width)
-      const role = 'assistant' as const
-      if (offset === 0 || offset === count - 2) {
-        return { ...base, kind: 'pad', background: true, role }
-      }
-      if (offset === count - 1) {
-        return { ...base, kind: 'blank' }
-      }
-      if (offset === 1) {
-        return {
-          ...base,
-          kind: 'text',
-          text: toolDiffHeader(message),
-          colStart: 4,
-          selectable: true,
-          background: true,
-          muted: true,
-          role,
-          ...(message.streaming ? { spinner: true } : {}),
-        }
-      }
-      if (offset === 2) {
-        return { ...base, kind: 'pad', background: true, role }
-      }
-      const index = offset - 3
-      const segments = wrapped.rows?.[index]
-      const bg = wrapped.bgs?.[index]
+    case 'lit':
       return {
         ...base,
         kind: 'text',
-        text: wrapped.lines[index] ?? '',
-        colStart: 4,
-        selectable: true,
-        background: true,
-        role,
-        ...(bg === undefined ? {} : { lineBg: bg }),
-        ...segments === undefined ? {} : { segments, segKey: segmentsKeyCached(segments) },
+        text: plan.text,
+        colStart: plan.colStart,
+        selectable: plan.selectable,
+        background: plan.bg,
+        muted: plan.muted,
+        role: plan.role,
+        ...(plan.segments === undefined ? {} : { segments: plan.segments, segKey: segmentsKeyCached(plan.segments) }),
       }
-    }
-    case 'compaction': {
-      const innerWidth = Math.max(8, width - BUBBLE_WIDTH_OFFSET)
-      const errorLine = message.error === undefined ? undefined : truncate(`error: ${message.error}`, innerWidth)
-      const wrapped = message.summary === '' || errorLine !== undefined ? null : wrapFor(message, width)
-      const body = errorLine !== undefined ? 1 : wrapped?.lines.length ?? 0
-      if (offset === 0 || offset === count - 2) {
-        return { ...base, kind: 'pad', background: true, role: 'assistant' as const }
-      }
-      if (offset === count - 1) {
-        return { ...base, kind: 'blank' }
-      }
-      if (offset === 1) {
-        const segments: Segment[] = [{ text: 'Compact', style: { color: colors.sectionHeader, bold: true } }]
-        return {
-          ...base,
-          kind: 'text',
-          text: 'Compact',
-          colStart: HEADER_LABEL_COL,
-          background: true,
-          role: 'assistant' as const,
-          segments,
-          segKey: segmentsKeyCached(segments),
-          ...(message.running ? { spinner: true, accent: colors.sectionHeader } : {}),
-        }
-      }
-      if (offset === 2) {
-        const segments: Segment[] = [{ text: '─'.repeat(innerWidth), style: { color: colors.sectionHeader, bold: true } }]
-        return {
-          ...base,
-          kind: 'text',
-          text: segments[0]!.text,
-          colStart: 4,
-          selectable: true,
-          background: true,
-          role: 'assistant' as const,
-          segments,
-          segKey: segmentsKeyCached(segments),
-        }
-      }
-      const index = offset - 3
-      if (errorLine !== undefined) {
-        if (index > 0) return { ...base, kind: 'blank' }
-        const segments: Segment[] = [{ text: errorLine, style: { color: colors.errorText } }]
-        return {
-          ...base,
-          kind: 'text',
-          text: errorLine,
-          colStart: 4,
-          selectable: true,
-          background: true,
-          role: 'assistant' as const,
-          segments,
-          segKey: segmentsKeyCached(segments),
-        }
-      }
-      const segments = wrapped?.rows?.[index]
+    case 'body': {
+      const lineBg = render.bgs?.[plan.line]
+      const segments = render.rows?.[plan.line]
       return {
         ...base,
         kind: 'text',
-        text: wrapped?.lines[index] ?? '',
-        colStart: 4,
-        selectable: true,
-        background: true,
-        role: 'assistant' as const,
-        ...segments === undefined ? {} : { segments, segKey: segmentsKeyCached(segments) },
+        text: render.lines[plan.line] ?? '',
+        colStart: plan.colStart,
+        selectable: plan.selectable,
+        background: plan.bg || lineBg !== undefined,
+        muted: plan.muted,
+        role: plan.role,
+        ...(lineBg === undefined ? {} : { lineBg }),
+        ...(segments === undefined ? {} : { segments, segKey: segmentsKeyCached(segments) }),
       }
     }
   }

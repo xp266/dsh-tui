@@ -429,6 +429,7 @@ export function reduceChatEvent(
           id: nextId('cmd'),
           role: data.kind === 'error' ? 'error' : 'assistant',
           content: data.kind === 'error' && text.trim() === '' ? `${name} failed` : `${label}${text}`,
+          origin: 'command',
         })
         return { messages, turn, changed: true }
       }
@@ -574,14 +575,20 @@ function appendToolDelta(
     }
     if (delta !== '') {
       turn.pendingArgs.set(callId, (turn.pendingArgs.get(callId) ?? '') + delta)
-      const path = extractPartialJsonFields(turn.pendingArgs.get(callId) ?? '').file_path?.value
+      const fields = extractPartialJsonFields(turn.pendingArgs.get(callId) ?? '')
+      const path = fields.file_path?.value
+      const streamText = name === 'write' ? fields.content?.value : undefined
       const id = turn.pendingTools.get(callId)
-      if (path !== undefined && path !== '' && id !== undefined) {
-        updateById(messages, id, message => message.kind === 'tool-diff' && message.path !== path
-          ? { ...message, path }
-          : message)
-        const target = messages.find(message => message.id === id)
-        if (target?.kind === 'tool-diff' && target.path === path) changed = true
+      const target = id === undefined ? undefined : messages.find(message => message.id === id)
+      if (target?.kind === 'tool-diff') {
+        const pathChanged = path !== undefined && path !== '' && target.path !== path
+        const textChanged = streamText !== undefined && target.streamText !== streamText
+        if (pathChanged || textChanged) {
+          updateById(messages, id!, message => message.kind === 'tool-diff'
+            ? { ...message, ...(pathChanged ? { path: path! } : {}), ...(streamText === undefined ? {} : { streamText }) }
+            : message)
+          changed = true
+        }
       }
     }
     return { messages, turn, changed }
@@ -638,4 +645,8 @@ function settleAskUserBubble(
 function updateById(messages: Message[], id: string, update: (message: Message) => Message): void {
   const index = messages.findIndex(m => m.id === id)
   if (index >= 0) messages[index] = update(messages[index]!)
+}
+
+function indexOf(messages: Message[], id: string): number {
+  return messages.findIndex(message => message.id === id)
 }

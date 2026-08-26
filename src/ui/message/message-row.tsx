@@ -63,19 +63,17 @@ export const MessageRow = memo(
     }
     case 'header': {
       const symbol = headerSymbol(info.collapsed)
-      const color = info.thinking ? colors.thinkingLabel : colors.toolLabel
-      if (info.spinner) {
-        return (
-          <Box>
-            <SelectableText y={row} col={0} text={'  '} color={color} messageLayer />
-            <TickGlyph y={row} col={2} color={color} tick={spinnerTick} />
-            <SelectableText y={row} col={HEADER_LABEL_COL} text={info.label} color={color} messageLayer />
-          </Box>
-        )
-      }
+      const color = colors.toolLabel
       return (
         <Box>
-          <SelectableText y={row} col={0} text={`  ${symbol} `} color={color} messageLayer />
+          {info.spinner ? (
+            <>
+              <SelectableText y={row} col={0} text={'  '} color={color} messageLayer />
+              <TickGlyph y={row} col={2} color={color} tick={spinnerTick} />
+            </>
+          ) : (
+            <SelectableText y={row} col={0} text={`  ${symbol} `} color={color} messageLayer />
+          )}
           <SelectableText y={row} col={HEADER_LABEL_COL} text={info.label} color={color} messageLayer />
         </Box>
       )

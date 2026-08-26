@@ -13,19 +13,19 @@ function frameOf(messages: Message[]): string {
 }
 
 describe('collapsible header symbols', () => {
-  it('renders the dash symbol while collapsed even when running', () => {
-    const frame = frameOf([tool({ collapsed: true })])
+  it('renders the dash symbol while collapsed and idle', () => {
+    const frame = frameOf([tool({ collapsed: true, running: false })])
     expect(frame).toMatch(/- +Bash/)
   })
 
   it('renders the down arrow while expanded', () => {
-    const frame = frameOf([tool()])
+    const frame = frameOf([tool({ running: false })])
     expect(frame).toMatch(/↓ +Bash/)
   })
 
-  it('never renders a spinner frame in the message area', () => {
-    for (const frame of ['⠋', '⠙', '⠹', '⠸', '⠼']) {
-      expect(frameOf([tool()])).not.toContain(frame)
-    }
+  it('replaces the marker with a spinner frame while running', () => {
+    const frame = frameOf([tool({ collapsed: true })])
+    expect(frame).toMatch(/⠋ +Bash/)
+    expect(frame).not.toMatch(/- +Bash/)
   })
 })

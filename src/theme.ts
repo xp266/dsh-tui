@@ -1,6 +1,6 @@
 const palette = {
   userBubbleBackground: '#2f2f2f',
-  aiBubbleBackground: '#0e0e0e',
+  aiBubbleBackground: '#212020',
 
   permissionBackground: '#232323',
   workspaceWriteText: '#3394e3',
@@ -30,14 +30,14 @@ const palette = {
   success: '#4caf50',
   warning: '#efa72e',
 
-  toolLabel: '#4da0bc',
-  thinkingLabel: '#0f9fcf',
+  toolLabel: '#44ddff',
+  thinkingLabel: '#44ddff',
   toolBodyText: '#808080',
 
   diffAdded: '#3fb950',
   diffRemoved: '#f85149',
-  diffAddedBackground: '#12261a',
-  diffRemovedBackground: '#2d1517',
+  diffAddedBackground: '#25392d',
+  diffRemovedBackground: '#392527',
 
   scrollTrackBackground: '#383838',
   scrollThumbBackground: '#9a9a9a',

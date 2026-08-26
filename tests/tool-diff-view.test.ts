@@ -27,7 +27,7 @@ describe('tool diff bubbles', () => {
     })]
     expect(rowCount(messages, WIDTH)).toBe(2 + 5)
     expect(rowInfoAt(messages, WIDTH, 0)).toMatchObject({ kind: 'pad' })
-    expect(rowInfoAt(messages, WIDTH, 1)).toMatchObject({ kind: 'text', text: 'write minecraft-web/test/test.js', colStart: 4, muted: true })
+    expect(rowInfoAt(messages, WIDTH, 1)).toMatchObject({ kind: 'text', text: 'write minecraft-web/test/test.js', colStart: 4, muted: true, background: true })
     expect(rowInfoAt(messages, WIDTH, 2)).toMatchObject({ kind: 'pad' })
     expect(rowInfoAt(messages, WIDTH, 3)).toMatchObject({ kind: 'text', text: '+ const a = 1', colStart: 4 })
     expect(rowInfoAt(messages, WIDTH, 4)).toMatchObject({ kind: 'text', text: '+ const b = 2' })
@@ -35,11 +35,13 @@ describe('tool diff bubbles', () => {
     expect(rowInfoAt(messages, WIDTH, 6)).toMatchObject({ kind: 'blank' })
   })
 
-  it('shows the spinner on the header only while streaming', () => {
+  it('keeps tool bubbles free of spinners while streaming', () => {
     const messages: Message[] = [diffMessage({ streaming: true })]
-    expect(rowInfoAt(messages, WIDTH, 1)).toMatchObject({ kind: 'text', spinner: true })
-    const settled: Message[] = [diffMessage({ streaming: false, running: true })]
-    expect(rowInfoAt(settled, WIDTH, 1)?.spinner ?? false).toBe(false)
+    expect(rowCount(messages, WIDTH)).toBe(4)
+    const header = rowInfoAt(messages, WIDTH, 1)
+    expect(header?.kind).toBe('text')
+    expect(header?.spinner ?? false).toBe(false)
+    expect(rowInfoAt(messages, WIDTH, 3)?.kind).toBe('blank')
   })
 
   it('aligns markers with the header and continuations under the code column', () => {

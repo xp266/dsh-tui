@@ -96,7 +96,7 @@ describe('tool streaming bubble', () => {
     const committedFrame = stripAnsi(view.lastFrame() ?? '')
     const committedLine = committedFrame.split('\n').find(line => line.includes('bash'))
     expect(committedLine).toBeTruthy()
-    expect([...(committedLine ?? '')].some(ch => SPINNER_CHARS.has(ch))).toBe(false)
+    expect([...(committedLine ?? '')].some(ch => SPINNER_CHARS.has(ch))).toBe(true)
   })
 
   it('renders the ask-user placeholder with spinner then settles to the bare tool name', async () => {
@@ -162,7 +162,9 @@ describe('tool streaming bubble', () => {
     const streamingFrame = stripAnsi(view.lastFrame() ?? '')
     expect(streamingFrame).toContain('write src/none/a.ts')
     expect(streamingFrame).not.toContain('+ const a = 1')
-    expect([...streamingFrame].some(ch => SPINNER_CHARS.has(ch))).toBe(true)
+    expect(streamingFrame).toContain('const a = 1')
+    const writeLine = streamingFrame.split('\n').find(line => line.includes('write src/none/a.ts'))
+    expect([...(writeLine ?? '')].some(ch => SPINNER_CHARS.has(ch))).toBe(false)
 
     act(() => {
       handler?.({ type: 'tool/call', seq: 2, time: 0, data: { turn: 1, step: 1, callId: CallId('c9'), name: 'write', arguments: '{"file_path":"src/none/a.ts","content":"const a = 1\\nconst b = 2"}' } } as unknown as SessionEvent)

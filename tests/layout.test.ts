@@ -221,17 +221,15 @@ describe('compaction bubble layout', () => {
     summary: '',
   }
 
-  it('shows header and divider while running with no summary', () => {
-    expect(rowCount([running], WIDTH)).toBe(5)
+  it('shows the tool bubble shell while running', () => {
+    expect(rowCount([running], WIDTH)).toBe(4)
     expect(rowInfoAt([running], WIDTH, 0)).toMatchObject({ kind: 'pad', background: true })
     const header = rowInfoAt([running], WIDTH, 1)
-    expect(header).toMatchObject({ kind: 'text', text: 'Compact', colStart: 4, spinner: true, accent: '#cc7e25' })
+    expect(header).toMatchObject({ kind: 'text', text: 'Compact', colStart: 4, background: true })
     expect(header?.segments?.[0]).toMatchObject({ style: { color: '#cc7e25', bold: true } })
-    const divider = rowInfoAt([running], WIDTH, 2)
-    expect(divider?.segments?.[0]?.text).toBe('─'.repeat(WIDTH - 8))
-    expect(divider?.segments?.[0]?.style).toMatchObject({ color: '#cc7e25', bold: true })
-    expect(rowInfoAt([running], WIDTH, 3)).toMatchObject({ kind: 'pad' })
-    expect(rowInfoAt([running], WIDTH, 4)).toMatchObject({ kind: 'blank' })
+    expect(header?.spinner ?? false).toBe(false)
+    expect(rowInfoAt([running], WIDTH, 2)).toMatchObject({ kind: 'pad' })
+    expect(rowInfoAt([running], WIDTH, 3)).toMatchObject({ kind: 'blank' })
   })
 
   it('renders the summary as markdown rows when done', () => {
@@ -245,9 +243,11 @@ describe('compaction bubble layout', () => {
     const total = rowCount([done], WIDTH)
     expect(total).toBe(6)
     expect(rowInfoAt([done], WIDTH, 0)).toMatchObject({ kind: 'pad', background: true })
-    expect(rowInfoAt([done], WIDTH, 1)).toMatchObject({ kind: 'text', text: 'Compact' })
-    expect(rowInfoAt([done], WIDTH, 1)?.spinner).toBeUndefined()
-    expect(rowInfoAt([done], WIDTH, 2)?.segments?.[0]?.style).toMatchObject({ color: '#cc7e25', bold: true })
+    const header = rowInfoAt([done], WIDTH, 1)
+    expect(header).toMatchObject({ kind: 'text', text: 'Compact', background: true })
+    expect(header?.segments?.[0]?.style).toMatchObject({ color: '#cc7e25', bold: true })
+    expect(header?.spinner).toBeUndefined()
+    expect(rowInfoAt([done], WIDTH, 2)).toMatchObject({ kind: 'pad' })
     const bodyRow = rowInfoAt([done], WIDTH, 3)
     expect(bodyRow).toMatchObject({ kind: 'text', colStart: 4, selectable: true, background: true })
     expect(bodyRow?.text).toContain('kept')
@@ -266,9 +266,11 @@ describe('compaction bubble layout', () => {
       error: 'summary diverged',
     }
     expect(rowCount([failed], WIDTH)).toBe(6)
-    const error = rowInfoAt([failed], WIDTH, 3)
-    expect(error?.text).toContain('error: summary diverged')
-    expect(error?.segments?.[0]?.style).toMatchObject({ color: '#ff6b6b' })
+    const header = rowInfoAt([failed], WIDTH, 1)
+    expect(header?.kind).toBe('text')
+    const errorBody = rowInfoAt([failed], WIDTH, 3)
+    expect(errorBody?.text).toBe('error: summary diverged')
+    expect(errorBody?.segments?.[0]?.style).toMatchObject({ color: '#ff6b6b' })
   })
 
   it('never emits control characters into rendered summary rows', () => {
