@@ -152,9 +152,12 @@ export function renderToolDiffBody(message: ToolDiffMessage, width: number): Too
     rows.push([])
     lines.push('')
     bgs.push(undefined)
-    rows.push([{ text: message.error, style: { color: colors.errorText } }])
-    lines.push(message.error)
-    bgs.push(undefined)
+    const wrapped = wrapSegments([{ text: message.error, style: { color: colors.errorText } }], bodyWidth)
+    for (const segs of wrapped) {
+      rows.push(segs)
+      lines.push(segs.map(segment => segment.text).join(''))
+      bgs.push(undefined)
+    }
   }
   return { lines, rows, bgs }
 }
