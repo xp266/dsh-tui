@@ -16,7 +16,7 @@ const palette = {
   carouselSelectedText: '#61afef',
 
   sectionHeader: '#cc7e25',
-  panelQuestionText: '#79b8ff',
+  panelQuestionText: '#cc7e25',
 
   modelText: '#ffffff',
   effortText: '#ffd900',
