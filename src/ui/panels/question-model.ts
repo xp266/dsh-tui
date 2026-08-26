@@ -36,6 +36,7 @@ export const SINGLE_LABEL_COL = 5
 export const MULTI_LABEL_COL = 9
 export const MAX_FIELD_ROWS = 3
 export const MAX_BODY_ROWS = 14
+export const MAX_DETAIL_ROWS = 7
 
 export interface QuestionDraft {
   selected: string[]
@@ -50,6 +51,7 @@ export interface QuestionPageState {
   cursors: number[]
   editing: boolean
   editor: EditState
+  detailScroll: number[]
 }
 
 export function initialPageState(request: AskUserQuestionRequestLike): QuestionPageState {
@@ -60,6 +62,17 @@ export function initialPageState(request: AskUserQuestionRequestLike): QuestionP
     cursors: request.questions.map(() => 0),
     editing: false,
     editor: { value: '', cursor: 0 },
+    detailScroll: request.questions.map(() => 0),
+  }
+}
+
+export function scrollDetail(state: QuestionPageState, delta: number): QuestionPageState {
+  if (state.editing) return state
+  const next = Math.max(0, state.detailScroll[state.page]! + delta)
+  if (next === state.detailScroll[state.page]) return state
+  return {
+    ...state,
+    detailScroll: state.detailScroll.map((value, index) => index === state.page ? next : value),
   }
 }
 
@@ -258,8 +271,18 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
     const multi = question.multiSelect === true
     const labX = labelCol(question)
     const fieldWidth = Math.max(8, innerWidth - labX)
-    pushWrapped(body, question.question, 0, innerWidth, questionStyle())
-    body.push([])
+    const above: Segment[][] = []
+    if (question.header !== undefined) {
+      pushWrapped(above, question.header, 0, innerWidth, questionStyle())
+      above.push(lineOf([]))
+    }
+    pushWrapped(above, question.question, 0, innerWidth, questionStyle())
+    above.push(lineOf([]))
+
+    const below: Segment[][] = []
+    let focusInBelow = -1
+    let caretInBelow: { row: number; col: number } | null = null
+    const hitsInBelow: PanelHitRow[] = []
     const rows = interactiveRowCount(question)
     const cursorRow = state.cursors[state.page]!
     const draft = state.drafts[state.page]!
@@ -267,20 +290,20 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
       const focused = cursorRow === i
       const marker = focused ? '❯' : ' '
       const num = `${i + 1}.`
-      if (focused) focusLine = body.length
-      hitRows.push({ line: body.length, optionIndex: i })
+      if (focused) focusInBelow = below.length
+      hitsInBelow.push({ line: below.length, optionIndex: i })
       if (i === rows - 1) {
         const checked = draft.customChecked
         const box = multi ? (checked ? '[✓]' : '[ ]') : ''
-        const tail = !multi && checked ? '  ✓' : ''
-        body.push(lineOf([
+        const tick = !multi && checked ? '  ✓' : ''
+        below.push(lineOf([
           seg(marker, focused ? checkStyle() : undefined),
           ' ',
           seg(num, focused ? focusedLabelStyle() : undefined),
           ...(box === '' ? [] : [seg(' ' + box, focused ? focusedLabelStyle() : undefined)]),
           ' ',
           seg('Custom input content', focused ? focusedLabelStyle() : undefined),
-          ...(tail === '' ? [] : [seg(tail, checkStyle())]),
+          ...(tick === '' ? [] : [seg(tick, checkStyle())]),
         ]))
         const editing = state.editing
         const value = editing ? state.editor.value : draft.customText
@@ -291,12 +314,12 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
           Math.max(0, field.lines.length - MAX_FIELD_ROWS),
         )
         const visible = field.lines.slice(firstVisible, firstVisible + MAX_FIELD_ROWS)
-        const fieldStart = body.length
+        const fieldStart = below.length
         for (const line of visible) {
-          body.push(lineOf([' '.repeat(labX), seg(line, descriptionStyle())]))
+          below.push(lineOf([' '.repeat(labX), seg(line, descriptionStyle())]))
         }
         if (editing) {
-          caret = {
+          caretInBelow = {
             row: fieldStart + field.cursorRow - firstVisible,
             col: labX + field.cursorCol,
           }
@@ -305,23 +328,56 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
         const option = question.options![i]!
         const chosen = draft.selected.includes(option.label)
         const box = multi ? (chosen ? '[✓]' : '[ ]') : ''
-        const tail = !multi && chosen ? '  ✓' : ''
-        body.push(lineOf([
+        const tick = !multi && chosen ? '  ✓' : ''
+        below.push(lineOf([
           seg(marker, focused ? checkStyle() : undefined),
           ' ',
           seg(num, focused ? focusedLabelStyle() : undefined),
           ...(box === '' ? [] : [seg(' ' + box, focused ? focusedLabelStyle() : undefined)]),
           ' ',
           seg(option.label, focused ? focusedLabelStyle() : undefined),
-          ...(tail === '' ? [] : [seg(tail, checkStyle())]),
+          ...(tick === '' ? [] : [seg(tick, checkStyle())]),
         ]))
         if (option.description !== undefined && option.description !== '') {
-          pushWrapped(body, option.description, labX, innerWidth, descriptionStyle())
+          pushWrapped(below, option.description, labX, innerWidth, descriptionStyle())
         }
       }
     }
-    body.push([])
-    body.push(legend(state.page, total))
+    below.push(lineOf([]))
+    below.push(legend(state.page, total))
+
+    body.push(...above)
+    const detail = question.detail !== undefined && question.detail !== ''
+      ? wrapLines(question.detail, Math.max(8, innerWidth - SINGLE_LABEL_COL))
+      : []
+    if (detail.length > 0) {
+      const budget = Math.max(3, scrollWindow - body.length - below.length)
+      if (detail.length <= budget) {
+        for (const line of detail) {
+          body.push(lineOf(['  ', seg(line, descriptionStyle())]))
+        }
+      } else {
+        const contentRows = Math.max(1, budget - 2)
+        const maxStart = detail.length - contentRows
+        const start = Math.max(0, Math.min(state.detailScroll[state.page]!, maxStart))
+        if (start > 0) {
+          body.push(lineOf([seg(`… ${start} lines above`, descriptionStyle())]))
+        }
+        for (const line of detail.slice(start, start + contentRows)) {
+          body.push(lineOf(['  ', seg(line, descriptionStyle())]))
+        }
+        if (start + contentRows < detail.length) {
+          body.push(lineOf([seg(`… ${detail.length - start - contentRows} more lines`, descriptionStyle())]))
+        }
+      }
+    }
+    const base = body.length
+    body.push(...below)
+    if (focusInBelow >= 0) focusLine = base + focusInBelow
+    if (caretInBelow !== null) caret = { row: base + caretInBelow.row, col: caretInBelow.col }
+    for (const hit of hitsInBelow) {
+      hitRows.push({ line: base + hit.line, optionIndex: hit.optionIndex })
+    }
   }
 
   const window = Math.max(3, Math.min(scrollWindow, body.length))

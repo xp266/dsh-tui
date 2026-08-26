@@ -61,6 +61,8 @@ function questionFromJson(value: unknown): AskQuestionItemLike | undefined {
   return {
     id: record.id,
     question: record.question,
+    ...(typeof record.header === 'string' && record.header !== '' ? { header: record.header } : {}),
+    ...(typeof record.detail === 'string' && record.detail !== '' ? { detail: record.detail } : {}),
     ...(Array.isArray(record.options) ? { options: record.options.map(optionFromJson).filter(option => option !== undefined) } : {}),
     ...(multiSelect ? { multiSelect } : {}),
   }

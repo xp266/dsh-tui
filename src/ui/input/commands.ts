@@ -3,6 +3,7 @@ export type CommandId = 'models' | 'model-effort' | 'preset' | 'defaults' | 'ses
 export interface CommandHintItem {
   command: string
   description: string
+  hint?: string
 }
 
 export interface CommandDef extends CommandHintItem {
@@ -20,6 +21,7 @@ export const COMMANDS: CommandDef[] = [
 ]
 
 export const HINT_COMMAND_COL_WIDTH = 20
+export const HINT_ARGS_COL_WIDTH = 18
 
 export function matchCommand(text: string): CommandDef | undefined {
   return COMMANDS.find(command => command.command === text)
@@ -48,7 +50,7 @@ export function matchAvailableCommand(text: string, isAvailable?: CommandAvailab
 
 export function mergeCommandEntries(
   local: CommandDef[],
-  remote: readonly { name: string; description: string }[],
+  remote: readonly { name: string; description: string; hint?: string }[],
 ): CommandHintItem[] {
   const taken = new Set(local.map(command => command.command))
   const entries: CommandHintItem[] = local.map(({ command, description }) => ({ command, description }))
@@ -56,7 +58,11 @@ export function mergeCommandEntries(
     const command = `/${entry.name}`
     if (taken.has(command)) continue
     taken.add(command)
-    entries.push({ command, description: entry.description })
+    entries.push({
+      command,
+      description: entry.description,
+      ...(entry.hint === undefined ? {} : { hint: entry.hint }),
+    })
   }
   return entries
 }

@@ -17,8 +17,10 @@ import {
   enterOnRow,
   initialPageState,
   MAX_BODY_ROWS,
+  MAX_DETAIL_ROWS,
   moveCursor,
   questionPanelLayout,
+  scrollDetail,
   switchPage,
 } from './question-model.ts'
 import type { QuestionPageState } from './question-model.ts'
@@ -59,8 +61,10 @@ export function QuestionPanel({ handleRef, question: panel, background, active, 
         }
       })
     },
-    wheel() {
-      return false
+    wheel(dir: -1 | 1) {
+      if (!active || state.editing) return false
+      setState(current => scrollDetail(current, dir === -1 ? -3 : 3))
+      return true
     },
   }))
   if (active && state.editing && layout.caret !== null) {
@@ -121,6 +125,8 @@ export function QuestionPanel({ handleRef, question: panel, background, active, 
     }
     if (key.leftArrow) return setState(current => switchPage(current, -1))
     if (key.rightArrow) return setState(current => switchPage(current, 1))
+    if (key.pageUp) return setState(current => scrollDetail(current, -MAX_DETAIL_ROWS))
+    if (key.pageDown) return setState(current => scrollDetail(current, MAX_DETAIL_ROWS))
     if (key.upArrow) return setState(current => moveCursor(current, -1))
     if (key.downArrow) return setState(current => moveCursor(current, 1))
     const isReview = state.page >= state.request.questions.length
