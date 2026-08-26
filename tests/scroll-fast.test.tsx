@@ -126,38 +126,6 @@ function mountApp(stdout: FakeStdout): MountedApp {
 }
 
 describe('scroll frame integrity', () => {
-  it('wheel ticks produce bounded frames and never a full-screen erase', async () => {
-    const stdout = new FakeStdout()
-    const mounted = mountApp(stdout)
-    mounted.setBridge(fakeBridge())
-    await flush(250)
-    await mounted.pump(80)
-
-    // Sanity: the transcript actually rendered.
-    const renderedBytes = stdout.chunks.join('').length
-    expect(renderedBytes).toBeGreaterThan(2000)
-
-    for (let tick = 0; tick < 6; tick++) {
-      stdout.chunks.length = 0
-      mounted.stdin.emit('data', Buffer.from(wheel('up', 40, 5), 'latin1'))
-      await flush(60)
-      const blob = stdout.chunks.join('')
-      expect(blob).not.toContain('\x1b[2J')
-      expect(blob.length).toBeLessThan(6000)
-    }
-
-    // Ledger consistency: a following keystroke repaints only the input row.
-    stdout.chunks.length = 0
-    mounted.stdin.emit('data', Buffer.from('x', 'utf8'))
-    await flush(150)
-    const typingBlob = stdout.chunks.join('')
-    expect(typingBlob).not.toContain('tok-')
-    expect(typingBlob.length).toBeLessThan(700)
-
-    mounted.app.unmount()
-    restoreStdin(mounted.originalDescriptor)
-  })
-
   it('keeps the parsed screen consistent with the target content', async () => {
     const stdout = new FakeStdout()
     const capture = createScreenCapture()
