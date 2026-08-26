@@ -4,7 +4,7 @@ import { isMouseResidue } from '../../terminal/mouse.ts'
 import { colToCharIndex } from '../../core/text.ts'
 import { moveCaretLine } from '../../core/composer-layout.ts'
 import { editBackspace, editDelete, editInsert } from '../../core/edit.ts'
-import { COMMANDS, filterHintEntries } from './commands.ts'
+import { COMMANDS, filterHintEntries, literalHintArgs } from './commands.ts'
 import type { CommandHintItem } from './commands.ts'
 
 export interface ComposerState {
@@ -35,6 +35,7 @@ export function useComposer(
   contentWidth: number,
   onCycleMode?: () => void,
   entries?: readonly CommandHintItem[],
+  listCommandArgs?: (name: string) => Promise<string[]>,
 ): ComposerState {
   const [value, setValue] = useState('')
   const [cursor, setCursor] = useState(0)
@@ -46,8 +47,10 @@ export function useComposer(
   const commandIndexRef = useRef(0)
   const widthRef = useRef(contentWidth)
   const entriesRef = useRef<readonly CommandHintItem[] | undefined>(entries)
+  const listCommandArgsRef = useRef(listCommandArgs)
   widthRef.current = contentWidth
   entriesRef.current = entries
+  listCommandArgsRef.current = listCommandArgs
   valueRef.current = value
   cursorRef.current = cursor
   hintOpenRef.current = hintOpen
@@ -132,6 +135,42 @@ export function useComposer(
     setValue(next.value)
     setCursor(next.cursor)
   }
+  const completeCommandArg = (): void => {
+    const v = valueRef.current
+    const match = /^(\/\S+)(?:\s+(\S*))?(?:\s+(.*\S))?\s*$/.exec(v)
+    if (match === null) return
+    const commandToken = match[1]!
+    const entry = entriesRef.current?.find(candidate => candidate.command === commandToken)
+    if (entry === undefined) return
+    const currentArg = match[2] ?? ''
+    const rest = match[3]
+    void (async () => {
+      let candidates: string[] = []
+      try {
+        candidates = await listCommandArgsRef.current?.(entry.command.slice(1)) ?? []
+      } catch {
+        return
+      }
+      if (candidates.length === 0) candidates = literalHintArgs(entry.hint)
+      if (candidates.length === 0) return
+      const exactIndex = candidates.indexOf(currentArg)
+      let next: string
+      if (exactIndex >= 0) {
+        next = candidates[(exactIndex + 1) % candidates.length]!
+      } else {
+        next = candidates.find(candidate => candidate.startsWith(currentArg)) ?? candidates[0]!
+      }
+      const completed = `${commandToken} ${next}${rest === undefined ? '' : ` ${rest}`}`
+      valueRef.current = completed
+      cursorRef.current = completed.length
+      setValue(completed)
+      setCursor(completed.length)
+      setHintOpen(false)
+      hintOpenRef.current = false
+      setCommandIndex(0)
+      commandIndexRef.current = 0
+    })()
+  }
   useInput((input, key) => {
     if (!interactive) return
     if (input === '\n') {
@@ -154,7 +193,24 @@ export function useComposer(
       return
     }
     if (key.tab) {
-      onCycleMode?.()
+      if (!v.startsWith('/')) {
+        onCycleMode?.()
+        return
+      }
+      const lastChar = v.length > 0 ? v[v.length - 1] : undefined
+      const completable = c === v.length && lastChar !== undefined && !/\s/.test(lastChar)
+      const exactCommand = entriesRef.current?.some(entry => entry.command === v) ?? false
+      if (completable && exactCommand) {
+        completeCommandArg()
+        return
+      }
+      if (showHint) {
+        apiRef.current.confirmHint()
+        return
+      }
+      if (completable) {
+        completeCommandArg()
+      }
       return
     }
     if (key.upArrow && showHint) {

@@ -72,6 +72,15 @@ export function filterHintEntries(entries: readonly CommandHintItem[], value: st
   return entries.filter(entry => entry.command.startsWith(value))
 }
 
+export function literalHintArgs(hint: string | undefined): string[] {
+  if (hint === undefined || hint === '') return []
+  const body = hint.replace(/^\[/, '').replace(/\]$/, '')
+  return body
+    .split('|')
+    .map(part => part.trim())
+    .filter(part => part !== '' && !part.includes('<'))
+}
+
 export interface CommandHintState {
   commands: CommandHintItem[]
   selectedIndex: number

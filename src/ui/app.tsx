@@ -149,12 +149,22 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     () => new Set(registryCommands.map(entry => `/${entry.name}`)),
     [registryCommands],
   )
+  const permissionPresetsRef = useRef<string[] | undefined>(undefined)
+  const listCommandArgs = useCallback(async (name: string): Promise<string[]> => {
+    if (name !== 'permission') return []
+    const cached = permissionPresetsRef.current
+    if (cached !== undefined) return cached
+    const list = await bridge?.listPermissionPresets?.() ?? []
+    permissionPresetsRef.current = list
+    return list
+  }, [bridge])
   const { value, cursor, hintOpen, commandIndex, api } = useComposer(
     text => sendRef.current(text),
     composerInteractive,
     contentWidth,
     () => bridge?.cyclePermission(),
     commandEntries,
+    listCommandArgs,
   )
   const commands = useMemo(() => filterHintEntries(commandEntries, value), [commandEntries, value])
   const layout = inputLayout(value, cursor, columns)
