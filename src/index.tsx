@@ -25,45 +25,67 @@ export function apply(ctx: Context) {
     })
     const capture = createScreenCapture()
     let bridge: ChatBridge | undefined
+    let app: ReturnType<typeof render> | undefined
+    let hotTheme: ReturnType<typeof startHotTheme> | undefined
     let themeTick = 0
+    let hotThemeStarted = false
+    let disposed = false
+    let lastColumns = 0
+    let lastRows = 0
+    let stopSizePoll: (() => void) | undefined
     const buildAppNode = () => <App bridge={bridge} screen={capture} themeTick={themeTick} />
-    const app = render(buildAppNode(), {
-      stdout: capture.stream,
-      alternateScreen: true,
-      exitOnCtrlC: false,
-      incrementalRendering: false,
-      maxFps: 240,
-    })
-    let lastColumns = capture.stream.columns
-    let lastRows = capture.stream.rows
-    const onResize = () => {
+    const start = (): void => {
+      if (disposed || app !== undefined) return
+      app = render(buildAppNode(), {
+        stdout: capture.stream,
+        alternateScreen: true,
+        exitOnCtrlC: false,
+        incrementalRendering: false,
+        maxFps: 240,
+      })
       lastColumns = capture.stream.columns
       lastRows = capture.stream.rows
-      capture.stream.write('\x1b[2J\x1b[3J\x1b[H')
-      app.clear()
-      app.rerender(buildAppNode())
+      const onResize = () => {
+        lastColumns = capture.stream.columns
+        lastRows = capture.stream.rows
+        capture.stream.write('\x1b[2J\x1b[3J\x1b[H')
+        app!.clear()
+        app!.rerender(buildAppNode())
+      }
+      capture.stream.on('resize', onResize)
+      const sizePoll = setInterval(() => {
+        if (capture.stream.columns !== lastColumns || capture.stream.rows !== lastRows) onResize()
+      }, 1000)
+      sizePoll.unref()
+      stopSizePoll = (): void => {
+        clearInterval(sizePoll)
+        capture.stream.off('resize', onResize)
+      }
+      if (disposed) {
+        stopSizePoll()
+        return
+      }
+      hotTheme = startHotTheme(() => {
+        themeTick += 1
+        app?.rerender(buildAppNode())
+      })
+      hotThemeStarted = true
     }
-    capture.stream.on('resize', onResize)
-    const sizePoll = setInterval(() => {
-      if (capture.stream.columns !== lastColumns || capture.stream.rows !== lastRows) onResize()
-    }, 1000)
-    sizePoll.unref()
     void createChatBridge(ctx)
       .then(loaded => {
         bridge = loaded
-        app.rerender(buildAppNode())
+        start()
       })
-      .catch(error => console.error('chat bridge init failed', error))
-    const hotTheme = startHotTheme(() => {
-      themeTick += 1
-      app.rerender(buildAppNode())
-    })
+      .catch(error => {
+        console.error('chat bridge init failed', error)
+        start()
+      })
     return () => {
-      clearInterval(sizePoll)
-      hotTheme?.stop()
-      capture.stream.off('resize', onResize)
+      disposed = true
+      stopSizePoll?.()
+      if (hotThemeStarted) hotTheme?.stop()
       writeCursorShape('reset')
-      app.unmount()
+      app?.unmount()
     }
   })
 }

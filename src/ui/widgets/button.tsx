@@ -16,7 +16,7 @@ function paintButton(item: ButtonItem, paint: PaintArgs<ButtonItem>) {
     if (focused) {
       return (
         <Box>
-          <SelectableText y={y} col={x} text={label} inverse />
+          <SelectableText y={y} col={x} text={label} inverse color={item.rightColor} />
           <SelectableText y={y} col={x + leftWidth} text={right} inverse color={item.rightColor} />
         </Box>
       )

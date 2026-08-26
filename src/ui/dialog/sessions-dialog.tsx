@@ -8,6 +8,7 @@ import type { SessionSectionKind } from '../../chat/session-groups.ts'
 import { useAsyncAction } from '../hooks/use-async-action.ts'
 import { useAsyncList } from '../hooks/use-async-list.ts'
 import { Dialog } from './dialog.tsx'
+import { DIALOG_WIDTH_WIDE, SESSIONS_DIALOG_MAX_HEIGHT } from './sizes.ts'
 import type { DialogFooterLine, DialogHandle, DialogItem, DialogRow } from './dialog.tsx'
 
 export interface SessionsApi {
@@ -27,8 +28,8 @@ export interface SessionsDialogProps {
   ref?: Ref<DialogHandle>
 }
 
-const DIALOG_WIDTH = 70
-const DIALOG_MAX_HEIGHT = 18
+const DIALOG_WIDTH = DIALOG_WIDTH_WIDE
+const DIALOG_MAX_HEIGHT = SESSIONS_DIALOG_MAX_HEIGHT
 const ARM_TIMEOUT_MS = 3000
 
 const SECTION_LABELS: Record<SessionSectionKind, string> = {
@@ -61,7 +62,7 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
       onClose()
     })
   }
-  const { items, loading, error: loadError, reload } = useAsyncList(api.listSessions)
+  const { items, loading, error: loadError, reload, remove } = useAsyncList(api.listSessions)
   const sections = useMemo(() => groupSessions(items), [items])
   const disarm = () => {
     clearTimeout(armTimer.current)
@@ -71,16 +72,24 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
     }
   }
   useEffect(() => () => clearTimeout(armTimer.current), [])
-  const archive = async (id: string) => {
-    const result = await run(async () => {
-      await api.archiveSession(id)
-      if (api.activeSessionId() === id) {
-        onBeforeSessionSelected?.()
-        onNewSession?.()
-      }
-      reload()
-    })
-    if (result.ok) clearError()
+  const archive = (id: string) => {
+    const wasActive = api.activeSessionId() === id
+    remove(session => session.id === id)
+    disarm()
+    void api.archiveSession(id)
+      .then(() => {
+        if (wasActive) {
+          onBeforeSessionSelected?.()
+          onNewSession?.()
+        }
+        clearError()
+      })
+      .catch(cause => {
+        void run(async () => {
+          throw cause instanceof Error ? cause : new Error(String(cause))
+        })
+        reload()
+      })
   }
   const handleCtrlD = (focused: DialogItem | undefined): boolean => {
     if (focused?.type !== 'button') return false

@@ -1,5 +1,6 @@
 import type { Ref } from 'react'
 import { Dialog } from './dialog.tsx'
+import { DIALOG_WIDTH_MEDIUM, TODO_DIALOG_MAX_HEIGHT } from './sizes.ts'
 import type { DialogHandle, DialogRow } from './dialog.tsx'
 import { todoSymbol } from '../../chat/todo-view.ts'
 import type { TodoItemLike } from '../../chat/todo-view.ts'
@@ -10,8 +11,8 @@ export interface TodoDialogProps {
   onClose: () => void
 }
 
-const DIALOG_WIDTH = 56
-const DIALOG_MAX_HEIGHT = 16
+const DIALOG_WIDTH = DIALOG_WIDTH_MEDIUM
+const DIALOG_MAX_HEIGHT = TODO_DIALOG_MAX_HEIGHT
 
 export function todoRows(todos: readonly TodoItemLike[]): DialogRow[] {
   return todos.map(item => ({ items: [{ type: 'static', label: `${todoSymbol(item.status)} ${item.content}` }] }))

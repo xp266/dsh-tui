@@ -3,6 +3,7 @@ import { errorLine } from './status-lines.ts'
 import type { PresetSummary } from '../../chat/presets.ts'
 import { useAsyncAction } from '../hooks/use-async-action.ts'
 import { ListDialog } from './list-dialog.tsx'
+import { DIALOG_WIDTH_MEDIUM, PRESETS_DIALOG_MAX_HEIGHT } from './sizes.ts'
 import type { DialogHandle, DialogFooterLine } from './dialog.tsx'
 
 export interface PresetsApi {
@@ -17,8 +18,8 @@ export interface PresetsDialogProps {
   ref?: Ref<DialogHandle>
 }
 
-const DIALOG_WIDTH = 60
-const DIALOG_MAX_HEIGHT = 14
+const DIALOG_WIDTH = DIALOG_WIDTH_MEDIUM
+const DIALOG_MAX_HEIGHT = PRESETS_DIALOG_MAX_HEIGHT
 
 export function PresetsDialog({ api, onClose, ref }: PresetsDialogProps) {
   const { error, run } = useAsyncAction()

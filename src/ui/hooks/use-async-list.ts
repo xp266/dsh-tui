@@ -6,6 +6,7 @@ export interface AsyncListState<T> {
   loading: boolean
   error: string | null
   reload(): void
+  remove(predicate: (item: T) => boolean): void
 }
 
 export function useAsyncList<T>(load: () => Promise<T[]>): AsyncListState<T> {
@@ -34,6 +35,9 @@ export function useAsyncList<T>(load: () => Promise<T[]>): AsyncListState<T> {
       cancelled.current = true
     }
   }, [])
+  const remove = useCallback((predicate: (item: T) => boolean) => {
+    setItems(previous => previous.filter(item => !predicate(item)))
+  }, [])
   useEffect(() => reload(), [reload])
-  return { items, loading, error, reload }
+  return { items, loading, error, reload, remove }
 }

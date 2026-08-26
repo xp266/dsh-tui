@@ -18,17 +18,19 @@ describe('dsh-tui plugin', () => {
     expect(plugin.name).toBe('dsh-tui')
   })
 
-  it('renders ink on load without throwing', () => {
+  it('renders ink on load without throwing', async () => {
     const renderMock = vi.mocked(render)
     expect(() => applyPlugin()).not.toThrow()
+    await new Promise(resolve => setTimeout(resolve, 20))
     expect(renderMock).toHaveBeenCalledTimes(1)
     expect(renderMock.mock.results[0]?.value).toBeDefined()
   })
 
-  it('clears the screen and rerenders the frame on terminal resize', () => {
+  it('clears the screen and rerenders the frame on terminal resize', async () => {
     const renderMock = vi.mocked(render)
     const writeSpy = vi.spyOn(process.stdout, 'write')
     applyPlugin()
+    await new Promise(resolve => setTimeout(resolve, 20))
     const instance = renderMock.mock.results[0]?.value as { clear: ReturnType<typeof vi.fn>; rerender: ReturnType<typeof vi.fn> }
     process.stdout.emit('resize')
     expect(instance.clear).toHaveBeenCalledTimes(1)

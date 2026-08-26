@@ -3,6 +3,7 @@ import { errorLine } from './status-lines.ts'
 import type { EffortSummary } from '../../chat/efforts.ts'
 import { useAsyncAction } from '../hooks/use-async-action.ts'
 import { ListDialog } from './list-dialog.tsx'
+import { DIALOG_WIDTH_NARROW, EFFORT_DIALOG_MAX_HEIGHT } from './sizes.ts'
 import type { DialogHandle, DialogFooterLine } from './dialog.tsx'
 
 export interface EffortsApi {
@@ -17,8 +18,8 @@ export interface EffortDialogProps {
   ref?: Ref<DialogHandle>
 }
 
-const DIALOG_WIDTH = 50
-const DIALOG_MAX_HEIGHT = 12
+const DIALOG_WIDTH = DIALOG_WIDTH_NARROW
+const DIALOG_MAX_HEIGHT = EFFORT_DIALOG_MAX_HEIGHT
 
 export function EffortDialog({ api, onClose, ref }: EffortDialogProps) {
   const { error, run } = useAsyncAction()

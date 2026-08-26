@@ -9,6 +9,7 @@ import { useAsyncAction } from '../hooks/use-async-action.ts'
 import { Dialog } from './dialog.tsx'
 import type { DialogFooterLine, DialogHandle, DialogRow } from './dialog.tsx'
 import { ListDialog } from './list-dialog.tsx'
+import { DIALOG_WIDTH_MEDIUM, MODELS_DIALOG_MAX_HEIGHT } from './sizes.ts'
 
 export interface ModelApi {
   listModels(): Promise<ConfiguredModel[]>
@@ -36,8 +37,8 @@ type Window =
   | { kind: 'add-custom' }
   | { kind: 'select-models' }
 
-const DIALOG_WIDTH = 60
-const DIALOG_MAX_HEIGHT = 22
+const DIALOG_WIDTH = DIALOG_WIDTH_MEDIUM
+const DIALOG_MAX_HEIGHT = MODELS_DIALOG_MAX_HEIGHT
 
 const EMPTY_FORM: CustomProviderForm = {
   providerId: '',

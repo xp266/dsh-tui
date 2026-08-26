@@ -11,7 +11,7 @@ import { Region } from '../region.tsx'
 
 export { INPUT_WIDTH_OFFSET }
 
-export const HINT_MAX_ROWS = 7
+export const HINT_MAX_ROWS = 10
 
 export { inputLayout, INPUT_MAX_CONTENT_ROWS } from '../../core/composer-layout.ts'
 import { inputLayout } from '../../core/composer-layout.ts'

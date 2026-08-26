@@ -6,6 +6,7 @@ import type { PresetSummary } from '../../chat/presets.ts'
 import { useAsyncAction } from '../hooks/use-async-action.ts'
 import { useAsyncList } from '../hooks/use-async-list.ts'
 import { Dialog } from './dialog.tsx'
+import { DEFAULTS_DIALOG_MAX_HEIGHT, DIALOG_WIDTH_WIDE } from './sizes.ts'
 import type { DialogFooterLine, DialogHandle, DialogRow } from './dialog.tsx'
 
 export interface DefaultsApi {
@@ -23,8 +24,8 @@ export interface DefaultsDialogProps {
   ref?: Ref<DialogHandle>
 }
 
-const DIALOG_WIDTH = 70
-const DIALOG_MAX_HEIGHT = 14
+const DIALOG_WIDTH = DIALOG_WIDTH_WIDE
+const DIALOG_MAX_HEIGHT = DEFAULTS_DIALOG_MAX_HEIGHT
 
 interface DefaultsData {
   presets: PresetSummary[]
