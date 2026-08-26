@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink'
 import { colors } from '../../theme.ts'
 import { locToPoint, textWidth, wrapLines } from '../../core/text.ts'
+import { caretNonceColor } from '../../core/caret-nonce.ts'
 import { SelectableText } from '../selection.tsx'
 import { registerWidget } from './registry.ts'
 import type { DialogItem } from '../dialog/items.ts'
@@ -20,7 +21,7 @@ registerWidget<InputItem>('input', {
     const point = locToPoint(item.value, width, cursor)
     return { dy: 1 + point.row, dx: point.col }
   },
-  render({ item, width, y, x, clip }) {
+  render({ item, focused, cursor, width, y, x, clip }) {
     const lines = wrapLines(item.value, width)
     const first = Math.min(Math.max(clip - 1, 0), lines.length)
     const parts = []
@@ -28,7 +29,7 @@ registerWidget<InputItem>('input', {
     if (clip === 0) {
       parts.push(
         <Box key="label" height={1}>
-          <SelectableText y={lineY} col={x} text={item.label} />
+          <SelectableText y={lineY} col={x} text={item.label} color={focused ? undefined : colors.dialogHintText} />
         </Box>,
       )
       lineY += 1
@@ -44,7 +45,7 @@ registerWidget<InputItem>('input', {
     }
     parts.push(
       <Box key="pad" height={1}>
-        <Text> </Text>
+        <Text color={focused && cursor !== undefined ? caretNonceColor(cursor) : undefined}>{' '}</Text>
       </Box>,
     )
     return <Box flexDirection="column">{parts}</Box>

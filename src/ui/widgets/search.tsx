@@ -2,6 +2,7 @@ import { Box, Text } from 'ink'
 import { colors } from '../../theme.ts'
 import { padToWidth, textWidth, truncate } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
+import { caretNonceColor } from '../../core/caret-nonce.ts'
 import { registerWidget } from './registry.ts'
 import type { DialogItem } from '../dialog/items.ts'
 
@@ -29,7 +30,7 @@ registerWidget<SearchItem>('search', {
     api.setCursor(next)
     return true
   },
-  render({ item, width, y, x, clip }) {
+  render({ item, focused, cursor, width, y, x, clip }) {
     const isEmpty = item.value === ''
     const text = truncate(searchTextOf(item), width)
     if (clip !== 0) {
@@ -47,7 +48,7 @@ registerWidget<SearchItem>('search', {
         <SelectableText y={y} col={x} text={padToWidth(text, width)} color={isEmpty ? colors.dialogHintText : undefined} />
       </Box>
         <Box height={1}>
-          <Text> </Text>
+          <Text color={focused && cursor !== undefined ? caretNonceColor(cursor) : undefined}>{' '}</Text>
         </Box>
       </Box>
     )

@@ -2,6 +2,7 @@ import { inputLayout, moveCaretLine } from '../../core/composer-layout.ts'
 import { INPUT_WIDTH_OFFSET } from '../../core/metrics.ts'
 import { textWidth, wrapLines } from '../../core/text.ts'
 import { editInsert, editBackspace } from '../../core/edit.ts'
+import { caretNonceColor } from '../../core/caret-nonce.ts'
 import type { EditState } from '../../core/edit.ts'
 import { mergeRuns } from '../../core/segments.ts'
 import type { MarkStyle, Segment } from '../../core/segments.ts'
@@ -315,8 +316,9 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
         )
         const visible = field.lines.slice(firstVisible, firstVisible + MAX_FIELD_ROWS)
         const fieldStart = below.length
-        for (const line of visible) {
-          below.push(lineOf([' '.repeat(labX), seg(line, descriptionStyle())]))
+        for (const [index, line] of visible.entries()) {
+          const nonce = editing && index === visible.length - 1 ? seg(' ', { color: caretNonceColor(cursor) }) : null
+          below.push(lineOf([' '.repeat(labX), seg(line, descriptionStyle()), ...(nonce === null ? [] : [nonce])]))
         }
         if (editing) {
           caretInBelow = {

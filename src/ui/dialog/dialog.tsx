@@ -251,7 +251,7 @@ export function Dialog({
     const focused = safeFocus.row === i + (search ? 1 : 0)
     visibleRows.push(
       <Box key={`row-${i}`} position="absolute" top={rel} left={0} width={contentWidth}>
-        {renderRow(contentRows[i], focused, contentWidth, baseY, 0, carouselPress, focused ? safeFocus.col : 0, clip)}
+        {renderRow(contentRows[i], focused, contentWidth, baseY, 0, carouselPress, focused ? safeFocus.col : 0, clip, focused ? cursor : undefined)}
       </Box>,
     )
     offset += height
@@ -281,7 +281,7 @@ export function Dialog({
         <Box flexDirection="column">
           {search && (
             <Box flexDirection="column">
-              {renderRow(searchRow, safeFocus.row === 0, contentWidth, headerBottom, 0, carouselPress)}
+              {renderRow(searchRow, safeFocus.row === 0, contentWidth, headerBottom, 0, carouselPress, 0, 0, safeFocus.row === 0 ? cursor : undefined)}
             </Box>
           )}
           <Box flexDirection="column" height={viewportHeight} overflow="hidden">

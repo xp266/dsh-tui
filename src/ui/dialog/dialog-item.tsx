@@ -17,13 +17,14 @@ export function renderRow(
   pressed: 'left' | 'right' | null = null,
   subCol = 0,
   clip = 0,
+  cursor?: number,
 ): ReactNode {
   let col = left + 1
   return (
     <Box flexDirection="row">
       {row.items.map((item, index) => {
         const def = widgetOf(item.type)
-        const next = def.render({ item, focused, width: contentWidth, y: baseY, x: col, pressed, subCol, clip })
+        const next = def.render({ item, focused, width: contentWidth, y: baseY, x: col, pressed, subCol, clip, cursor: focused ? cursor : undefined })
         col += def.paintWidth(item) + 1
         return (
           <Box key={index} flexDirection="row">

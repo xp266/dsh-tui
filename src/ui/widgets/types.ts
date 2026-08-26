@@ -5,6 +5,7 @@ export interface PaintArgs<I extends DialogItem> {
   item: I
   focused: boolean
   subCol: number
+  cursor?: number
   width: number
   y: number
   x: number

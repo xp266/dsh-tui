@@ -30,12 +30,12 @@ describe('question panel caret', () => {
     const state = beginEdit(initialPageState({ questions: [{ id: 'q', question: 'Q?' }] }))
     const layout = questionPanelLayout(state, 72)
     expect(layout.caret).toEqual({ row: FIELD_ROW, col: SINGLE_LABEL_COL })
-    expect(lineText(layout.lines[FIELD_ROW])).toBe(' '.repeat(SINGLE_LABEL_COL))
+    expect(lineText(layout.lines[FIELD_ROW])).toBe(' '.repeat(SINGLE_LABEL_COL) + ' ')
   })
 
   it('tracks plain text length', () => {
     const layout = questionPanelLayout(editingState('abc'), 72)
-    expect(lineText(layout.lines[FIELD_ROW])).toBe(' '.repeat(SINGLE_LABEL_COL) + 'abc')
+    expect(lineText(layout.lines[FIELD_ROW])).toBe(' '.repeat(SINGLE_LABEL_COL) + 'abc ')
     expect(layout.caret).toEqual({ row: FIELD_ROW, col: SINGLE_LABEL_COL + 3 })
   })
 
@@ -43,7 +43,7 @@ describe('question panel caret', () => {
     const state = editorInsert(editorInsert(editingState('ab'), '\n'), 'cd')
     const layout = questionPanelLayout(state, 72)
     expect(lineText(layout.lines[FIELD_ROW])).toBe(' '.repeat(SINGLE_LABEL_COL) + 'ab')
-    expect(lineText(layout.lines[FIELD_ROW + 1])).toBe(' '.repeat(SINGLE_LABEL_COL) + 'cd')
+    expect(lineText(layout.lines[FIELD_ROW + 1])).toBe(' '.repeat(SINGLE_LABEL_COL) + 'cd ')
     expect(layout.caret).toEqual({ row: FIELD_ROW + 1, col: SINGLE_LABEL_COL + 2 })
   })
 
@@ -52,7 +52,7 @@ describe('question panel caret', () => {
     const layout = questionPanelLayout(editingState(value), 72)
     const fieldWidth = 72 - SINGLE_LABEL_COL
     expect(lineText(layout.lines[FIELD_ROW])).toBe(' '.repeat(SINGLE_LABEL_COL) + 'x'.repeat(fieldWidth))
-    expect(lineText(layout.lines[FIELD_ROW + 1])).toBe(' '.repeat(SINGLE_LABEL_COL) + 'x'.repeat(80 - fieldWidth))
+    expect(lineText(layout.lines[FIELD_ROW + 1])).toBe(' '.repeat(SINGLE_LABEL_COL) + 'x'.repeat(80 - fieldWidth) + ' ')
     expect(layout.caret).toEqual({ row: FIELD_ROW + 1, col: SINGLE_LABEL_COL + (80 - fieldWidth) })
   })
 
@@ -61,7 +61,7 @@ describe('question panel caret', () => {
     const layout = questionPanelLayout(editingState(value), 72)
     const fieldWidth = 72 - SINGLE_LABEL_COL
     expect(lineText(layout.lines[FIELD_ROW])).toBe(' '.repeat(SINGLE_LABEL_COL) + 'd'.repeat(fieldWidth))
-    expect(lineText(layout.lines[FIELD_ROW + 1])).toBe(' '.repeat(SINGLE_LABEL_COL) + 'd'.repeat(value.length - fieldWidth))
+    expect(lineText(layout.lines[FIELD_ROW + 1])).toBe(' '.repeat(SINGLE_LABEL_COL) + 'd'.repeat(value.length - fieldWidth) + ' ')
     expect(layout.caret).toEqual({ row: FIELD_ROW + 1, col: SINGLE_LABEL_COL + (value.length - fieldWidth) })
     const mid = editingState(value.slice(0, 60))
     const midLayout = questionPanelLayout(mid, 72)
@@ -70,7 +70,7 @@ describe('question panel caret', () => {
 
   it('counts wide characters as two columns for the caret', () => {
     const layout = questionPanelLayout(editingState('你好a'), 72)
-    expect(lineText(layout.lines[FIELD_ROW])).toBe(' '.repeat(SINGLE_LABEL_COL) + '你好a')
+    expect(lineText(layout.lines[FIELD_ROW])).toBe(' '.repeat(SINGLE_LABEL_COL) + '你好a ')
     expect(layout.caret).toEqual({ row: FIELD_ROW, col: SINGLE_LABEL_COL + 5 })
   })
 

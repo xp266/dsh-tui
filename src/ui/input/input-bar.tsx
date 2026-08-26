@@ -1,6 +1,7 @@
 import { Box, Text, useStdout } from 'ink'
 import type { Ref } from 'react'
 import { useCaret } from '../hooks/use-caret.ts'
+import { caretNonceColor } from '../../core/caret-nonce.ts'
 import { useImperativeHandle, useEffect } from 'react'
 import { colors, permissionModeInfo } from '../../theme.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
@@ -126,6 +127,9 @@ export function InputBar({
         { text: effortName, color: colors.effortText },
       ]),
     ]
+    if (interactive) {
+      parts.push({ text: ' ', color: caretNonceColor(cursor) })
+    }
     let used = 0
     for (const part of parts) {
       const remaining = leftMax - used
