@@ -1,5 +1,6 @@
-import { Box, Text, useCursor, useStdout } from 'ink'
+import { Box, Text, useStdout } from 'ink'
 import { createContext, useContext } from 'react'
+import { useCaret } from '../hooks/use-caret.ts'
 import type { ReactNode, Ref } from 'react'
 import { useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { colors } from '../../theme.ts'
@@ -55,7 +56,7 @@ export function Dialog({
   ref,
 }: DialogProps) {
   const { stdout } = useStdout()
-  const { setCursorPosition } = useCursor()
+  const { setCursorPosition } = useCaret()
   const closeGuarded = useContext(CloseGuardContext)
   const columns = stdout?.columns ?? 80
   const totalRows = stdout?.rows ?? 24

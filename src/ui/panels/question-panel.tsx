@@ -1,5 +1,6 @@
-import { Box, Text, useCursor, useInput } from 'ink'
+import { Box, Text, useInput } from 'ink'
 import { useEffect, useState } from 'react'
+import { useCaret } from '../hooks/use-caret.ts'
 import type { Ref } from 'react'
 import { useImperativeHandle } from 'react'
 import { isMouseResidue } from '../../terminal/mouse.ts'
@@ -43,7 +44,7 @@ interface QuestionPanelProps {
 
 export function QuestionPanel({ handleRef, question: panel, background, active, columns, innerWidth, blockWidth, rows, onSubmit, onCancel, onResize }: QuestionPanelProps) {
   const [state, setState] = useState<QuestionPageState>(() => initialPageState(panel.request))
-  const { setCursorPosition } = useCursor()
+  const { setCursorPosition } = useCaret()
   const layout = questionPanelLayout(state, innerWidth, Math.min(MAX_BODY_ROWS, Math.max(3, rows - 6)))
   const totalHeight = layout.height + 2
   const bodyStart = rows - 2 - layout.height

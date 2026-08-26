@@ -1,5 +1,6 @@
-import { Box, Text, useCursor, useStdout } from 'ink'
+import { Box, Text, useStdout } from 'ink'
 import type { Ref } from 'react'
+import { useCaret } from '../hooks/use-caret.ts'
 import { useImperativeHandle, useEffect } from 'react'
 import { colors, permissionModeInfo } from '../../theme.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
@@ -57,7 +58,7 @@ export function InputBar({
   interactive = true,
   statusReady = true,
 }: InputBarProps) {
-  const { setCursorPosition } = useCursor()
+  const { setCursorPosition } = useCaret()
   const contentWidth = width - INPUT_WIDTH_OFFSET
   const blockWidth = contentWidth + CHROME_PAD_X * 2
   const permission = permissionModeInfo(permissionMode)
