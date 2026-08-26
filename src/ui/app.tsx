@@ -19,7 +19,7 @@ import { useScroll } from './hooks/use-scroll.ts'
 import { useMouseSelection, hintRegion } from './hooks/use-mouse-selection.ts'
 import { InputBar, inputLayout, INPUT_WIDTH_OFFSET, HINT_MAX_ROWS } from './input/input-bar.tsx'
 import type { InputBarHandle } from './input/input-bar.tsx'
-import { COMMANDS, HINT_ARGS_COL_WIDTH, HINT_COMMAND_COL_WIDTH, filterHintEntries, matchCommand, mergeCommandEntries, matchAvailableCommand } from './input/commands.ts'
+import { COMMANDS, KNOWN_COMMAND_ARGS, filterHintEntries, matchCommand, mergeCommandEntries, matchAvailableCommand } from './input/commands.ts'
 import type { CommandAvailability, CommandId } from './input/commands.ts'
 import { CHROME_MARGIN_X, CHROME_TEXT_X, MESSAGE_INPUT_GAP_ROWS, hintBlockTop } from '../core/metrics.ts'
 import { useComposer } from './input/use-composer.ts'
@@ -151,6 +151,8 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   )
   const permissionPresetsRef = useRef<string[] | undefined>(undefined)
   const listCommandArgs = useCallback(async (name: string): Promise<string[]> => {
+    const known = KNOWN_COMMAND_ARGS[name]
+    if (known !== undefined) return [...known]
     if (name !== 'permission') return []
     const cached = permissionPresetsRef.current
     if (cached !== undefined) return cached
@@ -404,8 +406,9 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
                 {hintState.commands.map((command, index) => {
                   const selected = index === hintState.selectedIndex
                   const blockWidth = Math.max(1, columns - CHROME_MARGIN_X * 2)
-                  const args = command.hint === undefined ? '' : padToWidth(truncate(command.hint, HINT_ARGS_COL_WIDTH - 1), HINT_ARGS_COL_WIDTH)
-                  const line = '  ' + padToWidth(command.command, HINT_COMMAND_COL_WIDTH) + args + '  ' + command.description
+                  const leftWidth = Math.max(1, Math.floor((blockWidth * 2) / 5))
+                  const label = command.hint === undefined ? command.command : `${command.command} ${command.hint}`
+                  const line = '  ' + padToWidth(truncate(label, leftWidth - 1), leftWidth) + command.description
                   const filled = padToWidth(truncate(line, blockWidth), blockWidth)
                   return (
                     <Box key={command.command} width={blockWidth} backgroundColor={colors.dialogBackground}>

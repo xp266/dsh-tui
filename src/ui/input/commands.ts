@@ -20,9 +20,6 @@ export const COMMANDS: CommandDef[] = [
   { id: 'todo', command: '/todo', description: 'Show the current task list' },
 ]
 
-export const HINT_COMMAND_COL_WIDTH = 20
-export const HINT_ARGS_COL_WIDTH = 18
-
 export function matchCommand(text: string): CommandDef | undefined {
   return COMMANDS.find(command => command.command === text)
 }
@@ -70,6 +67,11 @@ export function mergeCommandEntries(
 export function filterHintEntries(entries: readonly CommandHintItem[], value: string): CommandHintItem[] {
   if (!value.startsWith('/') || /\s/.test(value)) return []
   return entries.filter(entry => entry.command.startsWith(value))
+}
+
+/** Static literal arguments for registry commands whose hints mix literals with free-form prose. */
+export const KNOWN_COMMAND_ARGS: Record<string, readonly string[]> = {
+  plan: ['off'],
 }
 
 export function literalHintArgs(hint: string | undefined): string[] {

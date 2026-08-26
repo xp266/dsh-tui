@@ -199,6 +199,7 @@ export function useComposer(
       }
       const lastChar = v.length > 0 ? v[v.length - 1] : undefined
       const completable = c === v.length && lastChar !== undefined && !/\s/.test(lastChar)
+      const trailingCommand = c === v.length && /^(\/\S+)\s+$/.test(v)
       const exactCommand = entriesRef.current?.some(entry => entry.command === v) ?? false
       if (completable && exactCommand) {
         completeCommandArg()
@@ -208,7 +209,7 @@ export function useComposer(
         apiRef.current.confirmHint()
         return
       }
-      if (completable) {
+      if (completable || trailingCommand) {
         completeCommandArg()
       }
       return
