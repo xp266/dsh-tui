@@ -1,6 +1,6 @@
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { readFileSync } from 'node:fs'
-import type { Message, ToolDiffMessage } from '../model/message.ts'
+import type { Message, PlanMessage, ToolDiffMessage } from '../model/message.ts'
 import { reasoningFromBlocks, textFromBlocks } from './blocks.ts'
 import type { ChatToolPresenter, ToolResultLike } from './bridge.ts'
 import { DIFF_TOOL_NAMES } from './bridge.ts'
@@ -89,6 +89,8 @@ function nextId(prefix: string): string {
   return `${prefix}-${messageCounter}`
 }
 
+export const PLAN_TOOL_NAME = 'exit_plan_mode'
+
 const CHROME_EVENTS = new Set(['permission/preset', 'sandbox/mode', 'approval/policy'])
 
 function dropStepMessages(messages: Message[], turn: TurnState, step: number): boolean {
@@ -169,6 +171,25 @@ export function reduceChatEvent(
           hang: TODO_HANG_COLS,
         })
         turn.toolIds.set(event.data.callId, id)
+        markRunning(turn, true)
+        markPhase(turn, 'working')
+        return { messages, turn, changed: true }
+      }
+      if (event.data.name === PLAN_TOOL_NAME) {
+        let args: unknown
+        try {
+          args = JSON.parse(event.data.arguments)
+        } catch {}
+        const record = typeof args === 'object' && args !== null ? args as Record<string, unknown> : {}
+        const plan = typeof record.plan === 'string' ? record.plan : ''
+        const id = commitToolPlaceholder(messages, turn, event.data.callId, {
+          kind: 'plan',
+          id: nextId('plan'),
+          body: plan,
+          running: true,
+        })
+        turn.toolIds.set(event.data.callId, id)
+        turn.pendingArgs.delete(event.data.callId)
         markRunning(turn, true)
         markPhase(turn, 'working')
         return { messages, turn, changed: true }
@@ -274,6 +295,22 @@ export function reduceChatEvent(
               streaming: false,
               running: false,
               ...(diff === undefined ? {} : { path: diff.path, hunks: diff.hunks }),
+            }
+          : message)
+        return { messages, turn, changed: true }
+      }
+      if (target?.kind === 'plan') {
+        turn.toolIds.delete(callId)
+        turn.pendingArgs.delete(callId)
+        markPhase(turn, 'awaiting-request')
+        const error = event.data.error
+        const failed = error !== undefined || event.data.message.content[0]?.isError === true
+        const detail = failed ? truncateSummary(flattenText(textFromBlocks(event.data.message.content))) : ''
+        updateById(messages, id, message => message.kind === 'plan'
+          ? {
+              ...message,
+              running: false,
+              ...(failed && error !== undefined ? { error: `${error.name ?? error.code}${detail === '' ? '' : ` ${detail}`}` } : {}),
             }
           : message)
         return { messages, turn, changed: true }
@@ -388,7 +425,7 @@ export function reduceChatEvent(
           message.body = message.body === '' ? '(no result)' : `${message.body}\n(no result)`
           continue
         }
-        if (message.kind === 'tool-diff' && message.running) {
+        if ((message.kind === 'tool-diff' || message.kind === 'plan') && message.running) {
           changed = true
           message.running = false
         }
@@ -561,6 +598,26 @@ function appendToolDelta(
   markPhase(turn, 'working')
   if (name === undefined || name === '') return { messages, turn, changed: false }
   const known = turn.pendingTools.has(callId) || turn.toolIds.has(callId)
+  if (name === PLAN_TOOL_NAME) {
+    let changed = false
+    if (!known) {
+      const placeholder: PlanMessage = { kind: 'plan', id: nextId('plan'), body: '', streaming: true }
+      messages.push(placeholder)
+      turn.pendingTools.set(callId, placeholder.id)
+      changed = true
+    }
+    if (delta !== '') {
+      turn.pendingArgs.set(callId, (turn.pendingArgs.get(callId) ?? '') + delta)
+      const plan = extractPartialJsonFields(turn.pendingArgs.get(callId) ?? '').plan?.value ?? ''
+      const id = turn.pendingTools.get(callId)
+      const target = id === undefined ? undefined : messages.find(message => message.id === id)
+      if (target?.kind === 'plan' && target.body !== plan) {
+        updateById(messages, id!, message => message.kind === 'plan' ? { ...message, body: plan } : message)
+        changed = true
+      }
+    }
+    return { messages, turn, changed }
+  }
   if (DIFF_TOOL_NAMES.has(name)) {
     let changed = false
     if (!known) {

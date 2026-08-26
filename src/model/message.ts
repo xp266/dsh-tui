@@ -51,4 +51,13 @@ export interface CompactionMessage {
   error?: string
 }
 
-export type Message = BubbleMessage | CollapsibleMessage | ToolDiffMessage | CompactionMessage
+export interface PlanMessage {
+  kind: 'plan'
+  id: string
+  body: string
+  running?: boolean
+  streaming?: boolean
+  error?: string
+}
+
+export type Message = BubbleMessage | CollapsibleMessage | ToolDiffMessage | CompactionMessage | PlanMessage

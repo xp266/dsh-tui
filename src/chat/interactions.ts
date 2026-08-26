@@ -20,6 +20,7 @@ export interface AskQuestionItemLike {
   options?: AskOptionLike[]
   multiSelect?: boolean
   multi_select?: boolean
+  intent?: { kind?: string; approve?: string }
 }
 
 export interface AskUserQuestionRequestLike {

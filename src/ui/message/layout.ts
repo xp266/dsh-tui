@@ -8,6 +8,7 @@ import { renderToolDiffBody, toolDiffHeader } from './tool-diff.ts'
 import { segmentsKey } from '../../core/segments.ts'
 import type { Segment } from '../../core/segments.ts'
 import { colors } from '../../theme.ts'
+import { PLAN_TOOL_NAME } from '../../chat/store.ts'
 import { BUBBLE_WIDTH_OFFSET, CHROME_MARGIN_X, HEADER_LABEL_COL, SCROLLBAR_COL_FROM_EDGE, SCROLLBAR_GAP_COLS } from '../../core/metrics.ts'
 
 export { HEADER_LABEL_COL }
@@ -146,6 +147,18 @@ function renderBody(message: Message, width: number): BodyRendered {
       const rendered = renderToolDiffBody(message, inner)
       return { lines: rendered.lines, rows: rendered.rows, bgs: rendered.bgs }
     }
+    case 'plan': {
+      if (message.body === '' && message.error === undefined) return { lines: [], rows: null, bgs: null }
+      const rendered = message.body === '' ? { lines: [], rows: [] } : renderMarkdown(message.body, inner)
+      const lines = [...rendered.lines]
+      const rows = [...rendered.rows]
+      if (message.error !== undefined && message.error !== '') {
+        const text = truncate(`error: ${message.error}`, Math.max(8, inner))
+        lines.push(text)
+        rows.push([{ text, style: { color: colors.errorText } }])
+      }
+      return { lines, rows, bgs: null }
+    }
     case 'compaction': {
       if (message.summary === '' && message.error === undefined) return { lines: [], rows: null, bgs: null }
       const rendered = message.summary === '' ? { lines: [], rows: [] } : renderMarkdown(message.summary, inner)
@@ -236,6 +249,28 @@ function planFor(message: Message, body: BodyRendered): PlanRow[] {
         blankRow(),
       ]
     }
+    case 'plan': {
+      const header: PlanRow = {
+        type: 'lit',
+        text: PLAN_TOOL_NAME,
+        colStart: 4,
+        bg: true,
+        muted: true,
+        selectable: true,
+        role: 'assistant',
+      }
+      if (message.streaming === true && body.lines.length === 0) {
+        return [padRow('assistant'), header, padRow('assistant'), blankRow()]
+      }
+      return [
+        padRow('assistant'),
+        header,
+        padRow('assistant'),
+        ...bodyRows(body.lines.length, { colStart: 4, bg: true, muted: false, selectable: true, role: 'assistant' }),
+        padRow('assistant'),
+        blankRow(),
+      ]
+    }
   }
 }
 
@@ -250,6 +285,7 @@ function cacheKeyOf(message: Message): string {
     case 'collapsible': return `${message.body}\u0000${message.collapsed ? 1 : 0}`
     case 'tool-diff': return toolDiffKey(message)
     case 'compaction': return `${message.summary}\u0000${message.running ? 1 : 0}\u0000${message.error ?? ''}`
+    case 'plan': return `${message.body}\u0000${message.body}\u0000${message.streaming ? 1 : 0}\u0000${message.running ? 1 : 0}\u0000${message.error ?? ''}`
   }
 }
 

@@ -347,9 +347,9 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
     below.push(legend(state.page, total))
 
     body.push(...above)
-    const detail = question.detail !== undefined && question.detail !== ''
-      ? wrapLines(question.detail, Math.max(8, innerWidth - SINGLE_LABEL_COL))
-      : []
+    const detail = question.detail === undefined || question.detail === '' || isPlanReview(question)
+      ? []
+      : wrapLines(question.detail, Math.max(8, innerWidth - SINGLE_LABEL_COL))
     if (detail.length > 0) {
       const budget = Math.max(3, scrollWindow - body.length - below.length)
       if (detail.length <= budget) {
@@ -408,4 +408,12 @@ function legend(page: number, total: number): Segment[] {
     ? `${prefix}  ⇆ page  enter submit  esc close`
     : `${prefix}  ⇆ page  ⇅ wrap  enter select  esc close`
   return lineOf([seg(text, descriptionStyle())])
+}
+
+interface QuestionLike {
+  intent?: { kind?: string }
+}
+
+export function isPlanReview(question: QuestionLike): boolean {
+  return question.intent?.kind === 'plan-review'
 }
