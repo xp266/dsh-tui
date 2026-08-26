@@ -62,9 +62,8 @@ export function mergeCommandEntries(
 }
 
 export function filterHintEntries(entries: readonly CommandHintItem[], value: string): CommandHintItem[] {
-  const token = value.split(/\s+/, 1)[0] ?? ''
-  if (!token.startsWith('/')) return []
-  return entries.filter(entry => entry.command.startsWith(token))
+  if (!value.startsWith('/') || /\s/.test(value)) return []
+  return entries.filter(entry => entry.command.startsWith(value))
 }
 
 export interface CommandHintState {

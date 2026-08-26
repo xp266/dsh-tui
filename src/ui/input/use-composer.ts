@@ -25,6 +25,10 @@ export interface ComposerApi {
   hintPick(absoluteIndex: number): void
 }
 
+function opensHint(text: string): boolean {
+  return text.startsWith('/') && !/\s/.test(text)
+}
+
 export function useComposer(
   onSend: (text: string) => void,
   interactive: boolean,
@@ -71,10 +75,11 @@ export function useComposer(
       if (commands.length === 0) return
       const command = commands[Math.min(commandIndexRef.current, commands.length - 1)]?.command
       if (command === undefined) return
-      valueRef.current = command
-      cursorRef.current = command.length
-      setValue(command)
-      setCursor(command.length)
+      const completed = `${command} `
+      valueRef.current = completed
+      cursorRef.current = completed.length
+      setValue(completed)
+      setCursor(completed.length)
       setHintOpen(false)
       hintOpenRef.current = false
       setCommandIndex(0)
@@ -110,7 +115,7 @@ export function useComposer(
     cursorRef.current = next.cursor
     setValue(next.value)
     setCursor(next.cursor)
-    const open = next.value.startsWith('/')
+    const open = opensHint(next.value)
     setHintOpen(open)
     hintOpenRef.current = open
     if (open) {
@@ -188,7 +193,7 @@ export function useComposer(
         cursorRef.current = next.cursor
         setValue(next.value)
         setCursor(next.cursor)
-        const open = next.value.startsWith('/')
+        const open = opensHint(next.value)
         setHintOpen(open)
         hintOpenRef.current = open
         setCommandIndex(0)
@@ -203,7 +208,7 @@ export function useComposer(
         cursorRef.current = next.cursor
         setValue(next.value)
         setCursor(next.cursor)
-        const open = next.value.startsWith('/')
+        const open = opensHint(next.value)
         setHintOpen(open)
         hintOpenRef.current = open
         setCommandIndex(0)
@@ -249,7 +254,7 @@ export function useComposer(
       cursorRef.current = next.cursor
       setValue(next.value)
       setCursor(next.cursor)
-      const open = next.value.startsWith('/')
+      const open = opensHint(next.value)
       setHintOpen(open)
       hintOpenRef.current = open
       if (open) {
