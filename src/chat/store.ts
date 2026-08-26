@@ -132,6 +132,9 @@ export function reduceChatEvent(
     case 'turn/start': {
       markRunning(turn, true)
       markPhase(turn, 'awaiting-request')
+      turn.thinkingIds.clear()
+      turn.assistantIds.clear()
+      turn.pendingText.clear()
       return { messages, turn, changed: true }
     }
     case 'tool/call': {
