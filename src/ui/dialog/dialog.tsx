@@ -158,6 +158,10 @@ export function Dialog({
     }
   }
   useEffect(() => {
+    if (search && !editingFormInput) {
+      writeCursorShape('beam')
+      return
+    }
     const beam = current !== undefined && widgetOf(current.type).caret !== undefined
     writeCursorShape(beam ? 'beam' : 'block')
   }, [current?.type, safeFocus.row, safeFocus.col])
