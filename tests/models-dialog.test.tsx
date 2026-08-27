@@ -170,4 +170,25 @@ describe('ModelsDialog add-provider windows', () => {
     expect(api.saveBuiltinProvider).toHaveBeenCalledWith(DIRECTORY[0], '', DISCOVERED)
     await until('back to model list', frameIncludes(lastFrame, '+Add DeepSeek'))
   })
+
+  it('rejects an invalid custom provider id before fetching models', async () => {
+    const api = fakeApi()
+    const { lastFrame, stdin } = render(
+      <Box width={100} height={24}>
+        <ModelsDialog api={api} onClose={() => {}} onModelSelected={() => {}} />
+      </Box>,
+    )
+    await until('main list shows add rows', frameIncludes(lastFrame, '+Add Custom Provider'))
+    await pressDown(stdin)
+    await pressDown(stdin)
+    await focusItem(lastFrame, '+Add Custom Provider')
+    await pressEnterUntil(stdin, 'custom form opens', frameIncludes(lastFrame, 'Provider ID'))
+    for (let i = 0; i < 6 && !focusedSegment(lastFrame() ?? '').includes('Submit'); i++) {
+      await pressDown(stdin)
+    }
+    await focusItem(lastFrame, 'Submit')
+    await pressEnterUntil(stdin, 'inline validation error', frameIncludes(lastFrame, 'Provider ID must start with a letter'))
+    expect(api.fetchCustomModels).not.toHaveBeenCalled()
+    expect(api.saveCustomProvider).not.toHaveBeenCalled()
+  })
 })

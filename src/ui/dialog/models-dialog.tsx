@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import type { Ref } from 'react'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import type { ConfiguredModel, CustomProviderForm, OfficialProvider } from '../../chat/models.ts'
-import { API_PROTOCOLS } from '../../chat/models.ts'
+import { API_PROTOCOLS, isProviderIdValid } from '../../chat/models.ts'
 import { colors } from '../../theme.ts'
 import { errorLine } from './status-lines.ts'
 import { useAsyncAction } from '../hooks/use-async-action.ts'
@@ -50,7 +50,7 @@ const EMPTY_FORM: CustomProviderForm = {
 
 export function ModelsDialog({ api, onClose, onModelSelected, ref }: ModelsDialogProps) {
   const [window, setWindow] = useState<Window>({ kind: 'list' })
-  const { error, clearError, run } = useAsyncAction()
+  const { error, setError, clearError, run } = useAsyncAction()
   const [deepSeekKey, setDeepSeekKey] = useState('')
   const [form, setForm] = useState<CustomProviderForm>(EMPTY_FORM)
   const [provider, setProvider] = useState<OfficialProvider | null>(null)
@@ -89,11 +89,15 @@ export function ModelsDialog({ api, onClose, onModelSelected, ref }: ModelsDialo
   }
   const submitCustom = async () => {
     if (fetchingRef.current) return
-    fetchingRef.current = true
     clearError()
+    if (!isProviderIdValid(form.providerId.trim())) {
+      setError('Provider ID must start with a letter and use only letters, digits, _ and -')
+      return
+    }
+    fetchingRef.current = true
     setFetching(true)
     await run(async () => {
-      const found = await api.fetchCustomModels(form)
+      const found = await api.fetchCustomModels({ ...form, providerId: form.providerId.trim() })
       if (found.length === 0) throw new Error('Failed to fetch models')
       setDiscovered(found)
       setPicked(new Set())

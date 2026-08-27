@@ -111,6 +111,11 @@ describe('App dialog keyboard', () => {
     const { lastFrame, stdin } = render(<App bridge={bridge} />)
     await openAddCustomForm(stdin)
     expect(lastFrame() ?? '').toContain('Submit')
+    for (const ch of 'acme') {
+      act(() => {
+        stdin.write(ch)
+      })
+    }
     for (let i = 0; i < 5; i++) {
       act(() => {
         stdin.write('\u001b[B')
@@ -149,6 +154,11 @@ describe('App dialog keyboard', () => {
     )
     const { lastFrame, stdin } = render(<App bridge={bridge} />)
     await openAddCustomForm(stdin)
+    for (const ch of 'acme') {
+      act(() => {
+        stdin.write(ch)
+      })
+    }
     for (let i = 0; i < 5; i++) {
       act(() => {
         stdin.write('\u001b[B')

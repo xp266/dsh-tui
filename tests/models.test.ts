@@ -5,6 +5,7 @@ import {
   DEEPSEEK_KEY_REF,
   fetchCustomModels,
   fetchProviderModels,
+  isProviderIdValid,
   listConfiguredModels,
   listProviderDirectory,
   providerKeyRef,
@@ -108,6 +109,25 @@ describe('model management', () => {
   it('derives a stable credential ref from the provider id', () => {
     expect(providerKeyRef('my-gw')).toBe('MY_GW_API_KEY')
     expect(providerKeyRef('zai')).toBe('ZAI_API_KEY')
+  })
+
+  it('rejects a provider id whose credential ref cannot be a shell identifier', async () => {
+    expect(() => providerKeyRef('9r')).toThrow('9R_API_KEY')
+    expect(isProviderIdValid('9r')).toBe(false)
+    expect(isProviderIdValid('nine-r')).toBe(true)
+    expect(isProviderIdValid('')).toBe(false)
+    const write = { update: vi.fn(async () => {}) }
+    const store = { set: vi.fn(async () => {}) }
+    const form: CustomProviderForm = {
+      providerId: '9r',
+      displayName: '9r',
+      apiUrl: 'https://nine.example/v1',
+      apiProtocol: 'openai-completions',
+      apiKey: 'k',
+    }
+    await expect(saveCustomProvider(write, store, form, [{ id: 'm1' }])).rejects.toThrow('9R_API_KEY')
+    expect(store.set).not.toHaveBeenCalled()
+    expect(write.update).not.toHaveBeenCalled()
   })
 
   it('lists only adapter-shipped providers from the directory', () => {

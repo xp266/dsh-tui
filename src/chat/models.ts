@@ -136,6 +136,17 @@ export async function saveBuiltinProvider(
   })
 }
 
+const KEY_REF_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
+const PROVIDER_ID_PATTERN = /^[A-Za-z_][A-Za-z0-9_-]*$/
+
+export function isProviderIdValid(providerId: string): boolean {
+  return PROVIDER_ID_PATTERN.test(providerId)
+}
+
 export function providerKeyRef(providerId: string): string {
-  return `${providerId.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_API_KEY`
+  const ref = `${providerId.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_API_KEY`
+  if (!KEY_REF_PATTERN.test(ref)) {
+    throw new Error(`provider id "${providerId}" produces invalid credential ref "${ref}"; use a name starting with a letter`)
+  }
+  return ref
 }
