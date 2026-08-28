@@ -26,7 +26,7 @@ export interface PanelPointerHandle {
   wheel(dir: -1 | 1): boolean
 }
 
-interface ApprovalPanelProps {
+export interface ApprovalPanelProps {
   handleRef?: Ref<PanelPointerHandle>
   reason?: string
   command?: string

@@ -11,6 +11,8 @@ export function registerWidget<I extends DialogItem>(type: I['type'], def: Widge
 
 export function widgetOf(type: DialogItem['type']): AnyWidgetDef {
   const def = registry.get(type)
-  if (def === undefined) throw new Error(`No widget registered for item type: ${type}`)
+  if (def === undefined) {
+    throw new Error(`No widget registered for item type: ${type}`)
+  }
   return def
 }

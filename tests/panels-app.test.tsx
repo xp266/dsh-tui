@@ -27,6 +27,9 @@ function fakeBridge(interactions: InteractionStore): ChatBridge {
     listProviderDirectory: vi.fn(async () => []),
     fetchProviderModels: vi.fn(async () => []),
     saveBuiltinProvider: vi.fn(async () => {}),
+    readModelEntries: () => [],
+    saveModelEntry: vi.fn(async () => {}),
+    deleteModelEntry: vi.fn(async () => {}),
     cwd: () => process.cwd(),
     listPresets: vi.fn(async () => []),
     currentPreset: () => 'standard',
@@ -87,7 +90,7 @@ describe('app interaction panels', () => {
     await settle()
     const snapshot = bridge.interactions.getSnapshot()
     expect(snapshot?.kind).toBe('question')
-    const id = snapshot!.kind === 'question' ? snapshot!.question.id : ''
+    const id = snapshot!.question?.id ?? ''
     bridge.interactions.answerQuestion(id, { answers: [{ id: 'q1', selected: ['Yes'] }] })
     await expect(answer).resolves.toEqual({ answers: [{ id: 'q1', selected: ['Yes'] }] })
     await settle()

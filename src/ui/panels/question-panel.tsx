@@ -28,7 +28,7 @@ import type { QuestionPageState } from './question-model.ts'
 import { PanelSurface } from './approval-panel.tsx'
 import type { PanelPointerHandle } from './approval-panel.tsx'
 
-interface QuestionPanelProps {
+export interface QuestionPanelProps {
   handleRef?: Ref<PanelPointerHandle>
   question: QuestionPanelRequest
   background: string

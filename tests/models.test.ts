@@ -3,14 +3,17 @@ import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import {
   addDeepSeekKey,
   DEEPSEEK_KEY_REF,
+  deleteModelEntry,
   fetchCustomModels,
   fetchProviderModels,
   isProviderIdValid,
   listConfiguredModels,
   listProviderDirectory,
   providerKeyRef,
+  readModelEntries,
   saveBuiltinProvider,
   saveCustomProvider,
+  saveModelEntry,
 } from '../src/chat/models.ts'
 import type { CustomProviderForm, OfficialProvider } from '../src/chat/models.ts'
 
@@ -187,5 +190,50 @@ describe('model management', () => {
     const patch = write.update.mock.calls[0]?.[1] as unknown as { providers: Record<string, object> }
     expect(patch.providers['amazon-bedrock']).not.toHaveProperty('apiKeyEnv')
     expect(patch.providers['amazon-bedrock']).toMatchObject({ models: [{ id: 'm1' }] })
+  })
+})
+describe('model entry settings', () => {
+  const reader = {
+    get: (ns: string) => ({
+      providers: {
+        NineR: {
+          displayName: 'NineR',
+          models: [
+            { id: 'a', contextWindow: 1000 },
+            { id: 'b' },
+          ],
+        },
+      },
+    }),
+  }
+
+  it('reads model entries from the settings namespace', () => {
+    expect(readModelEntries(reader, 'llm-pi-ai', 'NineR')).toEqual([
+      { id: 'a', contextWindow: 1000 },
+      { id: 'b' },
+    ])
+    expect(readModelEntries(reader, 'llm-pi-ai', 'missing')).toEqual([])
+  })
+
+  it('replaces an existing entry on save and appends a new one', async () => {
+    const write = { update: vi.fn(async () => {}) }
+    await saveModelEntry(write, reader, 'llm-pi-ai', 'NineR', { id: 'b', maxTokens: 99 })
+    expect(write.update).toHaveBeenCalledWith('llm-pi-ai', {
+      providers: { NineR: { models: [{ id: 'a', contextWindow: 1000 }, { id: 'b', maxTokens: 99 }] } },
+    })
+    await saveModelEntry(write, reader, 'llm-pi-ai', 'NineR', { id: 'c' })
+    expect(write.update).toHaveBeenLastCalledWith('llm-pi-ai', {
+      providers: { NineR: { models: [{ id: 'a', contextWindow: 1000 }, { id: 'b' }, { id: 'c' }] } },
+    })
+  })
+
+  it('deletes one entry while keeping the rest of the provider profile', async () => {
+    const write = { update: vi.fn(async () => {}) }
+    await deleteModelEntry(write, reader, 'llm-pi-ai', 'NineR', 'a')
+    expect(write.update).toHaveBeenCalledWith('llm-pi-ai', {
+      providers: { NineR: { models: [{ id: 'b' }] } },
+    })
+    await deleteModelEntry(write, reader, 'llm-pi-ai', 'NineR', 'missing')
+    expect(write.update).toHaveBeenCalledTimes(1)
   })
 })

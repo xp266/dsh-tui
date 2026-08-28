@@ -13,6 +13,7 @@ export type DialogItem =
   | { type: 'header'; label: string; leadingBlank?: boolean }
   | { type: 'static'; label: string }
   | { type: 'actions'; confirmLabel: string; cancelLabel: string; onConfirm: () => void; onCancel: () => void }
+  | { type: string; data?: unknown }
 
 export interface DialogFocus {
   row: number
@@ -111,7 +112,8 @@ export function filterRowsWithHeaders(rows: DialogRow[], query: string, searchRi
   }
   const first = out[0]
   if (first !== undefined && first.items.length === 1 && first.items[0]?.type === 'header') {
-    out[0] = { items: [{ ...first.items[0], leadingBlank: false }] }
+    const header = first.items[0] as { type: 'header'; label: string; leadingBlank?: boolean }
+    out[0] = { items: [{ ...header, leadingBlank: false }] }
   }
   return out
 }

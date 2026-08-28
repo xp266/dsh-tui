@@ -16,14 +16,17 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { textFromBlocks } from './blocks.ts'
 import {
   addDeepSeekKey,
+  deleteModelEntry,
   fetchCustomModels,
   fetchProviderModels,
   listConfiguredModels,
   listProviderDirectory,
+  readModelEntries,
   saveBuiltinProvider,
   saveCustomProvider,
+  saveModelEntry,
 } from './models.ts'
-import type { ConfiguredModel, CustomProviderForm, OfficialProvider } from './models.ts'
+import type { ConfiguredModel, CustomProviderForm, ModelEntryConfig, OfficialProvider } from './models.ts'
 import { formatDiffDiffs, diffLineGroups, formatReadLines, readBodyCol, relativize, summarizeOthers, summarizeParams, truncateSummary } from './tool-view.ts'
 import type { DiffLike, ReadLineLike, ToolDiffView } from './tool-view.ts'
 import { computeSessionList } from './session-list.ts'
@@ -134,6 +137,9 @@ export interface ChatBridge {
   listProviderDirectory(): Promise<OfficialProvider[]>
   fetchProviderModels(provider: OfficialProvider, apiKey: string): Promise<LlmDiscoveredModel[]>
   saveBuiltinProvider(provider: OfficialProvider, apiKey: string, models: LlmDiscoveredModel[]): Promise<void>
+  readModelEntries(ns: string, provider: string): ModelEntryConfig[]
+  saveModelEntry(ns: string, provider: string, entry: ModelEntryConfig): Promise<void>
+  deleteModelEntry(ns: string, provider: string, modelId: string): Promise<void>
   cwd(): string
   listPresets(): Promise<PresetSummary[]>
   currentPreset(): string
@@ -481,8 +487,8 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     return ctx.get('permissionPresets') as PermissionPresetsLike | undefined
   }
 
-  function settingsService(): { update(ns: string, patch: object): Promise<void> } {
-    const service = ctx.get('settings') as { update(ns: string, patch: object): Promise<void> } | undefined
+  function settingsService(): { update(ns: string, patch: object): Promise<void>; get(ns: string): unknown } {
+    const service = ctx.get('settings') as { update(ns: string, patch: object): Promise<void>; get(ns: string): unknown } | undefined
     if (service === undefined) throw new Error('settings service is not available')
     return service
   }
@@ -711,6 +717,9 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     listProviderDirectory: async () => listProviderDirectory(llm),
     fetchProviderModels: (provider, apiKey) => fetchProviderModels(llm, provider.settingsNs, provider.provider, apiKey),
     saveBuiltinProvider: (provider, apiKey, models) => saveBuiltinProvider(ctx.settings, ctx.credentials, provider, apiKey, models),
+    readModelEntries: (ns, provider) => readModelEntries(settingsService(), ns, provider),
+    saveModelEntry: (ns, provider, entry) => saveModelEntry(settingsService(), settingsService(), ns, provider, entry),
+    deleteModelEntry: (ns, provider, modelId) => deleteModelEntry(settingsService(), settingsService(), ns, provider, modelId),
     cwd: () => currentCwd,
     listPresets: () => presetsList.get(),
     currentPreset,

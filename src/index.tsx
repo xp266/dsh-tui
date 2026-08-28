@@ -10,6 +10,7 @@ import { startHotTheme } from './hot-theme.ts'
 import { warmLanguages, onLanguagesWarm, clearHighlightCache } from './ui/message/md/highlight.ts'
 import { clearMarkdownBlockCache } from './ui/message/md/engine.ts'
 import { clearWrapCache } from './ui/message/layout.ts'
+import { createTuiExtensionPoint, exposeInteractionsFace } from './ui/extension-point.ts'
 
 export const name = 'dsh-tui'
 
@@ -17,6 +18,7 @@ export const inject = ['agentLoop', 'agents', 'sessions', 'workspaceRegistry', '
 
 export function apply(ctx: Context) {
   ctx.effect(() => {
+    const disposeExtensionPoint = createTuiExtensionPoint(ctx)
     warmLanguages()
     onLanguagesWarm(() => {
       clearHighlightCache()
@@ -33,6 +35,8 @@ export function apply(ctx: Context) {
     let lastColumns = 0
     let lastRows = 0
     let stopSizePoll: (() => void) | undefined
+    let exposeInteractions: (() => void) | undefined
+    const extensionPoint = ctx.get('tui')
     const buildAppNode = () => <App bridge={bridge} screen={capture} themeTick={themeTick} />
     const start = (): void => {
       if (disposed || app !== undefined) return
@@ -74,6 +78,7 @@ export function apply(ctx: Context) {
     void createChatBridge(ctx)
       .then(loaded => {
         bridge = loaded
+        exposeInteractions = extensionPoint === undefined ? undefined : exposeInteractionsFace(extensionPoint, loaded.interactions.panels)
         start()
       })
       .catch(error => {
@@ -82,6 +87,8 @@ export function apply(ctx: Context) {
       })
     return () => {
       disposed = true
+      exposeInteractions?.()
+      disposeExtensionPoint()
       stopSizePoll?.()
       if (hotThemeStarted) hotTheme?.stop()
       writeCursorShape('reset')

@@ -8,6 +8,26 @@ export interface ConfiguredModel {
   providerName: string
 }
 
+export type ModelEffortKey = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+
+export const MODEL_EFFORT_LEVELS: readonly ModelEffortKey[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+
+export interface ModelEntryConfig {
+  id: string
+  name?: string
+  contextWindow?: number
+  maxTokens?: number
+  input?: string[]
+  reasoningEfforts?: false | Partial<Record<ModelEffortKey, string | null>>
+}
+
+export interface ConfiguredModelDetail extends ConfiguredModel {
+  settingsNs: string
+  contextWindow?: number
+  maxTokens?: number
+  reasoningEfforts?: false | Partial<Record<ModelEffortKey, string | null>>
+}
+
 export interface CustomProviderForm {
   providerId: string
   displayName: string
@@ -149,4 +169,59 @@ export function providerKeyRef(providerId: string): string {
     throw new Error(`provider id "${providerId}" produces invalid credential ref "${ref}"; use a name starting with a letter`)
   }
   return ref
+}
+
+export interface SettingsReader {
+  get(ns: string): unknown
+}
+
+export interface ModelSettingsPatch {
+  apiKeyEnv?: string
+  models?: ModelEntryConfig[]
+}
+
+function providerSection(reader: SettingsReader, ns: string, provider: string): Record<string, unknown> | undefined {
+  const section = reader.get(ns)
+  if (section === undefined || typeof section !== 'object') return undefined
+  const providers = (section as { providers?: Record<string, unknown> }).providers
+  if (providers === undefined || typeof providers !== 'object') return undefined
+  const profile = providers[provider]
+  if (profile === undefined || typeof profile !== 'object') return undefined
+  return profile as Record<string, unknown>
+}
+
+export function readModelEntries(reader: SettingsReader, ns: string, provider: string): ModelEntryConfig[] {
+  const profile = providerSection(reader, ns, provider)
+  const models = profile?.models
+  if (!Array.isArray(models)) return []
+  return models.filter((entry): entry is ModelEntryConfig =>
+    typeof entry === 'object' && entry !== null && typeof (entry as ModelEntryConfig).id === 'string')
+}
+
+export async function saveModelEntry(
+  write: SettingsWriter,
+  reader: SettingsReader,
+  ns: string,
+  provider: string,
+  entry: ModelEntryConfig,
+): Promise<void> {
+  const models = readModelEntries(reader, ns, provider)
+  const index = models.findIndex(model => model.id === entry.id)
+  const next = [...models]
+  if (index >= 0) next[index] = entry
+  else next.push(entry)
+  await write.update(ns, { providers: { [provider]: { models: next } } })
+}
+
+export async function deleteModelEntry(
+  write: SettingsWriter,
+  reader: SettingsReader,
+  ns: string,
+  provider: string,
+  modelId: string,
+): Promise<void> {
+  const models = readModelEntries(reader, ns, provider)
+  const next = models.filter(model => model.id !== modelId)
+  if (next.length === models.length) return
+  await write.update(ns, { providers: { [provider]: { models: next } } })
 }

@@ -19,25 +19,22 @@ import { useScroll } from './hooks/use-scroll.ts'
 import { useMouseSelection, hintRegion } from './hooks/use-mouse-selection.ts'
 import { InputBar, inputLayout, INPUT_WIDTH_OFFSET, HINT_MAX_ROWS } from './input/input-bar.tsx'
 import type { InputBarHandle } from './input/input-bar.tsx'
-import { COMMANDS, KNOWN_COMMAND_ARGS, filterHintEntries, matchCommand, mergeCommandEntries, matchAvailableCommand } from './input/commands.ts'
+import { COMMANDS, KNOWN_COMMAND_ARGS, filterHintEntries, matchCommand, mergeCommandEntries, matchAvailableCommand, setDynamicCommands } from './input/commands.ts'
 import type { CommandAvailability, CommandId } from './input/commands.ts'
 import { CHROME_MARGIN_X, CHROME_TEXT_X, MESSAGE_INPUT_GAP_ROWS, hintBlockTop } from '../core/metrics.ts'
 import { useComposer } from './input/use-composer.ts'
 import { Region } from './region.tsx'
 import { MessageList } from './message/message-list.tsx'
 import { CloseGuardContext } from './dialog/dialog.tsx'
-import { ModelsDialog } from './dialog/models-dialog.tsx'
-import { SessionsDialog } from './dialog/sessions-dialog.tsx'
-import { PresetsDialog } from './dialog/presets-dialog.tsx'
-import { EffortDialog } from './dialog/effort-dialog.tsx'
-import { DefaultsDialog } from './dialog/defaults-dialog.tsx'
 import type { DialogHandle } from './dialog/dialog.tsx'
+import { registerBuiltinWindows } from './windows-builtin.tsx'
+import { registerWindowServices, registerTodosService } from './window-services-bridge.ts'
+import { useAvailableWindows } from './use-available-windows.ts'
 import { padToWidth, textWidth, truncate } from '../core/text.ts'
 import type { TokenStats } from '../chat/bridge.ts'
 import type { ActivePanel, InteractionStore } from '../chat/interactions.ts'
-import { ApprovalPanel } from './panels/approval-panel.tsx'
 import type { PanelPointerHandle } from './panels/approval-panel.tsx'
-import { QuestionPanel } from './panels/question-panel.tsx'
+import { registerBuiltinPanels } from './panels-builtin.tsx'
 import { TodoDialog } from './dialog/todo-dialog.tsx'
 import { isTodoActive, todoProgress } from '../chat/todo-view.ts'
 import type { TodoItemLike } from '../chat/todo-view.ts'
@@ -49,29 +46,17 @@ const WORKING_HINT = 'Press esc to interrupt'
 const WORKING_ARMED_HINT = 'Press esc again to interrupt'
 const CHARS_PER_TOKEN = 4
 
-type DialogKind = 'models' | 'sessions' | 'presets' | 'effort' | 'defaults' | 'todo'
-
 const noopSubscribe = () => () => {}
 const nullSnapshot = () => null
 
-function useActivePanel(interactions: InteractionStore | undefined): ActivePanel {
+function useActivePanel(interactions: InteractionStore | undefined): ActivePanel | null {
   return useSyncExternalStore(
     interactions?.subscribe ?? noopSubscribe,
     interactions?.getSnapshot ?? nullSnapshot,
   )
 }
 
-function commandForCall(bridge: ChatBridge | undefined, callId: string | undefined): string | undefined {
-  if (bridge === undefined || callId === undefined) return undefined
-  try {
-    const args = JSON.parse(bridge.toolPresenter.argsJson(callId) ?? 'null') as { command?: unknown } | null
-    return typeof args?.command === 'string' && args.command !== '' ? args.command : undefined
-  } catch {
-    return undefined
-  }
-}
-
-function agentStatusLabel(activity: AgentActivity, panel: ActivePanel, retryStatus?: RetryStatus): string {
+function agentStatusLabel(activity: AgentActivity, panel: ActivePanel | null, retryStatus?: RetryStatus): string {
   if (panel?.kind === 'approval') return 'Waiting for permission'
   if (panel?.kind === 'question') return 'Waiting for selection'
   if (activity.compacting) return 'Compacting'
@@ -98,10 +83,36 @@ interface AppProps {
 
 export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const { columns, rows } = useTerminalSize()
-  const overlays = useOverlayStack<DialogKind>()
-  const dialog: DialogKind | null = overlays.top ?? null
+  const overlays = useOverlayStack<string>()
+  const dialog: string | null = overlays.top ?? null
   const [, setSessionTick] = useState(0)
   const { messages, modelName, setModelName, updateMessages, resetChat, activity, todos, retryStatus, streamedChars, registryCommands } = useChatEvents(bridge, dialog !== null)
+  const windows = useAvailableWindows()
+  useEffect(() => {
+    if (bridge === undefined) return
+    const offServices = registerWindowServices(bridge)
+    const offPanels = registerBuiltinPanels({ bridge })
+    const offWindows = registerBuiltinWindows({
+      onModelSelected: (_provider, model) => setModelName(model),
+      onBeforeSessionSelected: () => {
+        resetChat()
+        clearSelection()
+      },
+      onSessionSelected: () => {
+        setSessionTick(tick => tick + 1)
+        applyScroll(Infinity)
+      },
+      onNewSession: startNewSession,
+    })
+    return () => {
+      offWindows()
+      offPanels()
+      offServices()
+    }
+  }, [bridge])
+  useEffect(() => {
+    return registerTodosService(todos)
+  }, [todos])
   const todoActive = isTodoActive(todos)
   const todoBadge = todoProgress(todos)
   const running = activity.running
@@ -141,10 +152,23 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const panel = useActivePanel(bridge?.interactions)
   const [panelHeight, setPanelHeight] = useState(7)
   const composerInteractive = dialog === null && panel === null
-  const commandEntries = useMemo(
-    () => mergeCommandEntries(COMMANDS.filter(isCommandAvailable), registryCommands),
-    [isCommandAvailable, registryCommands],
+  const windowCommands = useMemo(
+    () => {
+      const staticNames = new Set(COMMANDS.map(command => command.command))
+      return windows
+        .map(entry => entry.contribution)
+        .filter(contribution => contribution.command !== undefined && !staticNames.has(`/${contribution.command.name}`))
+        .map(contribution => ({ id: contribution.id, command: `/${contribution.command!.name}`, description: contribution.command!.description }))
+    },
+    [windows],
   )
+  const commandEntries = useMemo(
+    () => mergeCommandEntries([...COMMANDS.filter(isCommandAvailable), ...windowCommands], registryCommands),
+    [isCommandAvailable, windowCommands, registryCommands],
+  )
+  useEffect(() => {
+    setDynamicCommands(windowCommands)
+  }, [windowCommands])
   const registryNames = useMemo(
     () => new Set(registryCommands.map(entry => `/${entry.name}`)),
     [registryCommands],
@@ -194,15 +218,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
       case 'todo':
         if (bridge && todoActive) overlays.push('todo')
         return
-      case 'model-effort':
-        if (bridge) overlays.push('effort')
-        return
-      case 'preset':
-        if (bridge) overlays.push('presets')
-        return
-      case 'models':
-      case 'defaults':
-      case 'sessions':
+      default:
         if (bridge) overlays.push(id)
         return
     }
@@ -361,39 +377,43 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
               interactive={composerInteractive}
             />
           )}
-          {panel !== null && bridge !== undefined && (
-            panel.kind === 'approval' ? (
-              <ApprovalPanel
-                key={`approval-${panel.approval.id}`}
-                handleRef={panelHandleRef}
-                reason={panel.approval.reason}
-                command={commandForCall(bridge, panel.approval.callId)}
-                background={permissionChrome.color}
+          {panel !== null && bridge !== undefined && (() => {
+            const contribution = bridge.interactions.panels.of(panel.kind)
+            if (contribution === undefined) return null
+            const Panel = contribution.component
+            const request = panel.kind === 'approval'
+              ? { approval: panel.approval }
+              : panel.kind === 'question'
+                ? { question: panel.question }
+                : panel.request
+            const key = panel.kind === 'approval'
+              ? `approval-${panel.approval?.id ?? ''}`
+              : panel.kind === 'question'
+                ? `question-${panel.question?.id ?? ''}`
+                : panel.kind
+            return (
+              <Panel
+                key={key}
+                request={request}
+                resolve={value => {
+                  if (panel.kind === 'approval') panel.settle?.(value)
+                  else panel.resolve?.(value)
+                }}
+                reject={cause => {
+                  if (panel.kind === 'approval') panel.settle?.('cancelled')
+                  else panel.reject?.(cause)
+                }}
                 active={dialog === null}
                 columns={columns}
                 rows={rows}
                 innerWidth={contentWidth}
                 blockWidth={contentWidth + 4}
-                onDecide={outcome => bridge.interactions.settleApproval(panel.approval.id, outcome)}
-                onResize={setPanelHeight}
-              />
-            ) : (
-              <QuestionPanel
-                key={`question-${panel.question.id}`}
-                handleRef={panelHandleRef}
-                question={panel.question}
                 background={permissionChrome.color}
-                active={dialog === null}
-                columns={columns}
-                rows={rows}
-                innerWidth={contentWidth}
-                blockWidth={contentWidth + 4}
-                onSubmit={answer => bridge.interactions.answerQuestion(panel.question.id, answer)}
-                onCancel={() => bridge.interactions.cancelQuestion(panel.question.id, 'the user closed the question panel')}
+                handleRef={panelHandleRef}
                 onResize={setPanelHeight}
               />
             )
-          )}
+          })()}
           {hintState !== null && dialog === null && panel === null && (
             <Box
               position="absolute"
@@ -459,64 +479,21 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
             </Box>
           )}
         </SelectionContext.Provider>
-      {dialog !== null && bridge !== undefined && (
-        <CloseGuardContext.Provider value={selection !== null}>
-          <SelectionContext.Provider value={chromeSelection}>
-            {dialogView(dialog, bridge, {
-              dialogRef,
-              onClose: () => overlays.pop(),
-              onModelSelected: (_provider, model) => setModelName(model),
-              onBeforeSessionSelected: () => {
-                resetChat()
-                clearSelection()
-              },
-              onSessionSelected: () => {
-                setSessionTick(tick => tick + 1)
-                applyScroll(Infinity)
-              },
-              onNewSession: startNewSession,
-            }, todos)}
-          </SelectionContext.Provider>
-        </CloseGuardContext.Provider>
-      )}
+      {dialog !== null && bridge !== undefined && (() => {
+        const entry = windows.find(candidate => candidate.contribution.id === dialog)
+        if (entry === undefined) return null
+        const Window = entry.contribution.component
+        return (
+          <CloseGuardContext.Provider value={selection !== null}>
+            <SelectionContext.Provider value={chromeSelection}>
+              <Window open onClose={() => overlays.pop()} />
+            </SelectionContext.Provider>
+          </CloseGuardContext.Provider>
+        )
+      })()}
       </Box>
     </SelectionContext.Provider>
   )
-}
-
-interface DialogCallbacks {
-  dialogRef: RefObject<DialogHandle | null>
-  onClose(): void
-  onModelSelected(provider: string, model: string): void
-  onBeforeSessionSelected(): void
-  onSessionSelected(): void
-  onNewSession(): void
-}
-
-function dialogView(kind: DialogKind, bridge: ChatBridge, cbs: DialogCallbacks, todos: TodoItemLike[]): ReactNode {
-  switch (kind) {
-    case 'models':
-      return <ModelsDialog ref={cbs.dialogRef} api={bridge} onClose={cbs.onClose} onModelSelected={cbs.onModelSelected} />
-    case 'sessions':
-      return (
-        <SessionsDialog
-          ref={cbs.dialogRef}
-          api={bridge}
-          onClose={cbs.onClose}
-          onBeforeSessionSelected={cbs.onBeforeSessionSelected}
-          onSessionSelected={cbs.onSessionSelected}
-          onNewSession={cbs.onNewSession}
-        />
-      )
-    case 'presets':
-      return <PresetsDialog ref={cbs.dialogRef} api={bridge} onClose={cbs.onClose} />
-    case 'effort':
-      return <EffortDialog ref={cbs.dialogRef} api={bridge} onClose={cbs.onClose} />
-    case 'defaults':
-      return <DefaultsDialog ref={cbs.dialogRef} api={bridge} onClose={cbs.onClose} />
-    case 'todo':
-      return <TodoDialog ref={cbs.dialogRef} todos={todos} onClose={cbs.onClose} />
-  }
 }
 
 function SpinnerGlyph({ tick }: { tick: number }) {

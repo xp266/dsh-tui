@@ -4,7 +4,7 @@ import { Box } from 'ink'
 import { describe, expect, it, vi } from 'vitest'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import { ModelsDialog } from '../src/ui/dialog/models-dialog.tsx'
-import type { OfficialProvider } from '../src/chat/models.ts'
+import type { ConfiguredModel, OfficialProvider } from '../src/chat/models.ts'
 
 const DIRECTORY: OfficialProvider[] = [
   { provider: 'amazon-bedrock', displayName: 'amazon-bedrock', settingsNs: 'llm-pi-ai' },
@@ -25,6 +25,9 @@ function fakeApi() {
     listProviderDirectory: vi.fn(async () => DIRECTORY),
     fetchProviderModels: vi.fn(async () => DISCOVERED),
     saveBuiltinProvider: vi.fn(async () => {}),
+    readModelEntries: vi.fn(() => []),
+    saveModelEntry: vi.fn(async () => {}),
+    deleteModelEntry: vi.fn(async () => {}),
   }
 }
 
@@ -46,6 +49,20 @@ function frameIncludes(lastFrame: () => string | undefined, text: string): () =>
 
 async function focusItem(lastFrame: () => string | undefined, label: string): Promise<void> {
   await until(`focus on ${label}`, () => focusedSegment(lastFrame() ?? '').includes(label))
+}
+
+async function pressDownUntil(
+  stdin: { write(data: string): void },
+  lastFrame: () => string | undefined,
+  label: string,
+  attempts = 10,
+): Promise<void> {
+  for (let i = 0; i < attempts; i++) {
+    await until(`${label} visible`, frameIncludes(lastFrame, label), 1000)
+    if (focusedSegment(lastFrame() ?? '').includes(label)) return
+    await pressDown(stdin)
+  }
+  throw new Error(`focus never reached: ${label}`)
 }
 
 async function pressDown(stdin: { write(data: string): void }): Promise<void> {
@@ -190,5 +207,97 @@ describe('ModelsDialog add-provider windows', () => {
     await pressEnterUntil(stdin, 'inline validation error', frameIncludes(lastFrame, 'Provider ID must start with a letter'))
     expect(api.fetchCustomModels).not.toHaveBeenCalled()
     expect(api.saveCustomProvider).not.toHaveBeenCalled()
+  })
+})
+
+describe('ModelsDialog grouped list and model management', () => {
+  const MODELS: ConfiguredModel[] = [
+    { id: 'ox-alpha', name: 'Ox Alpha', provider: 'or', providerName: 'or' },
+    { id: 'big-pickle', name: 'big-pickle', provider: 'opencodeZen', providerName: 'opencodeZen' },
+  ]
+
+  it('renders section headers with models above providers and omits an empty models group', async () => {
+    const api = { ...fakeApi(), listModels: vi.fn(async () => MODELS) }
+    const { lastFrame } = render(
+      <Box width={100} height={24}>
+        <ModelsDialog api={api} onClose={() => {}} onModelSelected={() => {}} />
+      </Box>,
+    )
+    await until('headers visible', () => {
+      const frame = lastFrame() ?? ''
+      return frame.includes('Models') && frame.includes('Providers') && frame.includes('Ox Alpha')
+    })
+    const lines = (lastFrame() ?? '').split('\n').map(line => line.replace(/\x1b\[[0-9;]*m/g, '').trim())
+    const modelsHeader = lines.indexOf('Models')
+    const providersHeader = lines.indexOf('Providers')
+    const oxAlpha = lines.findIndex(line => line.includes('Ox Alpha'))
+    const addRow = lines.findIndex(line => line.includes('+Add DeepSeek'))
+    expect(modelsHeader).toBeGreaterThanOrEqual(0)
+    expect(oxAlpha).toBeGreaterThan(modelsHeader)
+    expect(providersHeader).toBeGreaterThan(oxAlpha)
+    expect(addRow).toBeGreaterThan(providersHeader)
+
+    const emptyApi = fakeApi()
+    const empty = render(
+      <Box width={100} height={24}>
+        <ModelsDialog api={emptyApi} onClose={() => {}} onModelSelected={() => {}} />
+      </Box>,
+    )
+    await until('empty list ready', frameIncludes(empty.lastFrame, '+Add DeepSeek'))
+    await until('empty list settled', () => !(empty.lastFrame() ?? '').includes('loading'))
+    expect(empty.lastFrame() ?? '').not.toContain('Models\n')
+    const emptyLines = (empty.lastFrame() ?? '').split('\n').map(line => line.replace(/\x1b\[[0-9;]*m/g, '').trim())
+    expect(emptyLines).not.toContain('Models')
+    expect(emptyLines).toContain('Providers')
+  })
+
+  it('deletes a model with a two-stage Ctrl+D and keeps other models', async () => {
+    const api = { ...fakeApi(), listModels: vi.fn(async () => MODELS) }
+    const { lastFrame, stdin } = render(
+      <Box width={100} height={24}>
+        <ModelsDialog api={api} onClose={() => {}} onModelSelected={() => {}} />
+      </Box>,
+    )
+    await pressDownUntil(stdin, lastFrame, 'Ox Alpha')
+    await focusItem(lastFrame, 'Ox Alpha')
+    await pressKeyUntil('\u0004', stdin, 'delete armed', frameIncludes(lastFrame, 'Press Ctrl+D again'))
+    await pressKeyUntil('\u0004', stdin, 'delete executed', () => api.deleteModelEntry.mock.calls.length > 0)
+    expect(api.deleteModelEntry).toHaveBeenCalledWith('llm-pi-ai', 'or', 'ox-alpha')
+  })
+
+  it('opens the configure window on Ctrl+E prefilled from stored settings and saves on submit', async () => {
+    const api = {
+      ...fakeApi(),
+      listModels: vi.fn(async () => MODELS),
+      readModelEntries: vi.fn((_ns: string, provider: string) =>
+        provider === 'opencodeZen'
+          ? [{ id: 'big-pickle', contextWindow: 131072, maxTokens: 8192, reasoningEfforts: { off: null, high: 'high' } }]
+          : []),
+    }
+    const { lastFrame, stdin } = render(
+      <Box width={100} height={24}>
+        <ModelsDialog api={api} onClose={() => {}} onModelSelected={() => {}} />
+      </Box>,
+    )
+    await pressDownUntil(stdin, lastFrame, 'Ox Alpha')
+    await pressDown(stdin)
+    await focusItem(lastFrame, 'big-pickle')
+    await pressKeyUntil('\u0005', stdin, 'configure window open', frameIncludes(lastFrame, 'Configure Model'))
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('131072')
+    expect(frame).toContain('8192')
+    expect(frame).toContain('high')
+    expect(api.readModelEntries).toHaveBeenCalledWith('llm-pi-ai', 'opencodeZen')
+    for (let i = 0; i < 20 && !focusedSegment(lastFrame() ?? '').includes('Submit'); i++) {
+      await pressDown(stdin)
+    }
+    await focusItem(lastFrame, 'Submit')
+    await pressEnterUntil(stdin, 'model saved', () => api.saveModelEntry.mock.calls.length > 0)
+    expect(api.saveModelEntry).toHaveBeenCalledWith('llm-pi-ai', 'opencodeZen', {
+      id: 'big-pickle',
+      contextWindow: 131072,
+      maxTokens: 8192,
+      reasoningEfforts: { off: null, high: 'high' },
+    })
   })
 })

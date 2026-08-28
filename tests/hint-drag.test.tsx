@@ -3,6 +3,7 @@ import { render } from 'ink-testing-library'
 import { EventEmitter } from 'node:events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatBridge } from '../src/chat/bridge.ts'
+import { InteractionStore } from '../src/chat/interactions.ts'
 import { App } from '../src/ui/app.tsx'
 
 function fakeBridge(): ChatBridge {
@@ -24,6 +25,9 @@ function fakeBridge(): ChatBridge {
     listProviderDirectory: vi.fn(async () => []),
     fetchProviderModels: vi.fn(async () => []),
     saveBuiltinProvider: vi.fn(async () => {}),
+    readModelEntries: () => [],
+    saveModelEntry: vi.fn(async () => {}),
+    deleteModelEntry: vi.fn(async () => {}),
     cwd: () => process.cwd(),
     listPresets: vi.fn(async () => []),
     currentPreset: () => 'standard',
@@ -42,7 +46,7 @@ function fakeBridge(): ChatBridge {
     setDefaultPreset: vi.fn(async () => {}),
     tokenStats: () => ({ input: 0, output: 0, hitPercent: 0, contextPercent: 0 }),
     toolPresenter: { call: () => undefined, result: () => undefined, argsJson: () => undefined },
-    interactions: undefined as never,
+    interactions: new InteractionStore(),
   } as unknown as ChatBridge
 }
 

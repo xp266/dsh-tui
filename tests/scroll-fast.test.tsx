@@ -7,6 +7,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ChatBridge } from '../src/chat/bridge.ts'
 import type { ScreenCapture } from '../src/terminal/screen.ts'
 import { createScreenCapture } from '../src/terminal/screen.ts'
+import { InteractionStore } from '../src/chat/interactions.ts'
 import { App } from '../src/ui/app.tsx'
 
 function fakeScreenStub(): ScreenCapture {
@@ -44,6 +45,9 @@ function fakeBridge(): ChatBridge & { emit: Emit } {
     listProviderDirectory: vi.fn(async () => []),
     fetchProviderModels: vi.fn(async () => []),
     saveBuiltinProvider: vi.fn(async () => {}),
+    readModelEntries: () => [],
+    saveModelEntry: vi.fn(async () => {}),
+    deleteModelEntry: vi.fn(async () => {}),
     cwd: () => process.cwd(),
     listPresets: vi.fn(async () => []),
     currentPreset: () => 'standard',
@@ -62,7 +66,7 @@ function fakeBridge(): ChatBridge & { emit: Emit } {
     setDefaultPreset: vi.fn(async () => {}),
     tokenStats: () => ({ input: 0, output: 0, hitPercent: 0, contextPercent: 0 }),
     toolPresenter: { call: () => undefined, result: () => undefined, argsJson: () => undefined },
-    interactions: undefined as never,
+    interactions: new InteractionStore(),
     emit: ((event: SessionEvent) => {
       for (const listener of listeners) listener(event)
     }) as Emit,

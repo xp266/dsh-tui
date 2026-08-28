@@ -51,6 +51,7 @@ export interface DialogInputOptions {
   closeGuarded: boolean
   onClose(): void
   onCtrlD?(focused: DialogItem | undefined): boolean
+  onCtrlE?(focused: DialogItem | undefined): boolean
   onActivity?(): void
   requestSearch(value: string): void
   setFocus(focus: DialogFocus): void
@@ -59,7 +60,7 @@ export interface DialogInputOptions {
 }
 
 export function useDialogInput(options: DialogInputOptions): void {
-  const { live, search, closeGuarded, onClose, onCtrlD, onActivity, requestSearch, setFocus, setScrollTop, setCursor } = options
+  const { live, search, closeGuarded, onClose, onCtrlD, onCtrlE, onActivity, requestSearch, setFocus, setScrollTop, setCursor } = options
   const setters: NavigationSetters = { setFocus, setScrollTop }
   usePaste(text => {
     onActivity?.()
@@ -84,6 +85,7 @@ export function useDialogInput(options: DialogInputOptions): void {
     const isLeft = key.leftArrow || rawArrow === 'left'
     const isRight = key.rightArrow || rawArrow === 'right'
     if (key.ctrl && input === 'd' && onCtrlD !== undefined && onCtrlD(liveCurrent)) return
+    if (key.ctrl && input === 'e' && onCtrlE !== undefined && onCtrlE(liveCurrent)) return
     onActivity?.()
     if (key.escape || (key.ctrl && input === 'c')) {
       if (!(key.ctrl && closeGuarded)) onClose()

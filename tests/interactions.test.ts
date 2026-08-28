@@ -2,13 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { InteractionStore } from '../src/chat/interactions.ts'
 
 function deferredApprovalId(store: InteractionStore): string {
-  const snapshot = store.getSnapshot()
-  return snapshot !== null && snapshot.kind === 'approval' ? snapshot.approval.id : ''
+  return store.getSnapshot()?.approval?.id ?? ''
 }
 
 function snapshotQuestionId(store: InteractionStore): string {
-  const snapshot = store.getSnapshot()
-  return snapshot !== null && snapshot.kind === 'question' ? snapshot.question.id : ''
+  return store.getSnapshot()?.question?.id ?? ''
 }
 
 describe('interaction store', () => {
@@ -18,7 +16,7 @@ describe('interaction store', () => {
     expect(store.getSnapshot()).toMatchObject({ kind: 'approval', approval: { toolName: 'bash', callId: 'call-1', reason: 'need network' } })
     const snapshot = store.getSnapshot()
     expect(snapshot?.kind).toBe('approval')
-    const id = snapshot!.kind === 'approval' ? snapshot!.approval.id : ''
+    const id = snapshot!.approval?.id ?? ''
     expect(store.settleApproval(id, 'rejected')).toBe(true)
     await expect(pending).resolves.toBe('rejected')
     expect(store.getSnapshot()).toBeNull()
@@ -76,7 +74,7 @@ describe('interaction store', () => {
     })
     const snapshot = store.getSnapshot()
     expect(snapshot?.kind).toBe('question')
-    const question = snapshot!.kind === 'question' ? snapshot!.question.request.questions[0]! : undefined
+    const question = snapshot!.question?.request.questions[0]
     expect(question?.multiSelect).toBe(true)
   })
 

@@ -1,4 +1,4 @@
-export type CommandId = 'models' | 'model-effort' | 'preset' | 'defaults' | 'sessions' | 'new' | 'todo'
+export type CommandId = string
 
 export interface CommandHintItem {
   command: string
@@ -39,10 +39,17 @@ export function visibleCommands(value: string, isAvailable?: CommandAvailability
 }
 
 export function matchAvailableCommand(text: string, isAvailable?: CommandAvailability): CommandDef | undefined {
-  const command = matchCommand(text)
+  const token = text.split(/\s+/, 1)[0] ?? ''
+  const command = [...COMMANDS, ...dynamicCommands].find(entry => entry.command === token)
   if (command === undefined) return undefined
   if (isAvailable !== undefined && !isAvailable(command)) return undefined
   return command
+}
+
+const dynamicCommands: CommandDef[] = []
+
+export function setDynamicCommands(commands: readonly CommandDef[]): void {
+  dynamicCommands.splice(0, dynamicCommands.length, ...commands)
 }
 
 export function mergeCommandEntries(

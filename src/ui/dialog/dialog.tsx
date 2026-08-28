@@ -31,6 +31,7 @@ export interface DialogProps {
   search?: boolean
   searchRight?: boolean
   onCtrlD?(focused: DialogItem | undefined): boolean
+  onCtrlE?(focused: DialogItem | undefined): boolean
   onActivity?(): void
   ref?: Ref<DialogHandle>
 }
@@ -52,6 +53,7 @@ export function Dialog({
   search = false,
   searchRight = false,
   onCtrlD,
+  onCtrlE,
   onActivity,
   ref,
 }: DialogProps) {
@@ -177,6 +179,7 @@ export function Dialog({
     closeGuarded,
     onClose,
     onCtrlD,
+    onCtrlE,
     onActivity,
     requestSearch: handleSearch,
     setFocus,
