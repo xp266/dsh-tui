@@ -11,13 +11,12 @@ type CheckboxItem = Extract<DialogItem, { type: 'checkbox' }>
 function paintCheckbox(item: CheckboxItem, paint: PaintArgs<CheckboxItem>) {
   const { width, y, x, focused } = paint
   const label = padToWidth(truncate(item.label, width - 2), width - 2)
+  const check = item.checked ? ' \u2713' : '  '
   if (focused) {
     return (
       <Box>
         <SelectableText y={y} col={x} text={label} inverse />
-        {item.checked && (
-          <SelectableText y={y} col={x + width - 2} text={' \u2713'} color={colors.success} inverse />
-        )}
+        <SelectableText y={y} col={x + width - 2} text={check} inverse />
       </Box>
     )
   }
