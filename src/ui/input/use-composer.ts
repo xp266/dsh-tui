@@ -306,6 +306,7 @@ export function useComposer(
       return
     }
     if (input && !key.ctrl && !key.meta && !isMouseResidue(input)) {
+      if (/[\u0000-\u001f\u007f]/.test(input)) return
       const next = editInsert({ value: v, cursor: c }, input)
       valueRef.current = next.value
       cursorRef.current = next.cursor
