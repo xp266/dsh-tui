@@ -1,8 +1,10 @@
-import type { ComponentType, ReactNode } from 'react'
+import type { ComponentType, ReactNode, Ref } from 'react'
+import type { DialogHandle } from './dialog/dialog.tsx'
 
 export interface WindowProps {
   open: boolean
   onClose(): void
+  handleRef?: Ref<DialogHandle>
 }
 
 export interface WindowCommandSpec {

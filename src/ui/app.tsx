@@ -486,7 +486,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
         return (
           <CloseGuardContext.Provider value={selection !== null}>
             <SelectionContext.Provider value={chromeSelection}>
-              <Window open onClose={() => overlays.pop()} />
+              <Window open handleRef={dialogRef} onClose={() => overlays.pop()} />
             </SelectionContext.Provider>
           </CloseGuardContext.Provider>
         )
