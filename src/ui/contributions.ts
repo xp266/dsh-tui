@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { keyedRegistry } from '../kernel/registry.ts'
 
 export interface StatusLineContribution {
   id: string
@@ -11,47 +12,11 @@ export interface OverlayContribution {
   render(props: { onClose(): void }): ReactNode
 }
 
-type Listener = () => void
+export const statusLines = keyedRegistry<StatusLineContribution>()
+export const overlays = keyedRegistry<OverlayContribution>()
 
-const statusLines = new Map<string, StatusLineContribution>()
-const overlays = new Map<string, OverlayContribution>()
-const listeners = new Set<Listener>()
+export const registerStatusLine = (contribution: StatusLineContribution): (() => void) =>
+  statusLines.register(contribution.id, contribution, { order: contribution.order })
 
-function notify(): void {
-  for (const listener of [...listeners]) listener()
-}
-
-export function registerStatusLine(contribution: StatusLineContribution): () => void {
-  statusLines.set(contribution.id, contribution)
-  notify()
-  return () => {
-    if (statusLines.get(contribution.id) === contribution) statusLines.delete(contribution.id)
-    notify()
-  }
-}
-
-export function registerOverlay(contribution: OverlayContribution): () => void {
-  overlays.set(contribution.id, contribution)
-  notify()
-  return () => {
-    if (overlays.get(contribution.id) === contribution) overlays.delete(contribution.id)
-    notify()
-  }
-}
-
-export function listStatusLines(): StatusLineContribution[] {
-  return [...statusLines.values()].sort((a, b) =>
-    (a.order ?? 100) - (b.order ?? 100) || a.id.localeCompare(b.id),
-  )
-}
-
-export function listOverlays(): OverlayContribution[] {
-  return [...overlays.values()]
-}
-
-export function subscribeContributions(listener: Listener): () => void {
-  listeners.add(listener)
-  return () => {
-    listeners.delete(listener)
-  }
-}
+export const registerOverlay = (contribution: OverlayContribution): (() => void) =>
+  overlays.register(contribution.id, contribution)

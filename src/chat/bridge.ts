@@ -159,9 +159,9 @@ export interface ChatBridge {
   tokenStats(): TokenStats
   toolPresenter: ChatToolPresenter
   interactions: InteractionStore
-  listRegistryCommands?(): readonly RegistryCommand[]
-  onRegistryChanged?(listener: () => void): () => void
-  executeCommandLine?(line: string): Promise<void>
+  listRegistryCommands(): readonly RegistryCommand[]
+  onRegistryChanged(listener: () => void): () => void
+  executeCommandLine(line: string): Promise<void>
 }
 
 let sessionCounter = 0

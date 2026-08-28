@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { FakeStdout, FakeStdin, installFakeStdin, restoreStdin, COLUMNS, ROWS } from './helpers/fake-stdio.ts'
 import { render } from 'ink'
 import type { RenderOptions } from 'ink'
@@ -7,8 +7,8 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ChatBridge } from '../src/chat/bridge.ts'
 import type { ScreenCapture } from '../src/terminal/screen.ts'
 import { createScreenCapture } from '../src/terminal/screen.ts'
-import { InteractionStore } from '../src/chat/interactions.ts'
 import { App } from '../src/ui/app.tsx'
+import { createFakeBridge } from './helpers/fake-bridge.ts'
 
 function fakeScreenStub(): ScreenCapture {
   return {
@@ -24,54 +24,17 @@ type Emit = (event: SessionEvent) => void
 
 function fakeBridge(): ChatBridge & { emit: Emit } {
   const listeners = new Set<Emit>()
-  const bridge = {
-    modelName: () => 'glm-4.7-flash',
-    send: vi.fn(),
-    interrupt: vi.fn(),
+  const bridge = createFakeBridge({
     subscribe: (cb: Emit) => {
       listeners.add(cb)
       return () => listeners.delete(cb)
     },
-    listSessions: vi.fn(async () => []),
-    openSession: vi.fn(async () => {}),
-    newSession: vi.fn(async () => {}),
-    archiveSession: vi.fn(async () => {}),
-    activeSessionId: () => '',
-    listModels: vi.fn(async () => []),
-    selectModel: vi.fn(async () => {}),
-    addDeepSeekKey: vi.fn(async () => {}),
-    fetchCustomModels: vi.fn(async () => []),
-    saveCustomProvider: vi.fn(async () => {}),
-    listProviderDirectory: vi.fn(async () => []),
-    fetchProviderModels: vi.fn(async () => []),
-    saveBuiltinProvider: vi.fn(async () => {}),
-    readModelEntries: () => [],
-    saveModelEntry: vi.fn(async () => {}),
-    deleteModelEntry: vi.fn(async () => {}),
-    cwd: () => process.cwd(),
-    listPresets: vi.fn(async () => []),
-    currentPreset: () => 'standard',
-    presetName: () => 'Standard mode',
-    selectPreset: vi.fn(async () => {}),
-    listEfforts: vi.fn(async () => []),
-    currentEffort: () => undefined,
-    effortName: () => undefined,
-    selectEffort: vi.fn(async () => {}),
-    permissionMode: () => 'workspace-write',
-    cyclePermission: vi.fn(),
-    listPermissionPresets: vi.fn(async () => ['read-only', 'workspace-write', 'danger-full-access']),
-    defaultPermission: () => 'workspace-write',
-    setDefaultPermission: vi.fn(async () => {}),
-    defaultPresetId: () => 'standard',
-    setDefaultPreset: vi.fn(async () => {}),
-    tokenStats: () => ({ input: 0, output: 0, hitPercent: 0, contextPercent: 0 }),
-    toolPresenter: { call: () => undefined, result: () => undefined, argsJson: () => undefined },
-    interactions: new InteractionStore(),
+  })
+  return Object.assign(bridge, {
     emit: ((event: SessionEvent) => {
       for (const listener of listeners) listener(event)
     }) as Emit,
-  }
-  return bridge as ChatBridge & { emit: Emit }
+  })
 }
 
 async function flush(ms = 0): Promise<void> {

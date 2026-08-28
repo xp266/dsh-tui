@@ -285,7 +285,7 @@ function cacheKeyOf(message: Message): string {
     case 'collapsible': return `${message.body}\u0000${message.collapsed ? 1 : 0}`
     case 'tool-diff': return toolDiffKey(message)
     case 'compaction': return `${message.summary}\u0000${message.running ? 1 : 0}\u0000${message.error ?? ''}`
-    case 'plan': return `${message.body}\u0000${message.body}\u0000${message.streaming ? 1 : 0}\u0000${message.running ? 1 : 0}\u0000${message.error ?? ''}`
+    case 'plan': return `${message.body}\u0000${message.streaming ? 1 : 0}\u0000${message.running ? 1 : 0}\u0000${message.error ?? ''}`
   }
 }
 

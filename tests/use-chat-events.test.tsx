@@ -2,53 +2,13 @@ import { Box, Text } from 'ink'
 import { render } from 'ink-testing-library'
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { InteractionStore } from '../src/chat/interactions.ts'
 import type { ChatBridge } from '../src/chat/bridge.ts'
 import { useChatEvents } from '../src/ui/hooks/use-chat-events.ts'
 import type { Message } from '../src/model/message.ts'
+import { createFakeBridge } from './helpers/fake-bridge.ts'
 
 function fakeBridge(): ChatBridge {
-  return {
-    modelName: () => 'glm-4.7-flash',
-    send: vi.fn(),
-    interrupt: vi.fn(),
-    subscribe: () => () => {},
-    listSessions: vi.fn(async () => []),
-    openSession: vi.fn(async () => {}),
-    newSession: vi.fn(async () => {}),
-    archiveSession: vi.fn(async () => {}),
-    activeSessionId: () => '',
-    listModels: vi.fn(async () => []),
-    selectModel: vi.fn(async () => {}),
-    addDeepSeekKey: vi.fn(async () => {}),
-    fetchCustomModels: vi.fn(async () => []),
-    saveCustomProvider: vi.fn(async () => {}),
-    listProviderDirectory: vi.fn(async () => []),
-    fetchProviderModels: vi.fn(async () => []),
-    saveBuiltinProvider: vi.fn(async () => {}),
-    readModelEntries: () => [],
-    saveModelEntry: vi.fn(async () => {}),
-    deleteModelEntry: vi.fn(async () => {}),
-    cwd: () => process.cwd(),
-    listPresets: vi.fn(async () => []),
-    currentPreset: () => 'standard',
-    presetName: () => 'Standard mode',
-    selectPreset: vi.fn(async () => {}),
-    listEfforts: vi.fn(async () => []),
-    currentEffort: () => undefined,
-    effortName: () => undefined,
-    selectEffort: vi.fn(async () => {}),
-    permissionMode: () => 'workspace-write',
-    cyclePermission: vi.fn(),
-    listPermissionPresets: vi.fn(async () => ['read-only', 'workspace-write', 'danger-full-access']),
-    defaultPermission: () => 'workspace-write',
-    setDefaultPermission: vi.fn(async () => {}),
-    defaultPresetId: () => 'standard',
-    setDefaultPreset: vi.fn(async () => {}),
-    tokenStats: () => ({ input: 0, output: 0, hitPercent: 0, contextPercent: 0 }),
-    toolPresenter: { call: () => undefined, result: () => undefined, argsJson: () => undefined },
-    interactions: new InteractionStore(),
-  }
+  return createFakeBridge()
 }
 
 function reasoning(text: string): SessionEvent {

@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react'
+import { keyedRegistry } from '../kernel/registry.ts'
 
 export type ApprovalOutcome = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'
 
@@ -103,16 +104,11 @@ export interface InteractionPanelContribution {
   component: ComponentType<InteractionPanelComponentProps>
 }
 
-let panelSequence = 0
-
 export class InteractionPanelRegistry {
-  private contributions = new Map<string, InteractionPanelContribution>()
+  private contributions = keyedRegistry<InteractionPanelContribution>()
 
   register(contribution: InteractionPanelContribution): () => void {
-    this.contributions.set(contribution.kind, contribution)
-    return () => {
-      if (this.contributions.get(contribution.kind) === contribution) this.contributions.delete(contribution.kind)
-    }
+    return this.contributions.register(contribution.kind, contribution)
   }
 
   of(kind: string): InteractionPanelContribution | undefined {

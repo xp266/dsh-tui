@@ -1,37 +1,31 @@
 import { useSyncExternalStore } from 'react'
 import { hasWindowServices, subscribeWindowServices } from './window-services.ts'
 import { listWindows, subscribeWindows } from './windows.ts'
-import type { WindowEntry } from './windows.ts'
+import type { WindowContribution } from './windows.ts'
 
-const EMPTY: WindowEntry[] = []
-let cache: WindowEntry[] = EMPTY
-
-function recompute(): void {
-  cache = listWindows().filter(entry => hasWindowServices(entry.contribution.required))
-}
-
-function onNotify(): void {
-  recompute()
-  listener?.()
-}
-
-let listener: (() => void) | undefined
+const EMPTY: WindowContribution[] = []
+let cache: WindowContribution[] = EMPTY
 
 function subscribe(next: () => void): () => void {
-  listener = next
-  const offWindows = subscribeWindows(onNotify)
-  const offServices = subscribeWindowServices(onNotify)
+  const offWindows = subscribeWindows(() => {
+    cache = listWindows().filter(entry => hasWindowServices(entry.required))
+    next()
+  })
+  const offServices = subscribeWindowServices(() => {
+    cache = listWindows().filter(entry => hasWindowServices(entry.required))
+    next()
+  })
+  cache = listWindows().filter(entry => hasWindowServices(entry.required))
   return () => {
-    listener = undefined
     offWindows()
     offServices()
   }
 }
 
-function snapshot(): WindowEntry[] {
+function snapshot(): WindowContribution[] {
   return cache
 }
 
-export function useAvailableWindows(): WindowEntry[] {
+export function useAvailableWindows(): WindowContribution[] {
   return useSyncExternalStore(subscribe, snapshot, () => EMPTY)
 }

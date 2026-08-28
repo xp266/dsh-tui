@@ -1,12 +1,11 @@
-import { Box, Text, useInput } from 'ink'
+import { Box, useInput } from 'ink'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { RefObject } from 'react'
 import { colors, permissionModeInfo } from '../theme.ts'
 import { writeOsc52 } from '../terminal/clipboard.ts'
 import type { ChatBridge } from '../chat/bridge.ts'
-import type { AgentActivity, AgentPhase } from '../chat/store.ts'
-import type { RetryStatus } from '../chat/retry-status.ts'
+import type { AgentActivity } from '../chat/store.ts'
 import { rowIndexFor, selectionText, SPINNER_FRAMES } from './message/layout.ts'
 import { chromeSelectionText } from './selection-registry.ts'
 import type { ScreenCapture } from '../terminal/screen.ts'
@@ -21,7 +20,7 @@ import { InputBar, inputLayout, INPUT_WIDTH_OFFSET, HINT_MAX_ROWS } from './inpu
 import type { InputBarHandle } from './input/input-bar.tsx'
 import { COMMANDS, KNOWN_COMMAND_ARGS, filterHintEntries, matchCommand, mergeCommandEntries, matchAvailableCommand, setDynamicCommands } from './input/commands.ts'
 import type { CommandAvailability, CommandId } from './input/commands.ts'
-import { CHROME_MARGIN_X, CHROME_TEXT_X, MESSAGE_INPUT_GAP_ROWS, hintBlockTop } from '../core/metrics.ts'
+import { CHROME_MARGIN_X, MESSAGE_INPUT_GAP_ROWS, hintBlockTop } from '../core/metrics.ts'
 import { useComposer } from './input/use-composer.ts'
 import { Region } from './region.tsx'
 import { MessageList } from './message/message-list.tsx'
@@ -30,8 +29,7 @@ import type { DialogHandle } from './dialog/dialog.tsx'
 import { registerBuiltinWindows } from './windows-builtin.tsx'
 import { registerWindowServices, registerTodosService } from './window-services-bridge.ts'
 import { useAvailableWindows } from './use-available-windows.ts'
-import { padToWidth, textWidth, truncate } from '../core/text.ts'
-import type { TokenStats } from '../chat/bridge.ts'
+import { padToWidth, truncate } from '../core/text.ts'
 import type { ActivePanel, InteractionStore } from '../chat/interactions.ts'
 import type { PanelPointerHandle } from './panels/approval-panel.tsx'
 import { registerBuiltinPanels } from './panels-builtin.tsx'
@@ -39,12 +37,10 @@ import { TodoDialog } from './dialog/todo-dialog.tsx'
 import { isTodoActive, todoProgress } from '../chat/todo-view.ts'
 import type { TodoItemLike } from '../chat/todo-view.ts'
 import { useOverlayStack } from './overlay.ts'
+import { StatusBar } from './chrome/status-bar.tsx'
 
 const FORCE_EXIT_DELAY_MS = 6000
 const INTERRUPT_ARM_MS = 3000
-const WORKING_HINT = 'Press esc to interrupt'
-const WORKING_ARMED_HINT = 'Press esc again to interrupt'
-const CHARS_PER_TOKEN = 4
 
 const noopSubscribe = () => () => {}
 const nullSnapshot = () => null
@@ -54,25 +50,6 @@ function useActivePanel(interactions: InteractionStore | undefined): ActivePanel
     interactions?.subscribe ?? noopSubscribe,
     interactions?.getSnapshot ?? nullSnapshot,
   )
-}
-
-function agentStatusLabel(activity: AgentActivity, panel: ActivePanel | null, retryStatus?: RetryStatus): string {
-  if (panel?.kind === 'approval') return 'Waiting for permission'
-  if (panel?.kind === 'question') return 'Waiting for selection'
-  if (activity.compacting) return 'Compacting'
-  if (retryStatus !== undefined) {
-    const remain = retryStatus.untilTs === 0
-      ? undefined
-      : Math.max(0, Math.ceil((retryStatus.untilTs - Date.now()) / 1000))
-    const progress = `(${retryStatus.attempt}/${retryStatus.maxRetries} · ${retryStatus.code})`
-    return remain === undefined ? `Retrying… ${progress}` : `Retrying in ${remain}s ${progress}`
-  }
-  const labels: Record<AgentPhase, string> = {
-    'awaiting-request': 'Awaiting request',
-    thinking: 'Thinking',
-    working: 'Working',
-  }
-  return labels[activity.phase]
 }
 
 interface AppProps {
@@ -156,7 +133,6 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     () => {
       const staticNames = new Set(COMMANDS.map(command => command.command))
       return windows
-        .map(entry => entry.contribution)
         .filter(contribution => contribution.command !== undefined && !staticNames.has(`/${contribution.command.name}`))
         .map(contribution => ({ id: contribution.id, command: `/${contribution.command!.name}`, description: contribution.command!.description }))
     },
@@ -231,7 +207,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     }
     if (matchCommand(text) !== undefined) return
     if (registryNames.has(text.split(/\s+/, 1)[0] ?? '')) {
-      void bridge?.executeCommandLine?.(text)
+      void bridge?.executeCommandLine(text)
       applyScroll(Infinity)
       return
     }
@@ -440,49 +416,26 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
             </Box>
           )}
           {bridge !== undefined && (
-            <Box position="absolute" top={rows - 1} left={0} width={columns} height={1}>
-              <Region y={rows - 1}>
-                {(() => {
-                  const badge = running && todoBadge !== undefined ? `[Task ${todoBadge.current}/${todoBadge.total}] ` : ''
-                  const leftText = busy ? `${badge}${agentStatusLabel(activity, panel, retryStatus)}` : cwdLabel(bridge)
-                  const hint = busy ? (escArmed ? WORKING_ARMED_HINT : WORKING_HINT) : undefined
-                  const hintCol = CHROME_TEXT_X + textWidth(leftText) + 2
-                  const leftWidth = textWidth(leftText) + (hint === undefined ? 0 : 2 + textWidth(hint))
-                  const avail = columns - CHROME_MARGIN_X * 2 - CHROME_TEXT_X
-                  const stats = truncate(statsText(bridge.tokenStats(), streamedChars), Math.max(1, avail - leftWidth - 2))
-                  const rightCol = Math.max(CHROME_TEXT_X + leftWidth, columns - CHROME_MARGIN_X * 2 - textWidth(stats))
-                  return (
-                    <>
-                      <Box position="absolute" top={0} left={CHROME_MARGIN_X} width={columns - CHROME_MARGIN_X}>
-                        {busy && <SpinnerGlyph tick={uiTick} />}
-                      </Box>
-                      <Box position="absolute" top={0} left={CHROME_TEXT_X} width={columns - CHROME_TEXT_X}>
-                        <SelectableText
-                          y={0}
-                          col={CHROME_TEXT_X}
-                          text={leftText}
-                          color={busy ? colors.workspaceWriteText : colors.cwdText}
-                        />
-                      </Box>
-                      {hint !== undefined && (
-                        <Box position="absolute" top={0} left={hintCol} width={Math.max(1, columns - hintCol)}>
-                          <SelectableText y={0} col={hintCol} text={hint} color={colors.dialogHintText} />
-                        </Box>
-                      )}
-                      <Box position="absolute" top={0} left={rightCol} width={Math.max(1, columns - rightCol)}>
-                        <SelectableText y={0} col={rightCol} text={stats} color={colors.statsText} />
-                      </Box>
-                    </>
-                  )
-                })()}
-              </Region>
-            </Box>
+            <StatusBar
+              bridge={bridge}
+              columns={columns}
+              top={rows - 1}
+              busy={busy}
+              running={running}
+              todoBadge={todoBadge}
+              activity={activity}
+              panel={panel}
+              retryStatus={retryStatus}
+              escArmed={escArmed}
+              uiTick={uiTick}
+              streamedChars={streamedChars}
+            />
           )}
         </SelectionContext.Provider>
       {dialog !== null && bridge !== undefined && (() => {
-        const entry = windows.find(candidate => candidate.contribution.id === dialog)
+        const entry = windows.find(candidate => candidate.id === dialog)
         if (entry === undefined) return null
-        const Window = entry.contribution.component
+        const Window = entry.component
         return (
           <CloseGuardContext.Provider value={selection !== null}>
             <SelectionContext.Provider value={chromeSelection}>
@@ -494,39 +447,4 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
       </Box>
     </SelectionContext.Provider>
   )
-}
-
-function SpinnerGlyph({ tick }: { tick: number }) {
-  return (
-    <SelectableText
-      y={0}
-      col={CHROME_MARGIN_X}
-      text={`${SPINNER_FRAMES[tick % SPINNER_FRAMES.length]} `}
-      color={colors.workspaceWriteText}
-    />
-  )
-}
-
-function cwdLabel(bridge: ChatBridge | undefined): string {
-  const home = process.env.HOME ?? ''
-  const cwd = bridge?.cwd() ?? process.cwd()
-  return cwd.startsWith(home) ? `~${cwd.slice(home.length)}` : cwd
-}
-
-function statsText(stats: TokenStats, streamedChars = 0): string {
-  const estimate = Math.ceil(streamedChars / CHARS_PER_TOKEN)
-  const contextPercent = estimate > 0 && stats.projectedTokens !== undefined && stats.contextWindow !== undefined
-    ? Math.min(100, Math.round((stats.projectedTokens + estimate) / stats.contextWindow * 100))
-    : stats.contextPercent
-  const context = `Context ${contextPercent}%`
-  const hit = `Hit ${stats.hitPercent}%`
-  const tokens = `${formatTokens(stats.input)} → ${formatTokens(stats.output + estimate)}`
-  return `${context} | ${hit} | ${tokens}`
-}
-
-function formatTokens(n: number): string {
-  if (n < 1_000) return String(n)
-  const scaled = (v: number): string => (v >= 100 ? String(Math.round(v)) : String(Math.round(v * 10) / 10))
-  if (n < 1_000_000) return `${scaled(n / 1_000)}K`
-  return `${scaled(n / 1_000_000)}M`
 }

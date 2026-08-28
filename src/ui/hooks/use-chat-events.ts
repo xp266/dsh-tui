@@ -51,14 +51,12 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
   dialogOpenRef.current = dialogOpen
   useEffect(() => {
     presenterRef.current = bridge?.toolPresenter
-    const list = bridge?.listRegistryCommands?.bind(bridge)
-    const onChanged = bridge?.onRegistryChanged?.bind(bridge)
-    if (bridge === undefined || list === undefined || onChanged === undefined) {
+    if (bridge === undefined) {
       setRegistryCommands([])
       return
     }
-    setRegistryCommands(list())
-    return onChanged(() => setRegistryCommands(list()))
+    setRegistryCommands(bridge.listRegistryCommands())
+    return bridge.onRegistryChanged(() => setRegistryCommands(bridge.listRegistryCommands()))
   }, [bridge])
   useEffect(() => {
     if (!bridge) return

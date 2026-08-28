@@ -1,4 +1,5 @@
-import type { ComponentType, ReactNode, Ref } from 'react'
+import type { ComponentType, Ref } from 'react'
+import { keyedRegistry } from '../kernel/registry.ts'
 import type { DialogHandle } from './dialog/dialog.tsx'
 
 export interface WindowProps {
@@ -21,54 +22,20 @@ export interface WindowContribution {
   required?: readonly string[]
 }
 
-export interface WindowEntry {
-  contribution: WindowContribution
-  dispose(): void
-}
-
-type Listener = () => void
-
-const registry = new Map<string, WindowEntry>()
-const listeners = new Set<Listener>()
-
-function notify(): void {
-  for (const listener of [...listeners]) listener()
-}
+const inner = keyedRegistry<WindowContribution>()
 
 export function registerWindow(contribution: WindowContribution): () => void {
-  const existing = registry.get(contribution.id)
-  if (existing !== undefined) existing.dispose()
-  let active = true
-  const entry: WindowEntry = {
-    contribution,
-    dispose() {
-      if (!active) return
-      active = false
-      if (registry.get(contribution.id) === entry) registry.delete(contribution.id)
-      notify()
-    },
-  }
-  registry.set(contribution.id, entry)
-  notify()
-  return () => entry.dispose()
+  return inner.register(contribution.id, contribution, { order: contribution.order })
 }
 
-export function listWindows(): WindowEntry[] {
-  return [...registry.values()].sort((a, b) =>
-    (a.contribution.order ?? 100) - (b.contribution.order ?? 100)
-    || a.contribution.id.localeCompare(b.contribution.id),
-  )
+export function listWindows(): WindowContribution[] {
+  return inner.values()
 }
 
-export function windowOf(id: string): WindowEntry | undefined {
-  return registry.get(id)
+export function windowOf(id: string): WindowContribution | undefined {
+  return inner.get(id)
 }
 
-export function subscribeWindows(listener: Listener): () => void {
-  listeners.add(listener)
-  return () => {
-    listeners.delete(listener)
-  }
+export function subscribeWindows(listener: () => void): () => void {
+  return inner.subscribe(listener)
 }
-
-export type WindowView = (props: { id: string; onClose(): void }) => ReactNode

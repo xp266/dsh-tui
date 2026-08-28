@@ -24,19 +24,7 @@ export function matchCommand(text: string): CommandDef | undefined {
   return COMMANDS.find(command => command.command === text)
 }
 
-export function filterCommands(value: string): CommandDef[] {
-  const token = value.split(/\s+/, 1)[0] ?? ''
-  if (!token.startsWith('/')) return []
-  return COMMANDS.filter(command => command.command.startsWith(token))
-}
-
 export type CommandAvailability = (command: CommandDef) => boolean
-
-export function visibleCommands(value: string, isAvailable?: CommandAvailability): CommandDef[] {
-  const matches = filterCommands(value)
-  if (isAvailable === undefined) return matches
-  return matches.filter(isAvailable)
-}
 
 export function matchAvailableCommand(text: string, isAvailable?: CommandAvailability): CommandDef | undefined {
   const token = text.split(/\s+/, 1)[0] ?? ''

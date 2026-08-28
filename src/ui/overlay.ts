@@ -6,7 +6,6 @@ export interface OverlayStack<T> {
   isOpen: boolean
   push(entry: T): void
   pop(): void
-  close(): void
 }
 
 export function useOverlayStack<T>(initial: T[] = []): OverlayStack<T> {
@@ -17,15 +16,11 @@ export function useOverlayStack<T>(initial: T[] = []): OverlayStack<T> {
   const pop = useCallback(() => {
     setEntries(current => current.slice(0, -1))
   }, [])
-  const close = useCallback(() => {
-    setEntries([])
-  }, [])
   return {
     entries,
     top: entries[entries.length - 1],
     isOpen: entries.length > 0,
     push,
     pop,
-    close,
   }
 }

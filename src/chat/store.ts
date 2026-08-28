@@ -706,7 +706,3 @@ function updateById(messages: Message[], id: string, update: (message: Message) 
   const index = messages.findIndex(m => m.id === id)
   if (index >= 0) messages[index] = update(messages[index]!)
 }
-
-function indexOf(messages: Message[], id: string): number {
-  return messages.findIndex(message => message.id === id)
-}
