@@ -1,9 +1,7 @@
 import { useCallback, useState } from 'react'
 
 export interface OverlayStack<T> {
-  entries: T[]
   top: T | undefined
-  isOpen: boolean
   push(entry: T): void
   pop(): void
 }
@@ -17,9 +15,7 @@ export function useOverlayStack<T>(initial: T[] = []): OverlayStack<T> {
     setEntries(current => current.slice(0, -1))
   }, [])
   return {
-    entries,
     top: entries[entries.length - 1],
-    isOpen: entries.length > 0,
     push,
     pop,
   }

@@ -118,9 +118,20 @@ interface PersistenceLike {
 interface SessionMetaCacheEntry {
   title: string | undefined
   blank: boolean | undefined
+  promptAt: number
 }
 
+const SESSION_META_CACHE_MAX = 512
 const sessionMetaCache = new Map<string, SessionMetaCacheEntry>()
+
+function cacheSessionMeta(id: string, entry: SessionMetaCacheEntry): void {
+  while (sessionMetaCache.size >= SESSION_META_CACHE_MAX) {
+    const oldest = sessionMetaCache.keys().next()
+    if (oldest.done) break
+    sessionMetaCache.delete(oldest.value)
+  }
+  sessionMetaCache.set(id, entry)
+}
 const PROBE_BATCH_SIZE = 16
 
 async function probeColdHeader(
@@ -142,7 +153,7 @@ async function probeColdHeader(
       blank = false
     }
   }
-  sessionMetaCache.set(header.id, { title, blank })
+  cacheSessionMeta(header.id, { title, blank, promptAt })
   if (blank) return
   summaries.push(toSummary(header.id, title, header.cwd, header.createdAt, promptAt, workspacePaths))
 }
@@ -160,7 +171,7 @@ async function mergeColdSummaries(
     const cached = sessionMetaCache.get(header.id)
     if (cached !== undefined && cached.blank !== undefined) {
       if (!cached.blank) {
-        summaries.push(toSummary(header.id, cached.title, header.cwd, header.createdAt, header.createdAt, workspacePaths))
+        summaries.push(toSummary(header.id, cached.title, header.cwd, header.createdAt, cached.promptAt, workspacePaths))
       }
       continue
     }

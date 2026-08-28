@@ -1,6 +1,6 @@
 import { Box, Text } from 'ink'
 import { memo } from 'react'
-import { colors } from '../../theme.ts'
+import { COLORS } from '../../theme.ts'
 import { headerSymbol, SPINNER_FRAMES, HEADER_LABEL_COL } from './layout.ts'
 import type { RowInfo } from './layout.ts'
 import { SelectableText } from '../selection.tsx'
@@ -37,7 +37,7 @@ export const MessageRow = memo(
       const col = info.colStart
       const marginLeft = col >= 2 ? 2 : col
       const paddingLeft = col >= 2 ? col - 2 : 0
-      const baseColor = info.role === 'error' ? colors.errorText : info.muted ? colors.toolBodyText : undefined
+      const baseColor = info.role === 'error' ? COLORS.errorText : info.muted ? COLORS.toolBodyText : undefined
       return (
         <Box
           marginLeft={marginLeft}
@@ -63,7 +63,7 @@ export const MessageRow = memo(
     }
     case 'header': {
       const symbol = headerSymbol(info.collapsed)
-      const color = colors.toolLabel
+      const color = COLORS.toolLabel
       return (
         <Box>
           {info.spinner ? (
@@ -110,5 +110,5 @@ export const MessageRow = memo(
 )
 
 function backgroundFor(role: RowInfo['role']): string {
-  return role === 'user' ? colors.userBubbleBackground : colors.aiBubbleBackground
+  return role === 'user' ? COLORS.userBubbleBackground : COLORS.aiBubbleBackground
 }

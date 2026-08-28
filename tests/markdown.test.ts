@@ -91,7 +91,7 @@ describe('renderMarkdown blocks', () => {
     expect(lines('## My Title ##')).toEqual(['My Title', '────────'])
   })
 
-  it('colors list markers and keeps item text plain', () => {
+  it('COLORS list markers and keeps item text plain', () => {
     const row = rows('- item')[0]!
     expect(row[0]).toEqual(seg('•', light.listMarker))
     expect(row.map(s => s.text).join('')).toBe('• item')
@@ -181,7 +181,7 @@ describe('renderMarkdown code blocks', () => {
     expect(result.filter(text => text.includes('echo'))[0]).toContain('echo hi')
   })
 
-  it('colors complete multi-line docstrings as strings', () => {
+  it('COLORS complete multi-line docstrings as strings', () => {
     const md = '```python\ndef f():\n    """first line\n\n    second line\n    """\n    return 1\n```'
     for (const [index, row] of rows(md, 200).entries()) {
       const text = row.map(s => s.text).join('')

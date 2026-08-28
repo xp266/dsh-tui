@@ -4,9 +4,10 @@ import type { TokenStats } from '../../chat/bridge.ts'
 import type { AgentActivity, AgentPhase } from '../../chat/store.ts'
 import type { ActivePanel } from '../../chat/interactions.ts'
 import type { RetryStatus } from '../../chat/retry-status.ts'
-import { colors } from '../../theme.ts'
+import { COLORS } from '../../theme.ts'
 import { CHROME_MARGIN_X, CHROME_TEXT_X } from '../../core/metrics.ts'
 import { textWidth, truncate } from '../../core/text.ts'
+import { useStatusLineTexts } from '../contributions.ts'
 import { SPINNER_FRAMES } from '../message/layout.ts'
 import { Region } from '../region.tsx'
 import { SelectableText } from '../selection.tsx'
@@ -52,12 +53,16 @@ export function StatusBar({
 }: StatusBarProps) {
   const badge = running && todoBadge !== undefined ? `[Task ${todoBadge.current}/${todoBadge.total}] ` : ''
   const leftText = busy ? `${badge}${agentStatusLabel(activity, panel, retryStatus)}` : cwdLabel(bridge)
+  const extras = useStatusLineTexts(columns).join(' · ')
+  const extraCol = CHROME_TEXT_X + textWidth(leftText) + 2
   const hint = busy ? (escArmed ? WORKING_ARMED_HINT : WORKING_HINT) : undefined
-  const hintCol = CHROME_TEXT_X + textWidth(leftText) + 2
-  const leftWidth = textWidth(leftText) + (hint === undefined ? 0 : 2 + textWidth(hint))
+  const hintCol = extraCol + (extras === '' ? 0 : textWidth(extras) + 2)
+  const leftWidth = textWidth(leftText)
+    + (extras === '' ? 0 : 2 + textWidth(extras))
+    + (hint === undefined ? 0 : 2 + textWidth(hint))
   const avail = columns - CHROME_MARGIN_X * 2 - CHROME_TEXT_X
   const stats = truncate(statsText(bridge.tokenStats(), streamedChars), Math.max(1, avail - leftWidth - 2))
-  const rightCol = Math.max(CHROME_TEXT_X + leftWidth, columns - CHROME_MARGIN_X * 2 - textWidth(stats))
+  const rightCol = Math.max(hintCol + (hint === undefined ? 0 : textWidth(hint)), columns - CHROME_MARGIN_X * 2 - textWidth(stats))
   return (
     <Box position="absolute" top={top} left={0} width={columns} height={1}>
       <Region y={top}>
@@ -69,16 +74,21 @@ export function StatusBar({
             y={0}
             col={CHROME_TEXT_X}
             text={leftText}
-            color={busy ? colors.workspaceWriteText : colors.cwdText}
+            color={busy ? COLORS.workspaceWriteText : COLORS.cwdText}
           />
         </Box>
+        {extras !== '' && (
+          <Box position="absolute" top={0} left={extraCol} width={Math.max(1, columns - extraCol)}>
+            <SelectableText y={0} col={extraCol} text={extras} color={COLORS.dialogHintText} />
+          </Box>
+        )}
         {hint !== undefined && (
           <Box position="absolute" top={0} left={hintCol} width={Math.max(1, columns - hintCol)}>
-            <SelectableText y={0} col={hintCol} text={hint} color={colors.dialogHintText} />
+            <SelectableText y={0} col={hintCol} text={hint} color={COLORS.dialogHintText} />
           </Box>
         )}
         <Box position="absolute" top={0} left={rightCol} width={Math.max(1, columns - rightCol)}>
-          <SelectableText y={0} col={rightCol} text={stats} color={colors.statsText} />
+          <SelectableText y={0} col={rightCol} text={stats} color={COLORS.statsText} />
         </Box>
       </Region>
     </Box>
@@ -91,7 +101,7 @@ function SpinnerGlyph({ tick }: { tick: number }) {
       y={0}
       col={CHROME_MARGIN_X}
       text={`${SPINNER_FRAMES[tick % SPINNER_FRAMES.length]} `}
-      color={colors.workspaceWriteText}
+      color={COLORS.workspaceWriteText}
     />
   )
 }
@@ -113,7 +123,7 @@ function agentStatusLabel(activity: AgentActivity, panel: ActivePanel | null, re
 function cwdLabel(bridge: ChatBridge | undefined): string {
   const home = process.env.HOME ?? ''
   const cwd = bridge?.cwd() ?? process.cwd()
-  return cwd.startsWith(home) ? `~${cwd.slice(home.length)}` : cwd
+  return home !== '' && cwd.startsWith(home) ? `~${cwd.slice(home.length)}` : cwd
 }
 
 function statsText(stats: TokenStats, streamedChars = 0): string {

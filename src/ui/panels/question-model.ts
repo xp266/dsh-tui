@@ -6,14 +6,14 @@ import { caretNonceColor } from '../../core/caret-nonce.ts'
 import type { EditState } from '../../core/edit.ts'
 import { mergeRuns } from '../../core/segments.ts'
 import type { MarkStyle, Segment } from '../../core/segments.ts'
-import { colors } from '../../theme.ts'
+import { COLORS } from '../../theme.ts'
 import type { AskQuestionItemLike, AskUserQuestionAnswerItemLike, AskUserQuestionRequestLike } from '../../chat/interactions.ts'
 
-const questionStyle = (): MarkStyle => ({ color: colors.panelQuestionText, bold: true })
-const focusedLabelStyle = (): MarkStyle => ({ color: colors.workspaceWriteText })
-const descriptionStyle = (): MarkStyle => ({ color: colors.toolBodyText })
-const checkStyle = (): MarkStyle => ({ color: colors.success })
-const unansweredStyle = (): MarkStyle => ({ color: colors.errorText })
+const questionStyle = (): MarkStyle => ({ color: COLORS.panelQuestionText, bold: true })
+const focusedLabelStyle = (): MarkStyle => ({ color: COLORS.workspaceWriteText })
+const descriptionStyle = (): MarkStyle => ({ color: COLORS.toolBodyText })
+const checkStyle = (): MarkStyle => ({ color: COLORS.success })
+const unansweredStyle = (): MarkStyle => ({ color: COLORS.errorText })
 
 function seg(text: string, style?: MarkStyle): Segment {
   return { text, style: style ?? {} }
@@ -31,7 +31,6 @@ function pushWrapped(target: Segment[][], text: string, indent: number, width: n
   }
 }
 
-export const CURSOR_COL = 0
 export const NUMBER_COL = 2
 export const SINGLE_LABEL_COL = 5
 export const MULTI_LABEL_COL = 9

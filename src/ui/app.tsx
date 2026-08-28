@@ -2,7 +2,7 @@ import { Box, useInput } from 'ink'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { RefObject } from 'react'
-import { colors, permissionModeInfo } from '../theme.ts'
+import { COLORS, permissionModeInfo } from '../theme.ts'
 import { writeOsc52 } from '../terminal/clipboard.ts'
 import type { ChatBridge } from '../chat/bridge.ts'
 import type { AgentActivity } from '../chat/store.ts'
@@ -16,9 +16,10 @@ import { useTerminalSize } from './hooks/use-terminal-size.ts'
 import { useChatEvents } from './hooks/use-chat-events.ts'
 import { useScroll } from './hooks/use-scroll.ts'
 import { useMouseSelection, hintRegion } from './hooks/use-mouse-selection.ts'
+import { useOverlayContribution } from './contributions.ts'
 import { InputBar, inputLayout, INPUT_WIDTH_OFFSET, HINT_MAX_ROWS } from './input/input-bar.tsx'
 import type { InputBarHandle } from './input/input-bar.tsx'
-import { COMMANDS, KNOWN_COMMAND_ARGS, filterHintEntries, matchCommand, mergeCommandEntries, matchAvailableCommand, setDynamicCommands } from './input/commands.ts'
+import { COMMANDS, KNOWN_COMMAND_ARGS, filterHintEntries, matchCommand, mergeCommandEntries, matchAvailableCommand } from './input/commands.ts'
 import type { CommandAvailability, CommandId } from './input/commands.ts'
 import { CHROME_MARGIN_X, MESSAGE_INPUT_GAP_ROWS, hintBlockTop } from '../core/metrics.ts'
 import { useComposer } from './input/use-composer.ts'
@@ -33,7 +34,6 @@ import { padToWidth, truncate } from '../core/text.ts'
 import type { ActivePanel, InteractionStore } from '../chat/interactions.ts'
 import type { PanelPointerHandle } from './panels/approval-panel.tsx'
 import { registerBuiltinPanels } from './panels-builtin.tsx'
-import { TodoDialog } from './dialog/todo-dialog.tsx'
 import { isTodoActive, todoProgress } from '../chat/todo-view.ts'
 import type { TodoItemLike } from '../chat/todo-view.ts'
 import { useOverlayStack } from './overlay.ts'
@@ -131,6 +131,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   }, [running])
   const contentWidth = columns - INPUT_WIDTH_OFFSET
   const panel = useActivePanel(bridge?.interactions)
+  const overlayContribution = useOverlayContribution(dialog)
   const [panelHeight, setPanelHeight] = useState(7)
   const composerInteractive = dialog === null && panel === null
   const windowCommands = useMemo(
@@ -146,9 +147,6 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     () => mergeCommandEntries([...COMMANDS.filter(isCommandAvailable), ...windowCommands], registryCommands),
     [isCommandAvailable, windowCommands, registryCommands],
   )
-  useEffect(() => {
-    setDynamicCommands(windowCommands)
-  }, [windowCommands])
   const registryNames = useMemo(
     () => new Set(registryCommands.map(entry => `/${entry.name}`)),
     [registryCommands],
@@ -204,7 +202,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     }
   }
   const handleSend = (text: string) => {
-    const matched = matchAvailableCommand(text, isCommandAvailable)
+    const matched = matchAvailableCommand(text, isCommandAvailable, windowCommands)
     if (matched !== undefined) {
       runCommand(matched.id)
       return
@@ -296,6 +294,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   useInput((input, key) => {
     if (dialog !== null && !selection) return
     if (key.escape) {
+      if (hintOpen) return
       if (panel === null && busy && bridge !== undefined) {
         const now = Date.now()
         if (escArmed && now - escAtRef.current <= INTERRUPT_ARM_MS) {
@@ -411,7 +410,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
                   const line = '  ' + padToWidth(truncate(label, leftWidth - 1), leftWidth) + command.description
                   const filled = padToWidth(truncate(line, blockWidth), blockWidth)
                   return (
-                    <Box key={command.command} width={blockWidth} backgroundColor={colors.dialogBackground}>
+                    <Box key={command.command} width={blockWidth} backgroundColor={COLORS.dialogBackground}>
                       <SelectableText y={index} col={CHROME_MARGIN_X} text={filled} inverse={selected} />
                     </Box>
                   )
@@ -436,17 +435,23 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
             />
           )}
         </SelectionContext.Provider>
-      {dialog !== null && bridge !== undefined && (() => {
+      {dialog !== null && (() => {
         const entry = windows.find(candidate => candidate.id === dialog)
-        if (entry === undefined) return null
-        const Window = entry.component
-        return (
-          <CloseGuardContext.Provider value={selection !== null}>
-            <SelectionContext.Provider value={chromeSelection}>
-              <Window open handleRef={dialogRef} onClose={() => overlays.pop()} />
-            </SelectionContext.Provider>
-          </CloseGuardContext.Provider>
-        )
+        if (entry !== undefined && bridge !== undefined) {
+          const Window = entry.component
+          return (
+            <CloseGuardContext.Provider value={selection !== null}>
+              <SelectionContext.Provider value={chromeSelection}>
+                <Window open handleRef={dialogRef} onClose={() => overlays.pop()} />
+              </SelectionContext.Provider>
+            </CloseGuardContext.Provider>
+          )
+        }
+        const overlay = overlayContribution
+        if (overlay !== undefined) {
+          return <Region>{overlay.render({ onClose: () => overlays.pop() })}</Region>
+        }
+        return null
       })()}
       </Box>
     </SelectionContext.Provider>

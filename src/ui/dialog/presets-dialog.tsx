@@ -18,8 +18,6 @@ export interface PresetsDialogProps {
   ref?: Ref<DialogHandle>
 }
 
-const DIALOG_WIDTH = DIALOG_WIDTH_MEDIUM
-const DIALOG_MAX_HEIGHT = PRESETS_DIALOG_MAX_HEIGHT
 
 export function PresetsDialog({ api, onClose, ref }: PresetsDialogProps) {
   const { error, run } = useAsyncAction()
@@ -34,8 +32,8 @@ export function PresetsDialog({ api, onClose, ref }: PresetsDialogProps) {
     <ListDialog
       ref={ref}
       title="preset"
-      width={DIALOG_WIDTH}
-      maxHeight={DIALOG_MAX_HEIGHT}
+      width={DIALOG_WIDTH_MEDIUM}
+      maxHeight={PRESETS_DIALOG_MAX_HEIGHT}
       load={api.listPresets}
       search
       labelOf={preset => preset.name}

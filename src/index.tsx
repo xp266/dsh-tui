@@ -9,7 +9,7 @@ import { writeCursorShape } from './terminal/cursor-shape.ts'
 import { startHotTheme } from './hot-theme.ts'
 import { warmLanguages, onLanguagesWarm, clearHighlightCache } from './ui/message/md/highlight.ts'
 import { clearMarkdownBlockCache } from './ui/message/md/engine.ts'
-import { clearWrapCache } from './ui/message/layout.ts'
+import { clearLayoutCache } from './ui/message/layout.ts'
 import { createTuiExtensionPoint, exposeInteractionsFace } from './ui/extension-point.ts'
 
 export const name = 'dsh-tui'
@@ -23,14 +23,13 @@ export function apply(ctx: Context) {
     onLanguagesWarm(() => {
       clearHighlightCache()
       clearMarkdownBlockCache()
-      clearWrapCache()
+      clearLayoutCache()
     })
     const capture = createScreenCapture()
     let bridge: ChatBridge | undefined
     let app: ReturnType<typeof render> | undefined
     let hotTheme: ReturnType<typeof startHotTheme> | undefined
     let themeTick = 0
-    let hotThemeStarted = false
     let disposed = false
     let lastColumns = 0
     let lastRows = 0
@@ -73,7 +72,6 @@ export function apply(ctx: Context) {
         themeTick += 1
         app?.rerender(buildAppNode())
       })
-      hotThemeStarted = true
     }
     void createChatBridge(ctx)
       .then(loaded => {
@@ -90,8 +88,9 @@ export function apply(ctx: Context) {
       exposeInteractions?.()
       disposeExtensionPoint()
       stopSizePoll?.()
-      if (hotThemeStarted) hotTheme?.stop()
+      hotTheme?.stop()
       writeCursorShape('reset')
+      bridge?.dispose()
       app?.unmount()
     }
   })

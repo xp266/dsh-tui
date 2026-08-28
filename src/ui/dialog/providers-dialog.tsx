@@ -3,7 +3,7 @@ import type { Ref } from 'react'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import type { CustomProviderForm, OfficialProvider } from '../../chat/models.ts'
 import { API_PROTOCOLS, isProviderIdValid } from '../../chat/models.ts'
-import { colors } from '../../theme.ts'
+import { COLORS } from '../../theme.ts'
 import { errorLine, loadingLine } from './status-lines.ts'
 import { useAsyncAction } from '../hooks/use-async-action.ts'
 import { useAsyncList } from '../hooks/use-async-list.ts'
@@ -26,8 +26,6 @@ type Window =
   | { kind: 'add-custom' }
   | { kind: 'select-models' }
 
-const DIALOG_WIDTH = DIALOG_WIDTH_MEDIUM
-const DIALOG_MAX_HEIGHT = MODELS_DIALOG_MAX_HEIGHT
 
 const EMPTY_FORM: CustomProviderForm = {
   providerId: '',
@@ -78,6 +76,14 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
       setWindow({ kind: 'providers' })
     })
   }
+  const fetchIntoSelection = async (fetchModels: () => Promise<LlmDiscoveredModel[]>) => {
+    const found = await fetchModels()
+    if (found.length === 0) throw new Error('Failed to fetch models')
+    setDiscovered(found)
+    setPicked(new Set())
+    clearError()
+    setWindow({ kind: 'select-models' })
+  }
   const submitCustom = async () => {
     if (fetchingRef.current) return
     clearError()
@@ -87,14 +93,7 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
     }
     fetchingRef.current = true
     setFetching(true)
-    await run(async () => {
-      const found = await api.fetchCustomModels({ ...form, providerId: form.providerId.trim() })
-      if (found.length === 0) throw new Error('Failed to fetch models')
-      setDiscovered(found)
-      setPicked(new Set())
-      clearError()
-      setWindow({ kind: 'select-models' })
-    })
+    await run(() => fetchIntoSelection(() => api.fetchCustomModels({ ...form, providerId: form.providerId.trim() })))
     fetchingRef.current = false
     setFetching(false)
   }
@@ -103,14 +102,7 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
     fetchingRef.current = true
     clearError()
     setFetching(true)
-    await run(async () => {
-      const found = await api.fetchProviderModels(provider, providerKey)
-      if (found.length === 0) throw new Error('Failed to fetch models')
-      setDiscovered(found)
-      setPicked(new Set())
-      clearError()
-      setWindow({ kind: 'select-models' })
-    })
+    await run(() => fetchIntoSelection(() => api.fetchProviderModels(provider, providerKey)))
     fetchingRef.current = false
     setFetching(false)
   }
@@ -207,7 +199,7 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
     ],
   }))
   const footerLines: DialogFooterLine[] = [
-    ...(window.kind === 'select-models' ? [{ text: 'Press Space to toggle, Enter to confirm', color: colors.dialogHintText }] : []),
+    ...(window.kind === 'select-models' ? [{ text: 'Press Space to toggle, Enter to confirm', color: COLORS.dialogHintText }] : []),
     ...(fetching && (window.kind === 'add-provider-key' || window.kind === 'add-custom') ? [{ text: 'Fetching models...' }] : []),
     ...(error !== null ? [errorLine(error)] : []),
   ]
@@ -231,8 +223,8 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
       <Dialog
         ref={ref}
         key={window.kind}
-        width={DIALOG_WIDTH}
-        maxHeight={DIALOG_MAX_HEIGHT}
+        width={DIALOG_WIDTH_MEDIUM}
+        maxHeight={MODELS_DIALOG_MAX_HEIGHT}
         title={title}
         rows={rows}
         footer={footerLines}
@@ -273,8 +265,8 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
     <Dialog
       key="providers"
       ref={ref}
-      width={DIALOG_WIDTH}
-      maxHeight={DIALOG_MAX_HEIGHT}
+      width={DIALOG_WIDTH_MEDIUM}
+      maxHeight={MODELS_DIALOG_MAX_HEIGHT}
       title="providers"
       rows={providerRows}
       footer={providerFooter}

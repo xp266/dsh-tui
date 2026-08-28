@@ -7,7 +7,7 @@ import { renderMarkdown } from './md/index.ts'
 import { renderToolDiffBody, toolDiffHeader } from './tool-diff.ts'
 import { segmentsKey } from '../../core/segments.ts'
 import type { Segment } from '../../core/segments.ts'
-import { colors } from '../../theme.ts'
+import { COLORS } from '../../theme.ts'
 import { PLAN_TOOL_NAME } from '../../chat/store.ts'
 import { BUBBLE_WIDTH_OFFSET, CHROME_MARGIN_X, HEADER_LABEL_COL, SCROLLBAR_COL_FROM_EDGE, SCROLLBAR_GAP_COLS } from '../../core/metrics.ts'
 
@@ -74,22 +74,11 @@ interface MessageRender extends BodyRendered {
   plan: PlanRow[]
 }
 
-const wrapCache = new Map<string, MessageRender>()
-
-export function clearWrapCache(): void {
-  wrapCache.clear()
+export function clearLayoutCache(): void {
   cachedId = undefined
   cachedKey = ''
   cachedWidth = -1
   cachedRender = undefined
-}
-
-function evictWrapCacheIfNeeded(): void {
-  while (wrapCache.size >= 16384) {
-    const oldest = wrapCache.keys().next()
-    if (oldest.done) return
-    wrapCache.delete(oldest.value)
-  }
 }
 
 function toolDiffKey(message: Extract<Message, { kind: 'tool-diff' }>): string {
@@ -155,7 +144,7 @@ function renderBody(message: Message, width: number): BodyRendered {
       if (message.error !== undefined && message.error !== '') {
         const text = truncate(`error: ${message.error}`, Math.max(8, inner))
         lines.push(text)
-        rows.push([{ text, style: { color: colors.errorText } }])
+        rows.push([{ text, style: { color: COLORS.errorText } }])
       }
       return { lines, rows, bgs: null }
     }
@@ -167,7 +156,7 @@ function renderBody(message: Message, width: number): BodyRendered {
       if (message.error !== undefined && message.error !== '') {
         const text = truncate(`error: ${message.error}`, Math.max(8, inner))
         lines.push(text)
-        rows.push([{ text, style: { color: colors.errorText } }])
+        rows.push([{ text, style: { color: COLORS.errorText } }])
       }
       return { lines, rows, bgs: null }
     }
@@ -230,7 +219,7 @@ function planFor(message: Message, body: BodyRendered): PlanRow[] {
       const header: PlanRow = {
         type: 'lit',
         text: 'Compact',
-        segments: [{ text: 'Compact', style: { color: colors.sectionHeader, bold: true } }],
+        segments: [{ text: 'Compact', style: { color: COLORS.sectionHeader, bold: true } }],
         colStart: 4,
         bg: true,
         muted: false,
@@ -300,8 +289,6 @@ function renderFor(message: Message, width: number): MessageRender {
   cachedKey = key
   cachedWidth = width
   cachedRender = render
-  evictWrapCacheIfNeeded()
-  wrapCache.set(`${message.id}:${width}`, render)
   return render
 }
 

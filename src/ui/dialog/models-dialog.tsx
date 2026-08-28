@@ -3,7 +3,7 @@ import type { Ref } from 'react'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import type { ConfiguredModel, CustomProviderForm, ModelEffortKey, ModelEntryConfig, OfficialProvider } from '../../chat/models.ts'
 import { MODEL_EFFORT_LEVELS, PI_AI_SETTINGS_NS } from '../../chat/models.ts'
-import { colors } from '../../theme.ts'
+import { COLORS } from '../../theme.ts'
 import { errorLine, loadingLine } from './status-lines.ts'
 import { useAsyncAction } from '../hooks/use-async-action.ts'
 import { useAsyncList } from '../hooks/use-async-list.ts'
@@ -37,8 +37,6 @@ type Window =
   | { kind: 'list' }
   | { kind: 'configure-model' }
 
-const DIALOG_WIDTH = DIALOG_WIDTH_MEDIUM
-const DIALOG_MAX_HEIGHT = MODELS_DIALOG_MAX_HEIGHT
 
 export function ModelsDialog({ api, onClose, onModelSelected, onAddProvider, ref }: ModelsDialogProps) {
   const [window, setWindow] = useState<Window>({ kind: 'list' })
@@ -154,8 +152,8 @@ export function ModelsDialog({ api, onClose, onModelSelected, onAddProvider, ref
       <Dialog
         ref={ref}
         key="configure-model"
-        width={DIALOG_WIDTH}
-        maxHeight={DIALOG_MAX_HEIGHT}
+        width={DIALOG_WIDTH_MEDIUM}
+        maxHeight={MODELS_DIALOG_MAX_HEIGHT}
         title="Configure Model"
         rows={configureRows}
         footer={footerLines}
@@ -181,7 +179,7 @@ export function ModelsDialog({ api, onClose, onModelSelected, onAddProvider, ref
   const listFooter: DialogFooterLine[] = [
     {
       text: 'Ctrl+A add providers · Ctrl+E configure',
-      color: colors.dialogHintText,
+      color: COLORS.dialogHintText,
     },
     ...(statusLine === undefined ? [] : [statusLine]),
     ...footerLines,
@@ -194,8 +192,8 @@ export function ModelsDialog({ api, onClose, onModelSelected, onAddProvider, ref
     <Dialog
       key="list"
       ref={ref}
-      width={DIALOG_WIDTH}
-      maxHeight={DIALOG_MAX_HEIGHT}
+      width={DIALOG_WIDTH_MEDIUM}
+      maxHeight={MODELS_DIALOG_MAX_HEIGHT}
       title="models"
       rows={listRows}
       footer={listFooter}

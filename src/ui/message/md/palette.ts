@@ -1,5 +1,5 @@
 import type { MarkStyle } from '../../../core/segments.ts'
-import { colors } from '../../../theme.ts'
+import { COLORS } from '../../../theme.ts'
 
 export interface MdPalette {
   plain: MarkStyle
@@ -23,7 +23,7 @@ export function createMdPalette(thinking: boolean): MdPalette {
     return {
       plain: {},
       get bold() {
-        return { color: colors.thinkBold, bold: true }
+        return { color: COLORS.thinkBold, bold: true }
       },
       get italic() {
         return { italic: true }
@@ -32,44 +32,44 @@ export function createMdPalette(thinking: boolean): MdPalette {
         return { strike: true }
       },
       get link() {
-        return { color: colors.thinkLink, underline: true }
+        return { color: COLORS.thinkLink, underline: true }
       },
       get inlineCode() {
-        return { color: colors.thinkInlineCode }
+        return { color: COLORS.thinkInlineCode }
       },
       get quoteBar() {
-        return { color: colors.thinkQuoteBar }
+        return { color: COLORS.thinkQuoteBar }
       },
       get hr() {
-        return { color: colors.thinkHr }
+        return { color: COLORS.thinkHr }
       },
       get listMarker() {
-        return { color: colors.thinkList }
+        return { color: COLORS.thinkList }
       },
       get taskDone() {
-        return { color: colors.thinkTaskDone }
+        return { color: COLORS.thinkTaskDone }
       },
       get taskTodo() {
-        return { color: colors.thinkTaskTodo }
+        return { color: COLORS.thinkTaskTodo }
       },
       heading(level) {
-        if (level <= 1) return { color: colors.thinkH1, bold: true }
-        if (level === 2) return { color: colors.thinkH2, bold: true }
-        if (level === 3) return { color: colors.thinkH3, bold: true }
-        return { color: colors.thinkH4, bold: true }
+        if (level <= 1) return { color: COLORS.thinkH1, bold: true }
+        if (level === 2) return { color: COLORS.thinkH2, bold: true }
+        if (level === 3) return { color: COLORS.thinkH3, bold: true }
+        return { color: COLORS.thinkH4, bold: true }
       },
       get codePlain() {
-        return { color: colors.thinkCodePlain }
+        return { color: COLORS.thinkCodePlain }
       },
       get codeFallback() {
-        return { color: colors.thinkCodeFallback }
+        return { color: COLORS.thinkCodeFallback }
       },
     }
   }
   return {
     plain: {},
     get bold() {
-      return { color: colors.mdBold, bold: true }
+      return { color: COLORS.mdBold, bold: true }
     },
     get italic() {
       return { italic: true }
@@ -78,37 +78,37 @@ export function createMdPalette(thinking: boolean): MdPalette {
       return { strike: true }
     },
     get link() {
-      return { color: colors.mdLink, underline: true }
+      return { color: COLORS.mdLink, underline: true }
     },
     get inlineCode() {
-      return { color: colors.mdInlineCode }
+      return { color: COLORS.mdInlineCode }
     },
     get quoteBar() {
-      return { color: colors.mdQuoteBar }
+      return { color: COLORS.mdQuoteBar }
     },
     get hr() {
-      return { color: colors.mdHr }
+      return { color: COLORS.mdHr }
     },
     get listMarker() {
-      return { color: colors.mdList }
+      return { color: COLORS.mdList }
     },
     get taskDone() {
-      return { color: colors.mdTaskDone }
+      return { color: COLORS.mdTaskDone }
     },
     get taskTodo() {
-      return { color: colors.mdTaskTodo }
+      return { color: COLORS.mdTaskTodo }
     },
     heading(level) {
-      if (level <= 1) return { color: colors.mdH1, bold: true }
-      if (level === 2) return { color: colors.mdH2, bold: true }
-      if (level === 3) return { color: colors.mdH3, bold: true }
-      return { color: colors.mdH4, bold: true }
+      if (level <= 1) return { color: COLORS.mdH1, bold: true }
+      if (level === 2) return { color: COLORS.mdH2, bold: true }
+      if (level === 3) return { color: COLORS.mdH3, bold: true }
+      return { color: COLORS.mdH4, bold: true }
     },
     get codePlain() {
-      return { color: colors.mdCodePlain }
+      return { color: COLORS.mdCodePlain }
     },
     get codeFallback() {
-      return { color: colors.mdCodeFallback }
+      return { color: COLORS.mdCodeFallback }
     },
   }
 }

@@ -70,12 +70,14 @@ export interface ActivePanel {
 interface ApprovalEntry {
   panel: ApprovalPanelRequest
   settle: (value: ApprovalOutcome) => void
+  detach: () => void
 }
 
 interface QuestionEntry {
   panel: QuestionPanelRequest
   resolve: (answer: AskUserQuestionAnswerLike) => void
   reject: (cause: unknown) => void
+  detach: () => void
 }
 
 export interface InteractionPanelRequest {
@@ -123,11 +125,19 @@ function nextId(prefix: string): string {
   return `${prefix}-${Date.now()}-${sequence}`
 }
 
+function attachAbort(signal: AbortSignal | undefined, onAbort: () => void): () => void {
+  if (signal === undefined) return () => {}
+  signal.addEventListener('abort', onAbort, { once: true })
+  return () => {
+    signal.removeEventListener('abort', onAbort)
+  }
+}
+
 export class InteractionStore {
   private listeners = new Set<() => void>()
   private approvals: ApprovalEntry[] = []
   private questions: QuestionEntry[] = []
-  private generic: Array<{ entry: InteractionPanelRequest; signal?: AbortSignal }> = []
+  private generic: Array<{ entry: InteractionPanelRequest; detach: () => void }> = []
   private snapshot: ActivePanel | null = null
   readonly panels = new InteractionPanelRegistry()
 
@@ -185,11 +195,11 @@ export class InteractionStore {
   pushRequest(kind: string, request: unknown, signal?: AbortSignal): Promise<unknown> {
     if (signal?.aborted === true) return Promise.reject(new Error(`"${kind}" interaction was aborted before the user answered`))
     return new Promise((resolve, reject) => {
-      const onAbort = (): void => {
+      const entry: InteractionPanelRequest = { kind, request, resolve, reject }
+      const detach = attachAbort(signal, () => {
         this.cancelRequest(kind, request, `"${kind}" interaction was aborted before the user answered`)
-      }
-      this.generic.push({ entry: { kind, request, resolve, reject }, signal })
-      signal?.addEventListener('abort', onAbort, { once: true })
+      })
+      this.generic.push({ entry, detach })
       this.refresh()
     })
   }
@@ -198,6 +208,7 @@ export class InteractionStore {
     const index = this.generic.findIndex(slot => slot.entry.kind === kind && slot.entry.request === request)
     if (index < 0) return false
     const [slot] = this.generic.splice(index, 1)
+    slot.detach()
     slot.entry.resolve(value)
     this.refresh()
     return true
@@ -207,6 +218,7 @@ export class InteractionStore {
     const index = this.generic.findIndex(slot => slot.entry.kind === kind && slot.entry.request === request)
     if (index < 0) return false
     const [slot] = this.generic.splice(index, 1)
+    slot.detach()
     slot.entry.reject(new Error(message))
     this.refresh()
     return true
@@ -221,11 +233,10 @@ export class InteractionStore {
         ...(callId === undefined ? {} : { callId }),
         ...(reason === undefined ? {} : { reason }),
       }
-      const onAbort = (): void => {
+      const detach = attachAbort(signal, () => {
         this.settleApproval(panel.id, 'cancelled')
-      }
-      this.approvals.push({ panel, settle: resolve })
-      signal?.addEventListener('abort', onAbort, { once: true })
+      })
+      this.approvals.push({ panel, settle: resolve, detach })
       this.refresh()
     })
   }
@@ -234,6 +245,7 @@ export class InteractionStore {
     const index = this.approvals.findIndex(entry => entry.panel.id === id)
     if (index < 0) return false
     const [entry] = this.approvals.splice(index, 1)
+    entry.detach()
     entry.settle(outcome)
     this.refresh()
     return true
@@ -255,11 +267,10 @@ export class InteractionStore {
     }
     return new Promise((resolve, reject) => {
       const panel: QuestionPanelRequest = { id: nextId('question'), request }
-      const onAbort = (): void => {
+      const detach = attachAbort(signal, () => {
         this.cancelQuestion(panel.id, 'ask_user_question was aborted before the user answered')
-      }
-      this.questions.push({ panel, resolve, reject })
-      signal?.addEventListener('abort', onAbort, { once: true })
+      })
+      this.questions.push({ panel, resolve, reject, detach })
       this.refresh()
     })
   }
@@ -268,6 +279,7 @@ export class InteractionStore {
     const index = this.questions.findIndex(entry => entry.panel.id === id)
     if (index < 0) return false
     const [entry] = this.questions.splice(index, 1)
+    entry.detach()
     entry.resolve(answer)
     this.refresh()
     return true
@@ -277,9 +289,29 @@ export class InteractionStore {
     const index = this.questions.findIndex(entry => entry.panel.id === id)
     if (index < 0) return false
     const [entry] = this.questions.splice(index, 1)
+    entry.detach()
     entry.reject(new Error(message))
     this.refresh()
     return true
+  }
+
+  dispose(): void {
+    const approvals = this.approvals.splice(0)
+    for (const entry of approvals) {
+      entry.detach()
+      entry.settle('cancelled')
+    }
+    const questions = this.questions.splice(0)
+    for (const entry of questions) {
+      entry.detach()
+      entry.reject(new Error('the interaction store was disposed'))
+    }
+    const generic = this.generic.splice(0)
+    for (const slot of generic) {
+      slot.detach()
+      slot.entry.reject(new Error('the interaction store was disposed'))
+    }
+    this.refresh()
   }
 }
 
@@ -292,19 +324,23 @@ type ApprovalRequestLike = {
 }
 
 type CtxLike = {
-  on(event: 'approval/request', handler: (req: ApprovalRequestLike) => Promise<ApprovalOutcome>): unknown
+  on(event: 'approval/request', handler: (req: ApprovalRequestLike) => Promise<ApprovalOutcome>): () => void
   get(service: 'userQuestions'): {
     registerProvider(provider: { ask(request: AskUserQuestionRequestLike): Promise<AskUserQuestionAnswerLike> }): () => void
   } | undefined
 }
 
-export function registerInteractionChannels(ctx: CtxLike, store: InteractionStore): void {
-  ctx.on('approval/request', async req => {
+export function registerInteractionChannels(ctx: CtxLike, store: InteractionStore): () => void {
+  const offApproval = ctx.on('approval/request', async req => {
     return store.pushApproval(req.toolName, req.callId, req.reason, req.signal)
   })
-  ctx.get('userQuestions')?.registerProvider({
+  const unregisterProvider = ctx.get('userQuestions')?.registerProvider({
     ask(request) {
       return store.pushQuestion(request, request.signal)
     },
   })
+  return () => {
+    offApproval()
+    unregisterProvider?.()
+  }
 }

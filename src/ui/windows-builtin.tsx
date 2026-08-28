@@ -1,10 +1,11 @@
 import { ModelsWindow } from './windows/models-window.tsx'
 import { ProvidersWindow } from './windows/providers-window.tsx'
 import { SessionsWindow } from './windows/sessions-window.tsx'
-import { PresetsWindow } from './windows/presets-window.tsx'
-import { EffortWindow } from './windows/effort-window.tsx'
-import { DefaultsWindow } from './windows/defaults-window.tsx'
-import { TodoWindow } from './windows/todo-window.tsx'
+import { PresetsDialog } from './dialog/presets-dialog.tsx'
+import { EffortDialog } from './dialog/effort-dialog.tsx'
+import { DefaultsDialog } from './dialog/defaults-dialog.tsx'
+import { TodoDialog } from './dialog/todo-dialog.tsx'
+import { createServiceWindow } from './windows/service-window.tsx'
 import { registerWindow } from './windows.ts'
 
 export interface BuiltinWindowDeps {
@@ -16,7 +17,8 @@ export interface BuiltinWindowDeps {
 }
 
 export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
-  const disposers = [    registerWindow({
+  const disposers = [
+    registerWindow({
       id: 'models',
       title: 'models',
       order: 10,
@@ -52,23 +54,23 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
       title: 'preset',
       order: 30,
       required: ['presets'],
-      component: props => <PresetsWindow {...props} />,
+      component: createServiceWindow('presets', PresetsDialog),
       command: { name: 'preset', description: 'Select agent preset' },
     }),
     registerWindow({
-      id: 'reasoningEffort',
+      id: 'effort',
       title: 'reasoning effort',
       order: 40,
       required: ['efforts'],
-      component: props => <EffortWindow {...props} />,
-      command: { name: 'reasoningEffort', description: "Select the current model's reasoning effort" },
+      component: createServiceWindow('efforts', EffortDialog),
+      command: { name: 'reasoning-effort', description: "Select the current model's reasoning effort" },
     }),
     registerWindow({
       id: 'defaults',
       title: 'defaults',
       order: 50,
       required: ['defaults'],
-      component: props => <DefaultsWindow {...props} />,
+      component: createServiceWindow('defaults', DefaultsDialog),
       command: { name: 'defaults', description: 'Set default permission and agent preset' },
     }),
     registerWindow({
@@ -76,7 +78,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
       title: 'todo',
       order: 60,
       required: ['todos'],
-      component: props => <TodoWindow {...props} />,
+      component: createServiceWindow('todos', TodoDialog),
     }),
   ]
   return () => {

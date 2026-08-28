@@ -21,13 +21,6 @@ export interface ModelEntryConfig {
   reasoningEfforts?: false | Partial<Record<ModelEffortKey, string | null>>
 }
 
-export interface ConfiguredModelDetail extends ConfiguredModel {
-  settingsNs: string
-  contextWindow?: number
-  maxTokens?: number
-  reasoningEfforts?: false | Partial<Record<ModelEffortKey, string | null>>
-}
-
 export interface CustomProviderForm {
   providerId: string
   displayName: string
@@ -173,11 +166,6 @@ export function providerKeyRef(providerId: string): string {
 
 export interface SettingsReader {
   get(ns: string): unknown
-}
-
-export interface ModelSettingsPatch {
-  apiKeyEnv?: string
-  models?: ModelEntryConfig[]
 }
 
 function providerSection(reader: SettingsReader, ns: string, provider: string): Record<string, unknown> | undefined {

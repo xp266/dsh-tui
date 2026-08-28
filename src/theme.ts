@@ -1,3 +1,7 @@
+import type { PERMISSION_PRESETS } from './chat/bridge.ts'
+
+type PermissionModeId = typeof PERMISSION_PRESETS[number]
+
 const palette = {
   userBubbleBackground: '#2f2f2f',
   aiBubbleBackground: '#212020',
@@ -97,15 +101,15 @@ const palette = {
 
 export interface Theme extends Readonly<Record<keyof typeof palette, string>> {}
 
-export const colors: Theme = palette
+export const COLORS: Theme = palette
 
-export const permissionModes = {
-  'workspace-write': { color: colors.permissionBackground, textColor: colors.workspaceWriteText, name: 'Workspace Write' },
-  'danger-full-access': { color: colors.permissionBackground, textColor: colors.dangerFullAccessText, name: 'Full access' },
-  'read-only': { color: colors.permissionBackground, textColor: colors.readOnlyText, name: 'Read Only' },
+export const PERMISSION_MODES: Record<PermissionModeId, { color: string; textColor: string; name: string }> = {
+  'workspace-write': { color: COLORS.permissionBackground, textColor: COLORS.workspaceWriteText, name: 'Workspace Write' },
+  'danger-full-access': { color: COLORS.permissionBackground, textColor: COLORS.dangerFullAccessText, name: 'Full access' },
+  'read-only': { color: COLORS.permissionBackground, textColor: COLORS.readOnlyText, name: 'Read Only' },
 } as const
 
 export function permissionModeInfo(mode: string): { color: string; textColor: string; name: string } {
-  return permissionModes[mode as keyof typeof permissionModes]
-    ?? { color: colors.permissionBackground, textColor: colors.workspaceWriteText, name: mode }
+  return PERMISSION_MODES[mode as keyof typeof PERMISSION_MODES]
+    ?? { color: COLORS.permissionBackground, textColor: COLORS.workspaceWriteText, name: mode }
 }

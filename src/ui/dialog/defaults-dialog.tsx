@@ -24,8 +24,6 @@ export interface DefaultsDialogProps {
   ref?: Ref<DialogHandle>
 }
 
-const DIALOG_WIDTH = DIALOG_WIDTH_WIDE
-const DIALOG_MAX_HEIGHT = DEFAULTS_DIALOG_MAX_HEIGHT
 
 interface DefaultsData {
   presets: PresetSummary[]
@@ -126,8 +124,8 @@ export function DefaultsDialog({ api, onClose, ref }: DefaultsDialogProps) {
   return (
     <Dialog
       ref={ref}
-      width={DIALOG_WIDTH}
-      maxHeight={DIALOG_MAX_HEIGHT}
+      width={DIALOG_WIDTH_WIDE}
+      maxHeight={DEFAULTS_DIALOG_MAX_HEIGHT}
       title="defaults"
       rows={rows}
       footer={footer}

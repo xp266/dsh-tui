@@ -1,7 +1,8 @@
 import { Box } from 'ink'
 import { render } from 'ink-testing-library'
 import { describe, expect, it, vi } from 'vitest'
-import { ApprovalPanel } from '../src/ui/panels/approval-panel.tsx'
+import { ApprovalPanel, APPROVAL_BUTTON_COLS } from '../src/ui/panels/approval-panel.tsx'
+import type { PanelPointerHandle } from '../src/ui/panels/approval-panel.tsx'
 
 const WIDTH = 80
 const INNER = WIDTH - 8
@@ -130,5 +131,40 @@ describe('approval panel', () => {
     const after = (lastFrame() ?? '').replace(/\u001b\[[0-9;?]*[A-Za-z]/g, '')
     expect(after).not.toContain('token00')
     expect(after).toContain('token39')
+  })
+
+  it('decides from the clicked button regardless of keyboard focus', async () => {
+    const decide = vi.fn()
+    const handle: { current: PanelPointerHandle | null } = { current: null }
+    const { stdin } = render(
+      <Box width={WIDTH} height={24}>
+        <ApprovalPanel
+          reason="reason"
+          command="cmd"
+          background="#000000"
+          active
+          columns={WIDTH}
+          rows={24}
+          innerWidth={INNER}
+          blockWidth={BLOCK}
+          onDecide={decide}
+          onResize={() => {}}
+          handleRef={handle}
+        />
+      </Box>,
+    )
+    await settle()
+    const buttonY = 24 - 2 - 5 + 5 - 1
+    handle.current?.clickAt(buttonY, APPROVAL_BUTTON_COLS.allow + 2)
+    handle.current?.clickAt(buttonY, APPROVAL_BUTTON_COLS.reject + 2)
+    expect(decide).toHaveBeenNthCalledWith(1, 'allowed-once')
+    expect(decide).toHaveBeenNthCalledWith(2, 'rejected')
+    decide.mockClear()
+    stdin.write('\u001b[C')
+    await settle()
+    handle.current?.clickAt(buttonY, APPROVAL_BUTTON_COLS.allow + 2)
+    handle.current?.clickAt(buttonY, APPROVAL_BUTTON_COLS.reject + 2)
+    expect(decide).toHaveBeenNthCalledWith(1, 'allowed-once')
+    expect(decide).toHaveBeenNthCalledWith(2, 'rejected')
   })
 })

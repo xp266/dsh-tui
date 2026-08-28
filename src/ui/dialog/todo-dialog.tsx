@@ -7,25 +7,22 @@ import type { TodoItemLike } from '../../chat/todo-view.ts'
 
 export interface TodoDialogProps {
   ref?: Ref<DialogHandle>
-  todos: readonly TodoItemLike[]
+  api: readonly TodoItemLike[]
   onClose: () => void
 }
-
-const DIALOG_WIDTH = DIALOG_WIDTH_MEDIUM
-const DIALOG_MAX_HEIGHT = TODO_DIALOG_MAX_HEIGHT
 
 export function todoRows(todos: readonly TodoItemLike[]): DialogRow[] {
   return todos.map(item => ({ items: [{ type: 'static', label: `${todoSymbol(item.status)} ${item.content}` }] }))
 }
 
-export function TodoDialog({ ref, todos, onClose }: TodoDialogProps) {
+export function TodoDialog({ ref, api, onClose }: TodoDialogProps) {
   return (
     <Dialog
       ref={ref}
       title="todo"
-      width={DIALOG_WIDTH}
-      maxHeight={DIALOG_MAX_HEIGHT}
-      rows={todoRows(todos)}
+      width={DIALOG_WIDTH_MEDIUM}
+      maxHeight={TODO_DIALOG_MAX_HEIGHT}
+      rows={todoRows(api)}
       onClose={onClose}
     />
   )

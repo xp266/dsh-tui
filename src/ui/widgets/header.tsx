@@ -1,5 +1,5 @@
 import { Box, Text } from 'ink'
-import { colors } from '../../theme.ts'
+import { COLORS } from '../../theme.ts'
 import { textWidth } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
 import { registerWidget } from './registry.ts'
@@ -21,7 +21,7 @@ registerWidget<HeaderItem>('header', {
   render({ item, y, x, clip }) {
     const lead = item.leadingBlank === true && clip === 0 ? 1 : 0
     const label = (
-      <SelectableText y={y + lead} col={x} text={item.label} color={colors.sectionHeader} bold />
+      <SelectableText y={y + lead} col={x} text={item.label} color={COLORS.sectionHeader} bold />
     )
     if (lead === 0) return label
     return (

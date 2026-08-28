@@ -1,5 +1,5 @@
 import { Box } from 'ink'
-import { colors } from '../../theme.ts'
+import { COLORS } from '../../theme.ts'
 import { padToWidth, textWidth, truncate } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
 import { registerWidget } from './registry.ts'
@@ -24,7 +24,7 @@ function paintCheckbox(item: CheckboxItem, paint: PaintArgs<CheckboxItem>) {
     <Box>
       <SelectableText y={y} col={x} text={label} />
       {item.checked && (
-        <SelectableText y={y} col={x + width - 2} text={' \u2713'} color={colors.success} />
+        <SelectableText y={y} col={x + width - 2} text={' \u2713'} color={COLORS.success} />
       )}
     </Box>
   )

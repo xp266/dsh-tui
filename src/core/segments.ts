@@ -88,12 +88,6 @@ function appendClusters(text: string, style: MarkStyle, clusters: string[], styl
 
 export function mergeRuns(segments: Segment[]): Segment[] {
   if (segments.length === 0) return segments
-  const sameStyle = (a: MarkStyle, b: MarkStyle): boolean =>
-    a.color === b.color
-    && a.bold === b.bold
-    && a.italic === b.italic
-    && a.strike === b.strike
-    && a.underline === b.underline
   const out: Segment[] = []
   for (const seg of segments) {
     const last = out[out.length - 1]

@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module'
 import { performance } from 'node:perf_hooks'
 import Prism from 'prismjs'
-import { colors } from '../../../theme.ts'
+import { COLORS } from '../../../theme.ts'
 import type { MarkStyle, Segment } from '../../../core/segments.ts'
 
 type CodeRole =
@@ -218,34 +218,34 @@ const TOKEN_ROLES: Record<string, CodeRole> = {
 }
 
 const ROLE_STYLE_LIGHT: Record<CodeRole, () => MarkStyle> = {
-  comment: () => ({ color: colors.codeComment, italic: true }),
-  string: () => ({ color: colors.codeString }),
-  number: () => ({ color: colors.codeNumber }),
-  constant: () => ({ color: colors.codeConstant }),
-  keyword: () => ({ color: colors.codeKeyword }),
-  function: () => ({ color: colors.codeFunction }),
-  type: () => ({ color: colors.codeType }),
-  variable: () => ({ color: colors.codeVariable }),
-  operator: () => ({ color: colors.codeOperator }),
-  added: () => ({ color: colors.success }),
-  removed: () => ({ color: colors.errorText }),
+  comment: () => ({ color: COLORS.codeComment, italic: true }),
+  string: () => ({ color: COLORS.codeString }),
+  number: () => ({ color: COLORS.codeNumber }),
+  constant: () => ({ color: COLORS.codeConstant }),
+  keyword: () => ({ color: COLORS.codeKeyword }),
+  function: () => ({ color: COLORS.codeFunction }),
+  type: () => ({ color: COLORS.codeType }),
+  variable: () => ({ color: COLORS.codeVariable }),
+  operator: () => ({ color: COLORS.codeOperator }),
+  added: () => ({ color: COLORS.success }),
+  removed: () => ({ color: COLORS.errorText }),
   boldFlag: () => ({ bold: true }),
   italicFlag: () => ({ italic: true }),
   strikeFlag: () => ({ strike: true }),
 }
 
 const ROLE_STYLE_DARK: Record<CodeRole, () => MarkStyle> = {
-  comment: () => ({ color: colors.codeCommentDark, italic: true }),
-  string: () => ({ color: colors.codeStringDark }),
-  number: () => ({ color: colors.codeNumberDark }),
-  constant: () => ({ color: colors.codeConstantDark }),
-  keyword: () => ({ color: colors.codeKeywordDark }),
-  function: () => ({ color: colors.codeFunctionDark }),
-  type: () => ({ color: colors.codeTypeDark }),
-  variable: () => ({ color: colors.codeVariableDark }),
-  operator: () => ({ color: colors.thinkCodePlain }),
-  added: () => ({ color: colors.success }),
-  removed: () => ({ color: colors.errorText }),
+  comment: () => ({ color: COLORS.codeCommentDark, italic: true }),
+  string: () => ({ color: COLORS.codeStringDark }),
+  number: () => ({ color: COLORS.codeNumberDark }),
+  constant: () => ({ color: COLORS.codeConstantDark }),
+  keyword: () => ({ color: COLORS.codeKeywordDark }),
+  function: () => ({ color: COLORS.codeFunctionDark }),
+  type: () => ({ color: COLORS.codeTypeDark }),
+  variable: () => ({ color: COLORS.codeVariableDark }),
+  operator: () => ({ color: COLORS.thinkCodePlain }),
+  added: () => ({ color: COLORS.success }),
+  removed: () => ({ color: COLORS.errorText }),
   boldFlag: () => ({ bold: true }),
   italicFlag: () => ({ italic: true }),
   strikeFlag: () => ({ strike: true }),
@@ -458,9 +458,9 @@ function resolveGrammar(lang: string): Prism.Grammar | undefined {
   return Prism.languages[name]
 }
 
-export function highlightCodeBlock(text: string, lang: string, thinking = false): Segment[] | null {
+export function highlightCodeBlock(text: string, lang: string, thinking = false, streamId = ''): Segment[] | null {
   if (text === '') return []
-  const key = `${thinking ? 'd' : 'l'}\x00${lang}\x00${text}`
+  const key = `${thinking ? 'd' : 'l'}\x00${lang}\x00${streamId}\x00${text}`
   const cached = highlightCache.get(key)
   if (cached !== undefined) return cached
   let grammar = resolveGrammar(lang)
@@ -472,7 +472,7 @@ export function highlightCodeBlock(text: string, lang: string, thinking = false)
   if (grammar === undefined) {
     result = null
   } else {
-    const stateKey = `${thinking ? 'd' : 'l'}\x00${lang}`
+    const stateKey = `${thinking ? 'd' : 'l'}\x00${streamId}\x00${lang}`
     const state = streamStates.get(stateKey)
     const incremental = state !== undefined
       && text.length > state.source.length
@@ -480,7 +480,7 @@ export function highlightCodeBlock(text: string, lang: string, thinking = false)
       && state.source.endsWith('\n')
     try {
       const styles = thinking ? codeStylesDark : codeStyles
-      const plain: MarkStyle = { color: thinking ? colors.thinkCodePlain : colors.mdCodePlain }
+      const plain: MarkStyle = { color: thinking ? COLORS.thinkCodePlain : COLORS.mdCodePlain }
       if (incremental) {
         const delta = text.slice(state!.source.length)
         const segments = state!.segments.slice()

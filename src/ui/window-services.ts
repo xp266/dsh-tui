@@ -4,7 +4,6 @@ import { keyedRegistry } from '../kernel/registry.ts'
 export const windowServices = keyedRegistry<unknown>()
 
 export const registerWindowService = windowServices.register.bind(windowServices)
-export const windowService = (name: string): unknown => windowServices.get(name)
 export const subscribeWindowServices = windowServices.subscribe.bind(windowServices)
 
 export function hasWindowServices(required: readonly string[] | undefined): boolean {

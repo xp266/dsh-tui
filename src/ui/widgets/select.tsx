@@ -1,5 +1,5 @@
 import { Box, Text } from 'ink'
-import { colors } from '../../theme.ts'
+import { COLORS } from '../../theme.ts'
 import { selectBlock, CAROUSEL_BUTTON_WIDTH } from '../dialog/geometry.ts'
 import { textWidth } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
@@ -30,17 +30,17 @@ function paintSelect(paint: PaintArgs<SelectItem>) {
       <SelectableText y={y} col={x} text={`${item.label}:`} />
       <Box width={block.blockWidth} flexDirection="row">
         {hasArrows && (
-          <Text backgroundColor={paint.pressed === 'left' ? colors.carouselButtonPressedBg : colors.carouselButtonBg}> ◀ </Text>
+          <Text backgroundColor={paint.pressed === 'left' ? COLORS.carouselButtonPressedBg : COLORS.carouselButtonBg}> ◀ </Text>
         )}
         <SelectableText
           y={y}
           col={valueCol}
           text={valueText}
-          color={paint.focused ? colors.carouselSelectedText : undefined}
-          backgroundColor={colors.carouselCurrentBg}
+          color={paint.focused ? COLORS.carouselSelectedText : undefined}
+          backgroundColor={COLORS.carouselCurrentBg}
         />
         {hasArrows && (
-          <Text backgroundColor={paint.pressed === 'right' ? colors.carouselButtonPressedBg : colors.carouselButtonBg}> ▶ </Text>
+          <Text backgroundColor={paint.pressed === 'right' ? COLORS.carouselButtonPressedBg : COLORS.carouselButtonBg}> ▶ </Text>
         )}
       </Box>
     </Box>

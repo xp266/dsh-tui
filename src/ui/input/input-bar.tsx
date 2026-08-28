@@ -3,7 +3,7 @@ import type { Ref } from 'react'
 import { useCaret } from '../hooks/use-caret.ts'
 import { caretNonceColor } from '../../core/caret-nonce.ts'
 import { useImperativeHandle, useEffect } from 'react'
-import { colors, permissionModeInfo } from '../../theme.ts'
+import { COLORS, permissionModeInfo } from '../../theme.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
 import { CHROME_FRAME_ROWS, CHROME_MARGIN_X, CHROME_PAD_X, CHROME_TEXT_X, INPUT_WIDTH_OFFSET, inputFrameTop, inputStatusRow } from '../../core/metrics.ts'
 import { colToCharIndex, lineBreaks, textWidth, truncate, wrapLines } from '../../core/text.ts'
@@ -120,11 +120,11 @@ export function InputBar({
       : Math.max(1, contentWidth - textWidth(presetName) - 2)
     const parts: Array<{ text: string; color: string }> = [
       { text: permission.name, color: permission.textColor },
-      { text: ' · ', color: colors.statusSeparator },
-      { text: modelName, color: colors.modelText },
+      { text: ' · ', color: COLORS.statusSeparator },
+      { text: modelName, color: COLORS.modelText },
       ...(effortName === undefined ? [] : [
-        { text: ' · ', color: colors.statusSeparator },
-        { text: effortName, color: colors.effortText },
+        { text: ' · ', color: COLORS.statusSeparator },
+        { text: effortName, color: COLORS.effortText },
       ]),
     ]
     if (interactive) {
@@ -204,7 +204,7 @@ export function InputBar({
           )}
           {statusReady && presetName !== undefined && (
             <Box position="absolute" top={0} left={CHROME_MARGIN_X + contentWidth - textWidth(presetName)}>
-              <SelectableText y={statusLocalY} col={CHROME_TEXT_X + contentWidth - textWidth(presetName)} text={presetName} color={colors.presetText} />
+              <SelectableText y={statusLocalY} col={CHROME_TEXT_X + contentWidth - textWidth(presetName)} text={presetName} color={COLORS.presetText} />
             </Box>
           )}
         </Box>

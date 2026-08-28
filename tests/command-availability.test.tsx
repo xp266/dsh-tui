@@ -34,8 +34,7 @@ describe('command availability', () => {
     frame = lastFrame() ?? ''
     expect(focusedSegment(frame)).not.toContain('/todo')
 
-    await type(stdin, '\u001b[A')
-    await type(stdin, '\u001b[A')
+    for (let i = 0; i < 6; i++) await type(stdin, '\u001b[B')
     frame = lastFrame() ?? ''
     expect(focusedSegment(frame)).toContain('/new')
 

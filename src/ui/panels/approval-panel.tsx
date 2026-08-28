@@ -5,7 +5,7 @@ import { useImperativeHandle } from 'react'
 import { wrapLines, padToWidth, textWidth } from '../../core/text.ts'
 import { mergeRuns } from '../../core/segments.ts'
 import type { Segment } from '../../core/segments.ts'
-import { colors } from '../../theme.ts'
+import { COLORS } from '../../theme.ts'
 import { CHROME_MARGIN_X, CHROME_PAD_X, CHROME_TEXT_X } from '../../core/metrics.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
 import { SelectableText } from '../selection.tsx'
@@ -51,11 +51,11 @@ function reasonSection(raw: string | undefined, innerWidth: number): Segment[][]
   const rows: Segment[][] = []
   if (colon === -1) {
     for (const line of wrapLines(raw, Math.max(4, innerWidth))) {
-      rows.push([{ text: line, style: { color: colors.errorText } }])
+      rows.push([{ text: line, style: { color: COLORS.errorText } }])
     }
     return rows
   }
-  rows.push([{ text: raw.slice(0, colon + 1), style: { color: colors.errorText } }])
+  rows.push([{ text: raw.slice(0, colon + 1), style: { color: COLORS.errorText } }])
   const description = raw.slice(colon + 1).trim()
   if (description !== '') {
     for (const line of wrapLines(description, Math.max(4, innerWidth))) {
@@ -66,7 +66,7 @@ function reasonSection(raw: string | undefined, innerWidth: number): Segment[][]
 }
 
 function commandSection(lines: string[]): Segment[][] {
-  return lines.map(line => [{ text: line, style: { color: colors.warning } }])
+  return lines.map(line => [{ text: line, style: { color: COLORS.warning } }])
 }
 
 function clamp(value: number, max: number): number {
@@ -114,11 +114,11 @@ export function ApprovalPanel({ handleRef, reason, command, background, active, 
       if (!active) return
       if (y !== bodyStart + bodyCount - 1) return
       if (x >= APPROVAL_BUTTON_COLS.allow && x < APPROVAL_BUTTON_COLS.allow + ALLOW_BLOCK.length) {
-        onDecide(focusAllow ? 'allowed-once' : 'rejected')
+        onDecide('allowed-once')
         return
       }
       if (x >= APPROVAL_BUTTON_COLS.reject && x < APPROVAL_BUTTON_COLS.reject + REJECT_BLOCK.length) {
-        onDecide(focusAllow ? 'rejected' : 'allowed-once')
+        onDecide('rejected')
       }
     },
     wheel(dir) {
@@ -224,12 +224,4 @@ function padRow(row: Segment[], width: number): Segment[] {
   const used = textWidth(row.map(segment => segment.text).join(''))
   if (used >= width) return row
   return mergeRuns([...row, { text: ' '.repeat(width - used), style: {} }])
-}
-
-export function approvalPanelHeight(innerWidth: number, reason?: string, command?: string): number {
-  const reasonRows = reasonSection(reason, innerWidth).slice(0, APPROVAL_SECTION_ROWS)
-  const commandRows = commandSection(section(command, innerWidth)).slice(0, APPROVAL_SECTION_ROWS)
-  let count = reasonRows.length + 1
-  if (commandRows.some(row => row.some(seg => seg.text.trim() !== ''))) count += commandRows.length + 1
-  return count + 1 + 2
 }

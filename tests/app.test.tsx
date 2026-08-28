@@ -234,7 +234,7 @@ describe('App layout', () => {
     bridge.currentEffort = () => 'high'
     const { lastFrame, stdin } = render(<App bridge={bridge} />)
     await new Promise(resolve => setTimeout(resolve, 20))
-    stdin.write('/reasoningEffort')
+    stdin.write('/reasoning-effort')
     await new Promise(resolve => setTimeout(resolve, 20))
     stdin.write('\r')
     await new Promise(resolve => setTimeout(resolve, 20))

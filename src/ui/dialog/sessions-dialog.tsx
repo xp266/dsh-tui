@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Ref } from 'react'
-import { colors } from '../../theme.ts'
+import { COLORS } from '../../theme.ts'
 import { errorLine, loadingLine } from './status-lines.ts'
 import type { SessionSummary } from '../../chat/session-list.ts'
 import { groupSessions } from '../../chat/session-groups.ts'
@@ -28,8 +28,6 @@ export interface SessionsDialogProps {
   ref?: Ref<DialogHandle>
 }
 
-const DIALOG_WIDTH = DIALOG_WIDTH_WIDE
-const DIALOG_MAX_HEIGHT = SESSIONS_DIALOG_MAX_HEIGHT
 const ARM_TIMEOUT_MS = 3000
 
 const SECTION_LABELS: Record<SessionSectionKind, string> = {
@@ -40,7 +38,7 @@ const SECTION_LABELS: Record<SessionSectionKind, string> = {
 }
 
 const ARCHIVE_HINT: DialogFooterLine[] = [
-  { text: 'Ctrl+D to archive the session', color: colors.dialogHintText },
+  { text: 'Ctrl+D to archive the session', color: COLORS.dialogHintText },
 ]
 
 interface ArmedRow {
@@ -118,7 +116,7 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
         label: session.name || session.id,
         right: armed ? 'Press Ctrl+D again to archive' : session.ungrouped ? 'Ungrouped' : session.directory,
         onPress: () => void selectSession(session),
-        ...(armed ? { rightColor: colors.errorText } : {}),
+        ...(armed ? { rightColor: COLORS.errorText } : {}),
       }
       rowRefs.set(item, { key, id: session.id })
       rows.push({ items: [item] })
@@ -137,8 +135,8 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
     <Dialog
       ref={ref}
       title="sessions"
-      width={DIALOG_WIDTH}
-      maxHeight={DIALOG_MAX_HEIGHT}
+      width={DIALOG_WIDTH_WIDE}
+      maxHeight={SESSIONS_DIALOG_MAX_HEIGHT}
       rows={rows}
       footer={footer}
       onClose={onClose}

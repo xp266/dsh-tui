@@ -39,6 +39,32 @@ describe('mouse parser', () => {
     ])
   })
 
+  it('keeps short partial prefixes split across feeds', () => {
+    const events: MouseEventData[] = []
+    const parser = createMouseParser(e => events.push(e))
+    parser.feed('\x1b')
+    parser.feed('[')
+    parser.feed('<0;5;5M')
+    expect(events).toEqual([
+      { type: 'down', button: 0, x: 4, y: 4, modifiers: { shift: false, alt: false, ctrl: false } },
+    ])
+  })
+
+  it('releases only the button that was released', () => {
+    const events: MouseEventData[] = []
+    const parser = createMouseParser(e => events.push(e))
+    parser.feed('\x1b[<0;1;1M')
+    parser.feed('\x1b[<1;2;2M')
+    parser.feed('\x1b[<0;3;3m')
+    parser.feed('\x1b[<33;4;4M')
+    expect(events).toEqual([
+      { type: 'down', button: 0, x: 0, y: 0, modifiers: { shift: false, alt: false, ctrl: false } },
+      { type: 'down', button: 1, x: 1, y: 1, modifiers: { shift: false, alt: false, ctrl: false } },
+      { type: 'up', button: 0, x: 2, y: 2, modifiers: { shift: false, alt: false, ctrl: false } },
+      { type: 'drag', button: 1, x: 3, y: 3, modifiers: { shift: false, alt: false, ctrl: false } },
+    ])
+  })
+
   it('treats motion without a pressed button as move', () => {
     const events: MouseEventData[] = []
     const parser = createMouseParser(e => events.push(e))

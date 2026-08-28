@@ -24,8 +24,8 @@ describe('lineBreaks', () => {
 describe('locToPoint', () => {
   const value = '中'.repeat(46) + '好啊'
 
-  it('places cursor at wrap boundary', () => {
-    expect(locToPoint(value, 92, 46)).toEqual({ row: 0, col: 92 })
+  it('places cursor at wrap boundary on the next row', () => {
+    expect(locToPoint(value, 92, 46)).toEqual({ row: 1, col: 0 })
   })
 
   it('places cursor after the first wrapped char', () => {

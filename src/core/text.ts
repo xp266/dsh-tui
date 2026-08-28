@@ -1,15 +1,21 @@
 import stringWidth from 'string-width'
 
+const WIDTH_CACHE_LIMIT = 8192
+
+function cachedWidth(cache: Map<string, number>, text: string, compute: () => number): number {
+  const hit = cache.get(text)
+  if (hit !== undefined) return hit
+  const width = compute()
+  if (cache.size >= WIDTH_CACHE_LIMIT) cache.clear()
+  cache.set(text, width)
+  return width
+}
+
 const widthCache = new Map<string, number>()
 
 export function textWidth(text: string): number {
   if (isAsciiPrintable(text)) return text.length
-  const cached = widthCache.get(text)
-  if (cached !== undefined) return cached
-  const width = stringWidth(text)
-  if (widthCache.size >= 5000) widthCache.clear()
-  widthCache.set(text, width)
-  return width
+  return cachedWidth(widthCache, text, () => stringWidth(text))
 }
 
 function isAsciiPrintable(text: string): boolean {
@@ -33,12 +39,7 @@ export function charWidth(cluster: string): number {
     const code = cluster.charCodeAt(0)
     if (code >= 0x20 && code <= 0x7e) return 1
   }
-  const cached = charWidthCache.get(cluster)
-  if (cached !== undefined) return cached
-  const width = stringWidth(cluster)
-  if (charWidthCache.size >= 8192) charWidthCache.clear()
-  charWidthCache.set(cluster, width)
-  return width
+  return cachedWidth(charWidthCache, cluster, () => stringWidth(cluster))
 }
 
 const NO_START_CHARS = new Set<string>(
@@ -194,7 +195,7 @@ export function locToPoint(text: string, width: number, index: number): Point {
   const breaks = lineBreaks(text, width)
   for (let row = 0; row < breaks.length; row++) {
     const { start, end } = breaks[row]!
-    if (index <= end) {
+    if (index < end || (index === end && row < breaks.length - 1 && breaks[row + 1]!.start > end)) {
       return { row, col: textWidth(text.slice(start, index)) }
     }
   }

@@ -1,5 +1,5 @@
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import type { Message, PlanMessage, ToolDiffMessage } from '../model/message.ts'
 import { reasoningFromBlocks, textFromBlocks } from './blocks.ts'
 import type { ChatToolPresenter, ToolResultLike } from './bridge.ts'
@@ -28,12 +28,20 @@ export interface ReduceOptions {
   readFile?: (path: string) => string | null
 }
 
+const DEFAULT_READ_MAX_BYTES = 262144
+
 function defaultReadFile(path: string): string | null {
   try {
+    const info = statSync(path)
+    if (info.size > DEFAULT_READ_MAX_BYTES) return null
     return readFileSync(path, 'utf8')
   } catch {
     return null
   }
+}
+
+function errorSummary(cause: { name?: string; code?: string } | undefined): string {
+  return `error: ${cause?.name ?? cause?.code ?? 'unknown'}`
 }
 
 export interface AgentActivity {
@@ -271,7 +279,7 @@ export function reduceChatEvent(
                 ...message,
                 streaming: false,
                 running: false,
-                error: `error: ${error?.name ?? error?.code ?? 'unknown'}${detail === '' ? '' : ` ${detail}`}`,
+                error: `${errorSummary(error)}${detail === '' ? '' : ` ${detail}`}`,
               }
             : message)
           return { messages, turn, changed: true }
@@ -310,7 +318,7 @@ export function reduceChatEvent(
           ? {
               ...message,
               running: false,
-              ...(failed && error !== undefined ? { error: `${error.name ?? error.code}${detail === '' ? '' : ` ${detail}`}` } : {}),
+              ...(failed && error !== undefined ? { error: `${errorSummary(error)}${detail === '' ? '' : ` ${detail}`}` } : {}),
             }
           : message)
         return { messages, turn, changed: true }
@@ -328,7 +336,7 @@ export function reduceChatEvent(
       if (presentation !== undefined && presentation.kind === 'replace') {
         const body = error === undefined
           ? presentation.text
-          : `error: ${error.name ?? error.code}${presentation.text === '' ? '' : `\n${presentation.text}`}`
+          : `${errorSummary(error)}${presentation.text === '' ? '' : `\n${presentation.text}`}`
         turn.toolIds.delete(callId)
         updateById(messages, id, message => ({
           ...message,
@@ -354,7 +362,7 @@ export function reduceChatEvent(
         ? rendered === '' ? collapsible.body
           : collapsible.body === '' ? rendered
             : `${collapsible.body}\n\n${rendered}`
-        : `error: ${error.name ?? error.code}${rendered ? `\n${rendered}` : ''}`
+        : `${errorSummary(error)}${rendered ? `\n${rendered}` : ''}`
       turn.toolIds.delete(callId)
       updateById(messages, id, message => ({
         ...message,
@@ -548,23 +556,15 @@ function appendChunk(
     return { messages, turn, changed: true }
   }
   let changed = false
-  if (kind === 'thinking') {
-    const index = messages.findIndex(m => m.id === id)
-    if (index >= 0 && messages[index]?.kind === 'collapsible') {
-      const target = messages[index]
-      if (target !== undefined && text !== '') {
-        target.body += text
-        changed = true
-      }
-    }
-  } else {
-    const index = messages.findIndex(m => m.id === id)
-    if (index >= 0 && messages[index]?.kind === 'bubble') {
-      const target = messages[index]
-      if (target !== undefined && text !== '') {
-        target.content += text
-        changed = true
-      }
+  const index = messages.findIndex(m => m.id === id)
+  const target = index >= 0 ? messages[index] : undefined
+  if (target !== undefined && text !== '') {
+    if (kind === 'thinking' && target.kind === 'collapsible') {
+      target.body += text
+      changed = true
+    } else if (kind === 'assistant' && target.kind === 'bubble') {
+      target.content += text
+      changed = true
     }
   }
   return { messages, turn, changed }

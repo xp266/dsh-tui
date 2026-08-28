@@ -70,11 +70,11 @@ function evictBlockCacheIfNeeded(): void {
   }
 }
 
-function cachedBlockRows(token: Token, ctx: BlockContext): BlockEntry {
+function cachedBlockRows(token: Token, ctx: BlockContext, streamId: string): BlockEntry {
   const key = `${ctx.thinking ? 't' : 'm'}\u0000${ctx.width}\u0000${token.raw}`
   const hit = blockCache.get(key)
   if (hit !== undefined) return hit
-  const rows = renderBlockRows(token, ctx)
+  const rows = renderBlockRows(token, { ...ctx, streamId })
   const entry: BlockEntry = {
     rows,
     lines: rows.map(row => {
@@ -90,13 +90,13 @@ function cachedBlockRows(token: Token, ctx: BlockContext): BlockEntry {
 
 export function renderMarkdown(content: string, width: number, thinking = false): MarkdownRenderResult {
   const palette = createMdPalette(thinking)
-  const ctx: BlockContext = { palette, thinking, width: Math.max(4, width) }
+  const ctx: BlockContext = { palette, thinking, width: Math.max(4, width), streamId: '' }
   const tokens = marked.lexer(healInlineTail(normalizeEol(content))) as Token[]
   const rows: Segment[][] = []
   const lines: string[] = []
   let pendingSeparator = false
-  for (const token of tokens) {
-    const entry = cachedBlockRows(token, ctx)
+  for (const [index, token] of tokens.entries()) {
+    const entry = cachedBlockRows(token, ctx, String(index))
     if (entry.rows.length === 0) continue
     if (pendingSeparator && rows.length > 0) {
       rows.push([])

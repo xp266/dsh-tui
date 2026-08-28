@@ -116,7 +116,7 @@ export interface RegistryCommand {
 
 interface CommandsServiceLike {
   list(agent: unknown): readonly { name: string; description: string; input?: { hint: string } }[]
-  execute(agent: unknown, line: string, imagesOrSignal: unknown, maybeSignal?: AbortSignal): Promise<unknown>
+  execute(agent: unknown, line: string, signal: AbortSignal): Promise<unknown>
 }
 
 export interface ChatBridge {
@@ -162,6 +162,7 @@ export interface ChatBridge {
   listRegistryCommands(): readonly RegistryCommand[]
   onRegistryChanged(listener: () => void): () => void
   executeCommandLine(line: string): Promise<void>
+  dispose(): void
 }
 
 let sessionCounter = 0
@@ -203,8 +204,9 @@ function cachedList<T>(load: () => Promise<T[]>, ttlMs: number): CachedList<T> {
 
 export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   const interactions = new InteractionStore()
+  let interactionChannels: (() => void) | undefined
   try {
-    registerInteractionChannels(ctx as never, interactions)
+    interactionChannels = registerInteractionChannels(ctx as never, interactions)
   } catch {}
   const agentOptions = (): AgentOptions => {
     const selection = ctx.get('agentDefaultModel')?.currentSelection()
@@ -254,7 +256,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     for (const handler of [...handlers]) handler(event)
   }
 
-  ctx.on('session/event', (session, event) => {
+  const offSessionEvents = ctx.on('session/event', (session, event) => {
     if (session.id !== activeAgent.id) return
     const type = (event as { type?: string }).type
     if (type === 'session/title' || type === 'turn/start') sessionList.invalidate()
@@ -267,6 +269,14 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     selectionFor(agent)
   }
 
+  function selectionWithEffort(resolved: ModelSelection): ModelSelection {
+    return {
+      provider: resolved.provider,
+      model: resolved.model,
+      ...resolved.reasoningEffort === undefined ? {} : { reasoningEffort: resolved.reasoningEffort },
+    }
+  }
+
   function selectionFor(agent: Agent): ModelSelectionRef {
     const installed = selections.get(agent)
     if (installed !== undefined) return installed
@@ -276,13 +286,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
         if (picked !== undefined) return picked
         const logged = agent.session.requestHeader()?.config
         if (logged === undefined) return ctx.agentDefaultModel.currentSelection()
-        return {
-          provider: logged.provider,
-          model: logged.model,
-          ...logged.reasoningEffort === undefined
-            ? {}
-            : { reasoningEffort: logged.reasoningEffort },
-        }
+        return selectionWithEffort({ provider: logged.provider, model: logged.model, reasoningEffort: logged.reasoningEffort })
       },
       set current(next: ModelSelection) {
         picked = next
@@ -294,11 +298,12 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     return selection
   }
 
-  function currentSelection(): ModelSelection {
+  function currentSelection(): ModelSelection | undefined {
     return selectionFor(activeAgent).current ?? ctx.agentDefaultModel.currentSelection()
   }
 
-  async function resolveEffortSummaries(selection: ModelSelection): Promise<EffortSummary[]> {
+  async function resolveEffortSummaries(selection: ModelSelection | undefined): Promise<EffortSummary[]> {
+    if (selection === undefined) return []
     try {
       const info = await llm.resolveModelInfo(selection.provider, selection.model)
       const base = `${selection.provider}/${selection.model}`
@@ -356,23 +361,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       const resolved = session === undefined ? undefined : resolveSessionPreset(session)
       await presets?.mount(agentCtx, resolved)
     }
-    if (typeof ctx.agentLoop.resume === 'function') {
-      try {
-        return await ctx.agentLoop.resume(ctx, { resumeSessionId: SessionId(id), agentOptions: agentOptions(), setup })
-      } catch (error) {
-        if (query?.readSession === undefined) throw error
-        const snapshot = await query.readSession(String(id))
-        return ctx.agentLoop.createAgent(ctx, {
-          sessionId: SessionId(id),
-          seed: snapshot.events,
-          meta: { cwd: snapshot.session.cwd },
-          agentOptions: agentOptions(),
-          setup,
-        })
-      }
-    }
-    if (query?.readSession !== undefined) {
-      const snapshot = await query.readSession(String(id))
+    const spawnResumedAgent = async (snapshot: { session: { cwd?: string }; events: SessionEvent[] }): Promise<AgentHandle> => {
       return ctx.agentLoop.createAgent(ctx, {
         sessionId: SessionId(id),
         seed: snapshot.events,
@@ -381,7 +370,30 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
         setup,
       })
     }
+    if (typeof ctx.agentLoop.resume === 'function') {
+      try {
+        return await ctx.agentLoop.resume(ctx, { resumeSessionId: SessionId(id), agentOptions: agentOptions(), setup })
+      } catch (error) {
+        if (query?.readSession === undefined) throw error
+        return spawnResumedAgent(await query.readSession(String(id)))
+      }
+    }
+    if (query?.readSession !== undefined) return spawnResumedAgent(await query.readSession(String(id)))
     throw new Error('cannot resume session: session persistence is not configured')
+  }
+
+  async function activateAgent(handle: AgentHandle | undefined, agent: Agent): Promise<void> {
+    const previous = activeHandle
+    activeHandle = handle
+    activeAgent = agent
+    syncRegistry()
+    if (previous !== undefined) await previous.dispose()
+  }
+
+  function refreshAgentState(): void {
+    void repairEffortSelection()
+    sessionList.invalidate()
+    efforts.invalidate()
   }
 
   async function openSession(id: string): Promise<void> {
@@ -392,29 +404,17 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     }
     const existing = ctx.agents.get(sessionId)
     if (existing !== undefined) {
-      const previous = activeHandle
-      activeHandle = undefined
-      activeAgent = existing
-      syncRegistry()
-      if (previous !== undefined) await previous.dispose()
+      await activateAgent(undefined, existing)
       syncCwd()
       for (const event of activeAgent.session.events) emit(event)
-      void repairEffortSelection()
-      sessionList.invalidate()
-      efforts.invalidate()
+      refreshAgentState()
       return
     }
     const handle = await resumeAgent(sessionId)
-    const previous = activeHandle
-    activeHandle = handle
-    activeAgent = handle.agent
-    syncRegistry()
-    if (previous !== undefined) await previous.dispose()
+    await activateAgent(handle, handle.agent)
     syncCwd()
     for (const event of activeAgent.session.events) emit(event)
-    void repairEffortSelection()
-    sessionList.invalidate()
-    efforts.invalidate()
+    refreshAgentState()
   }
 
   function syncCwd(): void {
@@ -425,14 +425,8 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
 
   async function newSession(): Promise<void> {
     const handle = await createAgent(currentCwd)
-    const previous = activeHandle
-    activeHandle = handle
-    activeAgent = handle.agent
-    syncRegistry()
-    if (previous !== undefined) await previous.dispose()
-    void repairEffortSelection()
-    sessionList.invalidate()
-    efforts.invalidate()
+    await activateAgent(handle, handle.agent)
+    refreshAgentState()
   }
 
   async function archiveSession(id: string): Promise<void> {
@@ -586,13 +580,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
 
   async function selectModel(provider: string, name: string): Promise<void> {
     const resolved = await llm.resolveCallConfig({ provider, model: name })
-    selectionFor(activeAgent).current = {
-      provider: resolved.provider,
-      model: resolved.model,
-      ...resolved.reasoningEffort === undefined
-        ? {}
-        : { reasoningEffort: resolved.reasoningEffort },
-    }
+    selectionFor(activeAgent).current = selectionWithEffort(resolved)
     try {
       await ctx.agentDefaultModel.saveSelection(resolved)
     } catch {}
@@ -605,31 +593,25 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   }
 
   function currentEffort(): string | undefined {
-    return currentSelection().reasoningEffort
+    return currentSelection()?.reasoningEffort
   }
 
   function effortName(): string | undefined {
     const selection = currentSelection()
-    if (selection.reasoningEffort === undefined) return undefined
+    if (selection === undefined || selection.reasoningEffort === undefined) return undefined
     return effortNames.get(`${selection.provider}/${selection.model}/${selection.reasoningEffort}`)
       ?? String(selection.reasoningEffort)
   }
 
   async function selectEffort(id: string): Promise<void> {
     const current = currentSelection()
-    if (current.reasoningEffort === id) return
+    if (current === undefined || current.reasoningEffort === id) return
     const resolved = await llm.resolveCallConfig({
       provider: current.provider,
       model: current.model,
       reasoningEffort: ReasoningEffortId(id),
     })
-    selectionFor(activeAgent).current = {
-      provider: resolved.provider,
-      model: resolved.model,
-      ...resolved.reasoningEffort === undefined
-        ? {}
-        : { reasoningEffort: resolved.reasoningEffort },
-    }
+    selectionFor(activeAgent).current = selectionWithEffort(resolved)
     try {
       await ctx.agentDefaultModel.saveSelection(resolved)
     } catch {}
@@ -697,11 +679,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       if (commandsService === undefined) return
       const controller = new AbortController()
       try {
-        if (commandsService.execute.length >= 4) {
-          await commandsService.execute(activeAgent, line, [], controller.signal)
-        } else {
-          await commandsService.execute(activeAgent, line, controller.signal)
-        }
+        await commandsService.execute(activeAgent, line, controller.signal)
       } catch {}
     },
     listSessions,
@@ -718,8 +696,14 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     fetchProviderModels: (provider, apiKey) => fetchProviderModels(llm, provider.settingsNs, provider.provider, apiKey),
     saveBuiltinProvider: (provider, apiKey, models) => saveBuiltinProvider(ctx.settings, ctx.credentials, provider, apiKey, models),
     readModelEntries: (ns, provider) => readModelEntries(settingsService(), ns, provider),
-    saveModelEntry: (ns, provider, entry) => saveModelEntry(settingsService(), settingsService(), ns, provider, entry),
-    deleteModelEntry: (ns, provider, modelId) => deleteModelEntry(settingsService(), settingsService(), ns, provider, modelId),
+    saveModelEntry: (ns, provider, entry) => {
+      const settings = settingsService()
+      return saveModelEntry(settings, settings, ns, provider, entry)
+    },
+    deleteModelEntry: (ns, provider, modelId) => {
+      const settings = settingsService()
+      return deleteModelEntry(settings, settings, ns, provider, modelId)
+    },
     cwd: () => currentCwd,
     listPresets: () => presetsList.get(),
     currentPreset,
@@ -753,6 +737,11 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     tokenStats,
     toolPresenter,
     interactions,
+    dispose() {
+      interactionChannels?.()
+      interactions.dispose()
+      offSessionEvents()
+    },
   }
 }
 

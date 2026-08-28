@@ -3,7 +3,7 @@ import { createContext, useContext } from 'react'
 import { useCaret } from '../hooks/use-caret.ts'
 import type { ReactNode, Ref } from 'react'
 import { useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { colors } from '../../theme.ts'
+import { COLORS } from '../../theme.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
 import { textWidth, colToCharIndex } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
@@ -275,7 +275,7 @@ export function Dialog({
         width={windowWidth}
         height={windowHeight}
         flexDirection="column"
-        backgroundColor={colors.dialogBackground}
+        backgroundColor={COLORS.dialogBackground}
         padding={1}
       >
         {title !== undefined && (

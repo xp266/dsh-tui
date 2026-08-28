@@ -18,8 +18,6 @@ export interface EffortDialogProps {
   ref?: Ref<DialogHandle>
 }
 
-const DIALOG_WIDTH = DIALOG_WIDTH_NARROW
-const DIALOG_MAX_HEIGHT = EFFORT_DIALOG_MAX_HEIGHT
 
 export function EffortDialog({ api, onClose, ref }: EffortDialogProps) {
   const { error, run } = useAsyncAction()
@@ -34,8 +32,8 @@ export function EffortDialog({ api, onClose, ref }: EffortDialogProps) {
     <ListDialog
       ref={ref}
       title="reasoning effort"
-      width={DIALOG_WIDTH}
-      maxHeight={DIALOG_MAX_HEIGHT}
+      width={DIALOG_WIDTH_NARROW}
+      maxHeight={EFFORT_DIALOG_MAX_HEIGHT}
       load={api.listEfforts}
       labelOf={effort => effort.name}
       rightOf={effort => (effort.id === current ? 'current' : undefined)}

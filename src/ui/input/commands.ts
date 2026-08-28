@@ -11,12 +11,6 @@ export interface CommandDef extends CommandHintItem {
 }
 
 export const COMMANDS: CommandDef[] = [
-  { id: 'models', command: '/models', description: 'Open model selection' },
-  { id: 'providers', command: '/providers', description: 'Open provider selection' },
-  { id: 'reasoningEffort', command: '/reasoningEffort', description: "Select the current model's reasoning effort" },
-  { id: 'defaults', command: '/defaults', description: 'Set default permission and agent preset' },
-  { id: 'preset', command: '/preset', description: 'Select agent preset' },
-  { id: 'sessions', command: '/sessions', description: 'Open session picker' },
   { id: 'new', command: '/new', description: 'Start a new conversation in current directory' },
   { id: 'todo', command: '/todo', description: 'Show the current task list' },
 ]
@@ -27,18 +21,12 @@ export function matchCommand(text: string): CommandDef | undefined {
 
 export type CommandAvailability = (command: CommandDef) => boolean
 
-export function matchAvailableCommand(text: string, isAvailable?: CommandAvailability): CommandDef | undefined {
+export function matchAvailableCommand(text: string, isAvailable?: CommandAvailability, extra?: readonly CommandDef[]): CommandDef | undefined {
   const token = text.split(/\s+/, 1)[0] ?? ''
-  const command = [...COMMANDS, ...dynamicCommands].find(entry => entry.command === token)
+  const command = [...COMMANDS, ...extra ?? []].find(entry => entry.command === token)
   if (command === undefined) return undefined
   if (isAvailable !== undefined && !isAvailable(command)) return undefined
   return command
-}
-
-const dynamicCommands: CommandDef[] = []
-
-export function setDynamicCommands(commands: readonly CommandDef[]): void {
-  dynamicCommands.splice(0, dynamicCommands.length, ...commands)
 }
 
 export function mergeCommandEntries(

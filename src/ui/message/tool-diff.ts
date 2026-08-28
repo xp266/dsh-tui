@@ -1,6 +1,6 @@
 import { wrapSegments } from '../../core/segments.ts'
 import type { Segment } from '../../core/segments.ts'
-import { colors } from '../../theme.ts'
+import { COLORS } from '../../theme.ts'
 import type { ToolDiffMessage } from '../../model/message.ts'
 import { highlightCodeBlock } from './md/highlight.ts'
 
@@ -95,11 +95,11 @@ export interface ToolDiffBody {
   bgs: (string | undefined)[]
 }
 
-const PLAIN_STYLE = { color: colors.mdCodePlain }
+const PLAIN_STYLE = { color: COLORS.mdCodePlain }
 
-function splitHighlightedLines(source: string, lang: string): Segment[][] {
+function splitHighlightedLines(source: string, lang: string, streamId: string): Segment[][] {
   if (source === '') return []
-  const highlighted = highlightCodeBlock(source, lang)
+  const highlighted = highlightCodeBlock(source, lang, false, streamId)
   const segments = highlighted ?? [{ text: source, style: PLAIN_STYLE }]
   const out: Segment[][] = [[]]
   for (const segment of segments) {
@@ -123,18 +123,22 @@ export function renderToolDiffBody(message: ToolDiffMessage, width: number): Too
   const fromPath = message.path === '' ? '' : languageFromPath(message.path)
   const lang = fromPath !== '' ? fromPath : sniffLanguage(sourceText)
   const withBackgrounds = message.tool === 'edit'
-  for (const hunk of message.hunks) {
-    const perLine = splitHighlightedLines(hunk.map(line => line.text).join('\n'), lang)
+  for (const [hunkIndex, hunk] of message.hunks.entries()) {
+    const perLine = splitHighlightedLines(
+      hunk.map(line => line.text).join('\n'),
+      lang,
+      `${message.tool}\u0000${message.path}\u0000${hunkIndex}`,
+    )
     for (let index = 0; index < hunk.length; index++) {
       const line = hunk[index]!
       let bg: string | undefined
       let prefix: Segment[]
       if (line.kind === 'add') {
-        bg = withBackgrounds ? colors.diffAddedBackground : undefined
-        prefix = [{ text: '+', style: { color: colors.diffAdded } }, { text: ' ', style: {} }]
+        bg = withBackgrounds ? COLORS.diffAddedBackground : undefined
+        prefix = [{ text: '+', style: { color: COLORS.diffAdded } }, { text: ' ', style: {} }]
       } else if (line.kind === 'del') {
-        bg = withBackgrounds ? colors.diffRemovedBackground : undefined
-        prefix = [{ text: '-', style: { color: colors.diffRemoved } }, { text: ' ', style: {} }]
+        bg = withBackgrounds ? COLORS.diffRemovedBackground : undefined
+        prefix = [{ text: '-', style: { color: COLORS.diffRemoved } }, { text: ' ', style: {} }]
       } else {
         prefix = [{ text: '  ', style: {} }]
       }
@@ -152,7 +156,7 @@ export function renderToolDiffBody(message: ToolDiffMessage, width: number): Too
     rows.push([])
     lines.push('')
     bgs.push(undefined)
-    const wrapped = wrapSegments([{ text: message.error, style: { color: colors.errorText } }], bodyWidth)
+    const wrapped = wrapSegments([{ text: message.error, style: { color: COLORS.errorText } }], bodyWidth)
     for (const segs of wrapped) {
       rows.push(segs)
       lines.push(segs.map(segment => segment.text).join(''))

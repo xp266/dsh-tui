@@ -46,6 +46,7 @@ export function createFakeBridge(overrides: Partial<ChatBridge> = {}): ChatBridg
     listRegistryCommands: () => [],
     onRegistryChanged: () => () => {},
     executeCommandLine: vi.fn(async () => {}),
+    dispose: vi.fn(),
     ...overrides,
   }
 }

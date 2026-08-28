@@ -32,10 +32,6 @@ export function listWindows(): WindowContribution[] {
   return inner.values()
 }
 
-export function windowOf(id: string): WindowContribution | undefined {
-  return inner.get(id)
-}
-
 export function subscribeWindows(listener: () => void): () => void {
   return inner.subscribe(listener)
 }

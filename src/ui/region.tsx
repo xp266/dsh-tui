@@ -6,11 +6,6 @@ export interface Origin {
   y: number
 }
 
-export interface Rect extends Origin {
-  width: number
-  height: number
-}
-
 export const ZERO_ORIGIN: Origin = { x: 0, y: 0 }
 
 export const RegionContext = createContext<Origin>(ZERO_ORIGIN)

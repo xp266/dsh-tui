@@ -15,8 +15,13 @@ export function useAsyncList<T>(load: () => Promise<T[]>): AsyncListState<T> {
   const [error, setError] = useState<string | null>(null)
   const loadRef = useRef(load)
   loadRef.current = load
+  const cancelRef = useRef<(() => void) | null>(null)
   const reload = useCallback(() => {
+    cancelRef.current?.()
     const cancelled = { current: false }
+    cancelRef.current = () => {
+      cancelled.current = true
+    }
     setLoading(true)
     loadRef.current()
       .then(next => {
@@ -31,13 +36,13 @@ export function useAsyncList<T>(load: () => Promise<T[]>): AsyncListState<T> {
       .finally(() => {
         if (!cancelled.current) setLoading(false)
       })
-    return () => {
-      cancelled.current = true
-    }
   }, [])
   const remove = useCallback((predicate: (item: T) => boolean) => {
     setItems(previous => previous.filter(item => !predicate(item)))
   }, [])
-  useEffect(() => reload(), [reload])
+  useEffect(() => {
+    reload()
+    return () => cancelRef.current?.()
+  }, [reload])
   return { items, loading, error, reload, remove }
 }

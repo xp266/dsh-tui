@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Message, ToolDiffMessage } from '../src/model/message.ts'
 import { rowCount, rowInfoAt } from '../src/ui/message/layout.ts'
 import { languageFromPath, renderToolDiffBody, sniffLanguage, toolDiffHeader } from '../src/ui/message/tool-diff.ts'
-import { colors } from '../src/theme.ts'
+import { COLORS } from '../src/theme.ts'
 
 const WIDTH = 80
 
@@ -61,7 +61,7 @@ describe('tool diff bubbles', () => {
     expect(rendered.bgs).toEqual([undefined])
     const marker = rendered.rows[0]![0]!
     expect(marker.text).toBe('+')
-    expect(marker.style.color).toBe(colors.diffAdded)
+    expect(marker.style.color).toBe(COLORS.diffAdded)
   })
 
   it('paints deep red and green backgrounds for edit removals and additions', () => {
@@ -69,8 +69,8 @@ describe('tool diff bubbles', () => {
       tool: 'edit',
       hunks: [[{ kind: 'del', text: 'old()' }, { kind: 'add', text: 'new()' }]],
     }), WIDTH - 8)
-    expect(rendered.bgs).toEqual([colors.diffRemovedBackground, colors.diffAddedBackground])
-    expect(rendered.rows[0]![0]).toMatchObject({ text: '-', style: { color: colors.diffRemoved } })
+    expect(rendered.bgs).toEqual([COLORS.diffRemovedBackground, COLORS.diffAddedBackground])
+    expect(rendered.rows[0]![0]).toMatchObject({ text: '-', style: { color: COLORS.diffRemoved } })
     expect(rendered.lines[0]).toBe('- old()')
     expect(rendered.lines[1]).toBe('+ new()')
   })
@@ -98,7 +98,7 @@ describe('tool diff bubbles', () => {
       hunks: [[{ kind: 'add', text: 'const a = 1' }]],
     }), WIDTH - 8)
     const styles = rendered.rows[0]!.map(segment => segment.style)
-    expect(styles.some(style => style.color === colors.codeKeyword)).toBe(true)
+    expect(styles.some(style => style.color === COLORS.codeKeyword)).toBe(true)
   })
 
   it('appends the error line after a blank separator', () => {
@@ -109,7 +109,7 @@ describe('tool diff bubbles', () => {
     expect(rendered.lines).toHaveLength(3)
     expect(rendered.lines[1]).toBe('')
     expect(rendered.lines[2]).toBe('error: FS_NOT_FOUND missing file')
-    expect(rendered.rows[2]![0].style.color).toBe(colors.errorText)
+    expect(rendered.rows[2]![0].style.color).toBe(COLORS.errorText)
   })
 
   it('derives prism languages from file paths', () => {
@@ -124,7 +124,7 @@ describe('tool diff bubbles', () => {
   it('sniffs the language from content while the path is still unknown', () => {
     const rendered = renderToolDiffBody(diffMessage({ path: '', hunks: [[{ kind: 'add', text: 'const a = 1' }]] }), WIDTH - 8)
     const styles = rendered.rows[0]!.map(segment => segment.style)
-    expect(styles.some(style => style.color === colors.codeKeyword)).toBe(true)
+    expect(styles.some(style => style.color === COLORS.codeKeyword)).toBe(true)
   })
 
   it('sniffs common languages from characteristic syntax', () => {

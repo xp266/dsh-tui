@@ -26,6 +26,14 @@ interface ParsedSequence {
 }
 
 const MAX_BUFFER = 64
+const SGR_PREFIX = '\x1b[<'
+
+function partialPrefixLength(buffer: string): number {
+  for (let keep = Math.min(2, buffer.length); keep > 0; keep--) {
+    if (SGR_PREFIX.startsWith(buffer.slice(-keep))) return keep
+  }
+  return 0
+}
 
 export function createMouseParser(onEvent: (event: MouseEventData) => void) {
   let buffer = ''
@@ -65,8 +73,8 @@ export function createMouseParser(onEvent: (event: MouseEventData) => void) {
       while (true) {
         const start = buffer.indexOf('\x1b[<')
         if (start === -1) {
-          const keep = buffer.length >= 2 ? buffer.slice(-2) : buffer
-          buffer = buffer === keep ? '' : keep
+          const keep = partialPrefixLength(buffer)
+          buffer = keep === 0 ? '' : buffer.slice(-keep)
           return
         }
         if (start > 0) {
@@ -108,7 +116,8 @@ function decodeSgrEvent(rawButtonCode: number, wireX: number, wireY: number, pre
     if (button !== 3) pressed.add(button)
   } else {
     type = 'up'
-    pressed.clear()
+    if (button === 3) pressed.clear()
+    else pressed.delete(button)
   }
   return {
     type,

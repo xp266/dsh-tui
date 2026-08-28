@@ -48,20 +48,20 @@ describe('input bar mouse handle', () => {
   it('selects a hint on the first click and confirms the selection', async () => {
     const { view, handle } = renderInput()
     act(() => {
-      view.stdin.write('/mod')
+      view.stdin.write('/')
     })
     await flush()
     act(() => {
       handle()?.hintClick(1)
     })
     await flush()
-    expect(stripAnsi(view.lastFrame() ?? '')).toContain('/mod')
+    expect(stripAnsi(view.lastFrame() ?? '')).toContain('/')
     act(() => {
       view.stdin.write('\r')
     })
     await flush()
     const frame = stripAnsi(view.lastFrame() ?? '')
-    expect(frame).toContain('/models')
+    expect(frame).toContain('/todo')
   })
 
   it('places the cursor where the content is clicked', async () => {

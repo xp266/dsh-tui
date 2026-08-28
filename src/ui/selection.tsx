@@ -8,7 +8,7 @@ import type { LineSelection } from '../model/selection.ts'
 import { envelopeOverlaps, registerRowPiece } from './selection-registry.ts'
 import { useOrigin } from './region.tsx'
 import type { Segment } from '../core/segments.ts'
-import { colors } from '../theme.ts'
+import { COLORS } from '../theme.ts'
 
 export const SelectionContext = createContext<LineSelection | null>(null)
 
@@ -40,7 +40,7 @@ const SelectableContent = memo(function SelectableContent({ content, segments, c
   const hasSlice = sliceStart >= 0 && sliceEnd > sliceStart
   if (hasSlice) {
     const highlight = (
-      <Text backgroundColor={colors.selectionBg} color={colors.selectionFg}>
+      <Text backgroundColor={COLORS.selectionBg} color={COLORS.selectionFg}>
         {content.slice(sliceStart, sliceEnd)}
       </Text>
     )

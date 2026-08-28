@@ -1,5 +1,5 @@
 import { Box, Text } from 'ink'
-import { colors } from '../../theme.ts'
+import { COLORS } from '../../theme.ts'
 import { padToWidth, textWidth, truncate } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
 import { caretNonceColor } from '../../core/caret-nonce.ts'
@@ -21,9 +21,6 @@ registerWidget<SearchItem>('search', {
   paintWidth(item) {
     return textWidth(searchTextOf(item))
   },
-  caret(item, cursor) {
-    return { dy: 0, dx: textWidth(item.value.slice(0, cursor)) }
-  },
   onLeftRight(item, direction, api) {
     const next = Math.max(0, Math.min(item.value.length, api.cursor + direction))
     if (next === api.cursor) return false
@@ -44,8 +41,8 @@ registerWidget<SearchItem>('search', {
     }
     return (
       <Box flexDirection="column">
-      <Box width={width} backgroundColor={colors.dialogInputBackground}>
-        <SelectableText y={y} col={x} text={padToWidth(text, width)} color={isEmpty ? colors.dialogHintText : undefined} />
+      <Box width={width} backgroundColor={COLORS.dialogInputBackground}>
+        <SelectableText y={y} col={x} text={padToWidth(text, width)} color={isEmpty ? COLORS.dialogHintText : undefined} />
       </Box>
         <Box height={1}>
           <Text color={focused && cursor !== undefined ? caretNonceColor(cursor) : undefined}>{' '}</Text>

@@ -10,6 +10,7 @@ export interface BlockContext {
   palette: MdPalette
   thinking: boolean
   width: number
+  streamId: string
 }
 
 const BULLETS = ['•', '◦', '▪']
@@ -31,7 +32,7 @@ function renderHeading(token: Tokens.Heading, ctx: BlockContext): Segment[][] {
 function renderCode(token: Tokens.Code, ctx: BlockContext): Segment[][] {
   if (token.text === '') return []
   const lang = token.lang?.trim().split(/\s+/)[0]?.toLowerCase() ?? ''
-  const highlighted = highlightCodeBlock(token.text, lang, ctx.thinking)
+  const highlighted = highlightCodeBlock(token.text, lang, ctx.thinking, ctx.streamId)
   const segments = highlighted ?? [{ text: token.text, style: lang === '' ? ctx.palette.codeFallback : ctx.palette.codePlain }]
   return wrapSegments(segments, ctx.width)
 }

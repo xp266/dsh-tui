@@ -2,7 +2,7 @@ import { Box, useInput } from 'ink'
 import type { Message } from '../../model/message.ts'
 import { rowIndexFor, scrollbarGeometry } from './layout.ts'
 import { MessageRow } from './message-row.tsx'
-import { colors } from '../../theme.ts'
+import { COLORS } from '../../theme.ts'
 import { SCROLLBAR_COL_FROM_EDGE } from '../../core/metrics.ts'
 import { Region } from '../region.tsx'
 
@@ -52,7 +52,7 @@ export function MessageList({ messages, height, width, scrollTop, onScroll, inte
             left={width - SCROLLBAR_COL_FROM_EDGE}
             width={1}
             height={height}
-            backgroundColor={colors.scrollTrackBackground}
+            backgroundColor={COLORS.scrollTrackBackground}
           />
           <Box
             position="absolute"
@@ -60,7 +60,7 @@ export function MessageList({ messages, height, width, scrollTop, onScroll, inte
             left={width - SCROLLBAR_COL_FROM_EDGE}
             width={1}
             height={scrollbar.height}
-            backgroundColor={colors.scrollThumbBackground}
+            backgroundColor={COLORS.scrollThumbBackground}
           />
         </>
       )}
