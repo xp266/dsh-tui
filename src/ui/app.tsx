@@ -71,6 +71,10 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     const offPanels = registerBuiltinPanels({ bridge })
     const offWindows = registerBuiltinWindows({
       onModelSelected: (_provider, model) => setModelName(model),
+      onAddProvider: () => {
+        overlays.pop()
+        overlays.push('providers')
+      },
       onBeforeSessionSelected: () => {
         resetChat()
         clearSelection()

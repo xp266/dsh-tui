@@ -33,7 +33,7 @@ export function EffortDialog({ api, onClose, ref }: EffortDialogProps) {
   return (
     <ListDialog
       ref={ref}
-      title="model effort"
+      title="reasoning effort"
       width={DIALOG_WIDTH}
       maxHeight={DIALOG_MAX_HEIGHT}
       load={api.listEfforts}

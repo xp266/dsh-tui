@@ -30,6 +30,7 @@ export interface DialogProps {
   onClose: () => void
   search?: boolean
   searchRight?: boolean
+  onCtrlA?(focused: DialogItem | undefined): boolean
   onCtrlD?(focused: DialogItem | undefined): boolean
   onCtrlE?(focused: DialogItem | undefined): boolean
   onActivity?(): void
@@ -52,6 +53,7 @@ export function Dialog({
   onClose,
   search = false,
   searchRight = false,
+  onCtrlA,
   onCtrlD,
   onCtrlE,
   onActivity,
@@ -178,6 +180,7 @@ export function Dialog({
     search,
     closeGuarded,
     onClose,
+    onCtrlA,
     onCtrlD,
     onCtrlE,
     onActivity,

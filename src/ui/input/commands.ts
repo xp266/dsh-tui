@@ -12,7 +12,8 @@ export interface CommandDef extends CommandHintItem {
 
 export const COMMANDS: CommandDef[] = [
   { id: 'models', command: '/models', description: 'Open model selection' },
-  { id: 'model-effort', command: '/model-effort', description: 'Select reasoning effort' },
+  { id: 'providers', command: '/providers', description: 'Open provider selection' },
+  { id: 'reasoningEffort', command: '/reasoningEffort', description: "Select the current model's reasoning effort" },
   { id: 'defaults', command: '/defaults', description: 'Set default permission and agent preset' },
   { id: 'preset', command: '/preset', description: 'Select agent preset' },
   { id: 'sessions', command: '/sessions', description: 'Open session picker' },

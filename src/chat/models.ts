@@ -40,6 +40,7 @@ export interface OfficialProvider {
   provider: string
   displayName: string
   settingsNs: string
+  declared?: boolean
 }
 
 export const API_PROTOCOLS = ['openai-completions', 'openai-responses', 'anthropic-messages']
@@ -60,13 +61,12 @@ export async function listConfiguredModels(llm: Pick<LlmRuntime, 'listProviders'
 }
 
 export function listProviderDirectory(llm: Pick<LlmRuntime, 'listConfigurableProviders'>): OfficialProvider[] {
-  return llm.listConfigurableProviders()
-    .filter(entry => entry.declared === false)
-    .map(entry => ({
-      provider: entry.provider,
-      displayName: entry.displayName,
-      settingsNs: entry.settingsNs,
-    }))
+  return llm.listConfigurableProviders().map(entry => ({
+    provider: entry.provider,
+    displayName: entry.displayName,
+    settingsNs: entry.settingsNs,
+    ...(entry.declared === undefined ? {} : { declared: entry.declared }),
+  }))
 }
 
 export interface KeyStorer {

@@ -115,10 +115,9 @@ describe('App layout', () => {
     stdin.write('\r')
     await new Promise(resolve => setTimeout(resolve, 50))
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('model')
-    expect(frame).toContain('+Add DeepSeek')
-    expect(frame).toContain('+Add Custom Provider')
     expect(frame).toContain('glm-4.7-flash')
+    expect(frame).toContain('Ctrl+A add providers · Ctrl+E configure')
+    expect(frame).not.toContain('+Add')
   })
 
   it('opens the defaults window with the two carousel rows', async () => {
@@ -235,14 +234,18 @@ describe('App layout', () => {
     bridge.currentEffort = () => 'high'
     const { lastFrame, stdin } = render(<App bridge={bridge} />)
     await new Promise(resolve => setTimeout(resolve, 20))
-    stdin.write('/model-effort')
+    stdin.write('/reasoningEffort')
     await new Promise(resolve => setTimeout(resolve, 20))
     stdin.write('\r')
     await new Promise(resolve => setTimeout(resolve, 20))
     stdin.write('\r')
-    await new Promise(resolve => setTimeout(resolve, 50))
+    const start = Date.now()
+    while (!(lastFrame() ?? '').includes('Off')) {
+      if (Date.now() - start > 2000) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('model effort')
+    expect(frame).toContain('reasoning effort')
     expect(frame).toContain('Off')
     expect(frame).toContain('High')
     expect(frame).toContain('Max')

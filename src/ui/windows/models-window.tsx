@@ -5,10 +5,11 @@ import type { WindowProps } from '../windows.ts'
 
 export interface ModelsWindowProps extends WindowProps {
   onModelSelected(provider: string, model: string): void
+  onAddProvider(): void
 }
 
-export function ModelsWindow({ onModelSelected, handleRef, ...props }: ModelsWindowProps) {
+export function ModelsWindow({ onModelSelected, onAddProvider, handleRef, ...props }: ModelsWindowProps) {
   const api = useWindowService<ModelApi>('models')
   if (api === undefined) return null
-  return <ModelsDialog ref={handleRef} api={api} onModelSelected={onModelSelected} {...props} />
+  return <ModelsDialog ref={handleRef} api={api} onModelSelected={onModelSelected} onAddProvider={onAddProvider} {...props} />
 }

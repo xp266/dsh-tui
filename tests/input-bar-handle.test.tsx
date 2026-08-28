@@ -61,7 +61,7 @@ describe('input bar mouse handle', () => {
     })
     await flush()
     const frame = stripAnsi(view.lastFrame() ?? '')
-    expect(frame).toContain('/model-effort')
+    expect(frame).toContain('/models')
   })
 
   it('places the cursor where the content is clicked', async () => {

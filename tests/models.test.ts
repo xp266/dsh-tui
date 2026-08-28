@@ -133,7 +133,7 @@ describe('model management', () => {
     expect(write.update).not.toHaveBeenCalled()
   })
 
-  it('lists only adapter-shipped providers from the directory', () => {
+  it('lists every configurable provider from the directory preserving declaration flags', () => {
     const llm = {
       listConfigurableProviders: () => [
         { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [] },
@@ -143,8 +143,10 @@ describe('model management', () => {
       ],
     }
     expect(listProviderDirectory(llm)).toEqual([
-      { provider: 'amazon-bedrock', displayName: 'amazon-bedrock', settingsNs: 'llm-pi-ai' },
-      { provider: 'anthropic', displayName: 'anthropic', settingsNs: 'llm-pi-ai' },
+      { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek' },
+      { provider: 'amazon-bedrock', displayName: 'amazon-bedrock', settingsNs: 'llm-pi-ai', declared: false },
+      { provider: 'anthropic', displayName: 'anthropic', settingsNs: 'llm-pi-ai', declared: false },
+      { provider: 'opencodezen', displayName: 'opencodeZen', settingsNs: 'llm-pi-ai', declared: true },
     ])
   })
   it('fetches provider models by route id and omits a blank key', async () => {

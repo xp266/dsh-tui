@@ -10,56 +10,75 @@ function fakeBridge(): ChatBridge {
   return createFakeBridge()
 }
 
-function focusedSegment(frame: string): string {
-  return frame.match(/\x1b\[7m([^\x1b]*)/)?.[1] ?? ''
-}
-
-async function openModelsDialog(stdin: { write(data: string): void }) {
-  act(() => {
-    stdin.write('/models')
-  })
-  await new Promise(resolve => setTimeout(resolve, 20))
-  act(() => {
-    stdin.write('\r')
-  })
-  await new Promise(resolve => setTimeout(resolve, 20))
-  act(() => {
-    stdin.write('\r')
-  })
+async function settle(): Promise<void> {
   await new Promise(resolve => setTimeout(resolve, 20))
 }
 
-async function openAddCustomForm(stdin: { write(data: string): void }) {
-  await openModelsDialog(stdin)
+async function sendCommand(stdin: { write(data: string): void }, command: string): Promise<void> {
+  act(() => {
+    stdin.write(command)
+  })
+  await settle()
+  act(() => {
+    stdin.write('\r')
+  })
+  await settle()
+  act(() => {
+    stdin.write('\r')
+  })
+  await settle()
+}
+
+async function openModelsDialog(stdin: { write(data: string): void }): Promise<void> {
+  await sendCommand(stdin, '/models')
+}
+
+async function openProvidersDialog(stdin: { write(data: string): void }): Promise<void> {
+  await sendCommand(stdin, '/providers')
+}
+
+async function openAddCustomForm(stdin: { write(data: string): void }): Promise<void> {
+  await openProvidersDialog(stdin)
   act(() => {
     stdin.write('\u001b[B')
   })
   act(() => {
-    stdin.write('\u001b[B')
-  })
-  act(() => {
     stdin.write('\r')
   })
-  await new Promise(resolve => setTimeout(resolve, 20))
+  await settle()
 }
 
 describe('App dialog keyboard', () => {
-  it('navigates the models dialog with arrow keys', async () => {
+  it('shows the models window with the providers hint and no add rows', async () => {
     const { lastFrame, stdin } = render(<App bridge={fakeBridge()} />)
     await openModelsDialog(stdin)
+    await settle()
     const frame = lastFrame() ?? ''
-    expect(frame).toContain('Add DeepSeek')
-    expect(focusedSegment(frame)).toContain('+Add DeepSeek')
+    expect(frame).toContain('models')
+    expect(frame).toContain('Ctrl+A add providers · Ctrl+E configure')
+    expect(frame).not.toContain('+Add')
+  })
+
+  it('opens the providers window when /providers is sent', async () => {
+    const { lastFrame, stdin } = render(<App bridge={fakeBridge()} />)
+    await openProvidersDialog(stdin)
+    await settle()
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('providers')
+    expect(frame).toContain('DeepSeek')
+    expect(frame).toContain('Custom Provider')
+  })
+
+  it('opens the providers window from the models window with Ctrl+A', async () => {
+    const { lastFrame, stdin } = render(<App bridge={fakeBridge()} />)
+    await openModelsDialog(stdin)
     act(() => {
-      stdin.write('\u001b[B')
+      stdin.write('\u0001')
     })
-    const middle = lastFrame() ?? ''
-    expect(focusedSegment(middle)).toContain('+Add Provider')
-    act(() => {
-      stdin.write('\u001b[B')
-    })
-    const after = lastFrame() ?? ''
-    expect(focusedSegment(after)).toContain('+Add Custom Provider')
+    await settle()
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('providers')
+    expect(frame).toContain('Custom Provider')
   })
 
   it('shows fetching feedback while discovering custom models and ignores repeated enter', async () => {
@@ -84,22 +103,22 @@ describe('App dialog keyboard', () => {
         stdin.write('\u001b[B')
       })
     }
-    await new Promise(resolve => setTimeout(resolve, 20))
+    await settle()
     act(() => {
       stdin.write('\r')
     })
-    await new Promise(resolve => setTimeout(resolve, 20))
+    await settle()
     expect(lastFrame() ?? '').toContain('Fetching models...')
     expect(bridge.fetchCustomModels).toHaveBeenCalledTimes(1)
     act(() => {
       stdin.write('\r')
     })
-    await new Promise(resolve => setTimeout(resolve, 20))
+    await settle()
     expect(bridge.fetchCustomModels).toHaveBeenCalledTimes(1)
     act(() => {
       resolveFetch?.([{ id: 'm1', name: 'Model One' } as LlmDiscoveredModel])
     })
-    await new Promise(resolve => setTimeout(resolve, 20))
+    await settle()
     const frame = lastFrame() ?? ''
     expect(frame).toContain('Select Models')
     expect(frame).toContain('Model One')
@@ -127,15 +146,15 @@ describe('App dialog keyboard', () => {
         stdin.write('\u001b[B')
       })
     }
-    await new Promise(resolve => setTimeout(resolve, 20))
+    await settle()
     act(() => {
       stdin.write('\r')
     })
-    await new Promise(resolve => setTimeout(resolve, 20))
+    await settle()
     act(() => {
       rejectFetch?.(new Error('network unreachable'))
     })
-    await new Promise(resolve => setTimeout(resolve, 20))
+    await settle()
     const frame = lastFrame() ?? ''
     expect(frame).toContain('network unreachable')
     expect(frame).not.toContain('Fetching models...')

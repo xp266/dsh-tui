@@ -155,7 +155,7 @@ describe('app mouse routing', () => {
       view.stdin.write('\r')
     })
     await flush()
-    expect(stripAnsi(view.lastFrame() ?? '')).toContain('/model-effort')
+    expect(stripAnsi(view.lastFrame() ?? '')).toContain('/models')
   })
 
   it('keeps chat text out of the input well when scrolling', async () => {
