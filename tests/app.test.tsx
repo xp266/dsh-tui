@@ -215,8 +215,7 @@ describe('App layout', () => {
     await new Promise(resolve => setTimeout(resolve, 20))
     expect(lastFrame() ?? '').toContain('Workspace Write')
     stdin.write('\t')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    const frame = lastFrame() ?? ''
+    const frame = await waitForFrame(lastFrame, 'Full access')
     expect(frame).toContain('Full access')
     expect(frame).not.toContain('Workspace Write')
   })

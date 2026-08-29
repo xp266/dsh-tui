@@ -35,6 +35,7 @@ export function PresetsDialog({ api, onClose, ref }: PresetsDialogProps) {
       width={DIALOG_WIDTH_MEDIUM}
       maxHeight={DIALOG_MAX_HEIGHT}
       load={api.listPresets}
+      cacheKey="presets"
       search
       labelOf={preset => preset.name}
       rightOf={preset => (preset.id === current ? 'current' : undefined)}

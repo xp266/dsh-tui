@@ -48,7 +48,7 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set())
   const [fetching, setFetching] = useState(false)
   const fetchingRef = useRef(false)
-  const { items: directory, loading, error: loadError, reload } = useAsyncList(api.listProviderDirectory)
+  const { items: directory, loading, error: loadError, reload } = useAsyncList(api.listProviderDirectory, 'providers')
   const openCustom = () => {
     clearError()
     setWindow({ kind: 'add-custom' })

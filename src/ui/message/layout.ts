@@ -1,4 +1,4 @@
-import type { Message, BubbleMessage } from '../../model/message.ts'
+import type { Message, ToolDiffMessage } from '../../model/message.ts'
 import { colToCharIndex, textWidth, truncate, wrapIndented, wrapLines } from '../../core/text.ts'
 import { selectedRange } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
@@ -74,20 +74,10 @@ interface MessageRender extends BodyRendered {
   plan: PlanRow[]
 }
 
-export function clearLayoutCache(): void {
-  cachedId = undefined
-  cachedKey = ''
-  cachedWidth = -1
-  cachedRender = undefined
-}
+let layoutEpoch = 0
 
-function toolDiffKey(message: Extract<Message, { kind: 'tool-diff' }>): string {
-  let key = `${message.tool}\u0000${message.path}\u0000${message.error ?? ''}\u0000${message.streaming ? 1 : 0}\u0000${message.streamText ?? ''}`
-  for (const hunk of message.hunks) {
-    key += '\u0001'
-    for (const line of hunk) key += `${line.kind}\u0002${line.text}\n`
-  }
-  return key
+export function clearLayoutCache(): void {
+  layoutEpoch += 1
 }
 
 const padRow = (role: RowInfo['role']): PlanRow => ({ type: 'pad', role })
@@ -263,32 +253,120 @@ function planFor(message: Message, body: BodyRendered): PlanRow[] {
   }
 }
 
-let cachedId: string | undefined
-let cachedKey = ''
-let cachedWidth = -1
-let cachedRender: MessageRender | undefined
+type RenderFingerprint =
+  | { kind: 'bubble'; content: string; variant: string | undefined; role: string | undefined; origin: string | undefined; hang: number | undefined }
+  | { kind: 'collapsible'; body: string; label: string; collapsed: boolean; running: boolean; thinking: boolean | undefined; streaming: boolean | undefined }
+  | { kind: 'tool-diff'; tool: string; path: string; error: string | undefined; hunks: ToolDiffMessage['hunks']; running: boolean | undefined; streaming: boolean | undefined; streamText: string | undefined }
+  | { kind: 'plan'; body: string; running: boolean | undefined; streaming: boolean | undefined; error: string | undefined }
+  | { kind: 'compaction'; summary: string; running: boolean; error: string | undefined }
 
-function cacheKeyOf(message: Message): string {
+interface RenderMemoEntry {
+  epoch: number
+  width: number
+  fingerprint: RenderFingerprint
+  render: MessageRender
+}
+
+const renderMemo = new WeakMap<Message, RenderMemoEntry>()
+
+function fingerprintOf(message: Message): RenderFingerprint {
   switch (message.kind) {
-    case 'bubble': return `${message.content}\u0000${message.variant ?? ''}`
-    case 'collapsible': return `${message.body}\u0000${message.collapsed ? 1 : 0}`
-    case 'tool-diff': return toolDiffKey(message)
-    case 'compaction': return `${message.summary}\u0000${message.running ? 1 : 0}\u0000${message.error ?? ''}`
-    case 'plan': return `${message.body}\u0000${message.streaming ? 1 : 0}\u0000${message.running ? 1 : 0}\u0000${message.error ?? ''}`
+    case 'bubble':
+      return {
+        kind: 'bubble',
+        content: message.content,
+        variant: message.variant,
+        role: message.role,
+        origin: message.origin,
+        hang: message.hang,
+      }
+    case 'collapsible':
+      return {
+        kind: 'collapsible',
+        body: message.body,
+        label: message.label,
+        collapsed: message.collapsed,
+        running: message.running,
+        thinking: message.thinking,
+        streaming: message.streaming,
+      }
+    case 'tool-diff':
+      return {
+        kind: 'tool-diff',
+        tool: message.tool,
+        path: message.path,
+        error: message.error,
+        hunks: message.hunks,
+        running: message.running,
+        streaming: message.streaming,
+        streamText: message.streamText,
+      }
+    case 'plan':
+      return {
+        kind: 'plan',
+        body: message.body,
+        running: message.running,
+        streaming: message.streaming,
+        error: message.error,
+      }
+    case 'compaction':
+      return {
+        kind: 'compaction',
+        summary: message.summary,
+        running: message.running,
+        error: message.error,
+      }
+  }
+}
+
+function fingerprintMatches(entry: RenderFingerprint, message: Message): boolean {
+  switch (entry.kind) {
+    case 'bubble':
+      return message.kind === 'bubble'
+        && entry.content === message.content
+        && entry.variant === message.variant
+        && entry.role === message.role
+        && entry.origin === message.origin
+        && entry.hang === message.hang
+    case 'collapsible':
+      return message.kind === 'collapsible'
+        && entry.body === message.body
+        && entry.label === message.label
+        && entry.collapsed === message.collapsed
+        && entry.running === message.running
+        && entry.thinking === message.thinking
+        && entry.streaming === message.streaming
+    case 'tool-diff':
+      return message.kind === 'tool-diff'
+        && entry.tool === message.tool
+        && entry.path === message.path
+        && entry.error === message.error
+        && entry.hunks === message.hunks
+        && entry.running === message.running
+        && entry.streaming === message.streaming
+        && entry.streamText === message.streamText
+    case 'plan':
+      return message.kind === 'plan'
+        && entry.body === message.body
+        && entry.running === message.running
+        && entry.streaming === message.streaming
+        && entry.error === message.error
+    case 'compaction':
+      return message.kind === 'compaction'
+        && entry.summary === message.summary
+        && entry.running === message.running
+        && entry.error === message.error
   }
 }
 
 function renderFor(message: Message, width: number): MessageRender {
-  const key = cacheKeyOf(message)
-  if (cachedRender !== undefined && cachedId === message.id && cachedKey === key && cachedWidth === width) {
-    return cachedRender
+  const memo = renderMemo.get(message)
+  if (memo !== undefined && memo.epoch === layoutEpoch && memo.width === width && fingerprintMatches(memo.fingerprint, message)) {
+    return memo.render
   }
   const body = renderBody(message, width)
   const render: MessageRender = { ...body, plan: planFor(message, body) }
-  cachedId = message.id
-  cachedKey = key
-  cachedWidth = width
-  cachedRender = render
+  renderMemo.set(message, { epoch: layoutEpoch, width, fingerprint: fingerprintOf(message), render })
   return render
 }
 

@@ -34,7 +34,7 @@ export function DefaultsDialog({ api, onClose, ref }: DefaultsDialogProps) {
   const { items, loading, error } = useAsyncList<DefaultsData>(async () => {
     const [presetList, permissionList] = await Promise.all([api.listPresets(), api.listPermissionPresets()])
     return [{ presets: presetList, permissions: permissionList }]
-  })
+  }, 'defaults')
   const [presetDefault, setPresetDefault] = useState(api.defaultPresetId())
   const [permissionDefault, setPermissionDefault] = useState(api.defaultPermission())
   const { error: saveError, clearError: clearSaveError, run } = useAsyncAction()

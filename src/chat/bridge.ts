@@ -171,33 +171,46 @@ let sessionCounter = 0
 const SESSION_LIST_TTL_MS = 2000
 const EFFORT_LIST_TTL_MS = 30000
 const PRESET_LIST_TTL_MS = 2000
+const MODEL_LIST_TTL_MS = 30000
 
 interface CachedList<T> {
   get(force?: boolean): Promise<T[]>
   invalidate(): void
+  clear(): void
 }
 
-function cachedList<T>(load: () => Promise<T[]>, ttlMs: number): CachedList<T> {
+function cachedList<T>(load: () => Promise<T[]>, ttlMs: number, options: { staleWhileRevalidate?: boolean } = {}): CachedList<T> {
   let cache: T[] | undefined
   let refresh: Promise<T[]> | undefined
   let refreshedAt = 0
+  const startRefresh = (): Promise<T[]> => {
+    if (refresh !== undefined) return refresh
+    refresh = load()
+      .then(records => {
+        cache = records
+        refreshedAt = Date.now()
+        return records
+      })
+      .finally(() => {
+        refresh = undefined
+      })
+    return refresh
+  }
   return {
     get(force = false) {
       const now = Date.now()
       if (!force && cache !== undefined && refreshedAt > now - ttlMs) return Promise.resolve(cache)
-      if (refresh !== undefined) return refresh
-      refresh = load()
-        .then(records => {
-          cache = records
-          refreshedAt = Date.now()
-          return records
-        })
-        .finally(() => {
-          refresh = undefined
-        })
-      return refresh
+      if (!force && options.staleWhileRevalidate === true && cache !== undefined) {
+        void startRefresh().catch(() => {})
+        return Promise.resolve(cache)
+      }
+      return startRefresh()
     },
     invalidate() {
+      refreshedAt = 0
+    },
+    clear() {
+      cache = undefined
       refreshedAt = 0
     },
   }
@@ -252,6 +265,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     },
     PRESET_LIST_TTL_MS,
   )
+  const modelsList = cachedList(() => listConfiguredModels(llm), MODEL_LIST_TTL_MS, { staleWhileRevalidate: true })
 
   function emit(event: SessionEvent): void {
     for (const handler of [...handlers]) handler(event)
@@ -663,6 +677,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
 
   void sessionList.get()
   void refreshEffortNames()
+  void modelsList.get().catch(() => {})
 
   return {
     modelName: () => currentSelection()?.model ?? 'deepseek-v4-flash',
@@ -697,10 +712,13 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     newSession,
     archiveSession,
     activeSessionId: () => String(activeAgent.id),
-    listModels: () => listConfiguredModels(llm),
+    listModels: () => modelsList.get(),
     selectModel,
     fetchCustomModels: form => fetchCustomModels(llm, form),
-    saveCustomProvider: (form, models) => saveCustomProvider(ctx.settings, ctx.credentials, form, models),
+    saveCustomProvider: async (form, models) => {
+      await saveCustomProvider(ctx.settings, ctx.credentials, form, models)
+      modelsList.clear()
+    },
     listProviderDirectory: async () => listProviderDirectory(llm),
     fetchProviderModels: async (provider, apiKey) => {
       try {
@@ -710,17 +728,25 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
         throw error
       }
     },
-    saveProviderKey: (provider, apiKey) => saveProviderKey(ctx.settings, ctx.credentials, provider, apiKey),
-    saveProviderModels: (provider, models) => saveProviderModels(ctx.settings, provider, models),
+    saveProviderKey: async (provider, apiKey) => {
+      await saveProviderKey(ctx.settings, ctx.credentials, provider, apiKey)
+      modelsList.clear()
+    },
+    saveProviderModels: async (provider, models) => {
+      await saveProviderModels(ctx.settings, provider, models)
+      modelsList.clear()
+    },
     readModelEntries: (ns, provider) => readModelEntries(settingsService(), ns, provider),
     describeModel,
-    saveModelEntry: (ns, provider, entry) => {
+    saveModelEntry: async (ns, provider, entry) => {
       const settings = settingsService()
-      return saveModelEntry(settings, settings, ns, provider, entry)
+      await saveModelEntry(settings, settings, ns, provider, entry)
+      modelsList.clear()
     },
-    deleteModelEntry: (ns, provider, modelId) => {
+    deleteModelEntry: async (ns, provider, modelId) => {
       const settings = settingsService()
-      return deleteModelEntry(settings, settings, ns, provider, modelId)
+      await deleteModelEntry(settings, settings, ns, provider, modelId)
+      modelsList.clear()
     },
     cwd: () => currentCwd,
     listPresets: () => presetsList.get(),

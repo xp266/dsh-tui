@@ -10,6 +10,7 @@ import { startHotTheme } from './hot-theme.ts'
 import { warmLanguages, onLanguagesWarm, clearHighlightCache } from './ui/message/md/highlight.ts'
 import { clearMarkdownBlockCache } from './ui/message/md/engine.ts'
 import { clearLayoutCache } from './ui/message/layout.ts'
+import { warmRenderPipeline } from './ui/message/warmup.ts'
 import { createTuiExtensionPoint, exposeInteractionsFace } from './ui/extension-point.ts'
 
 export const name = 'dsh-tui'
@@ -24,6 +25,7 @@ export function apply(ctx: Context) {
       clearHighlightCache()
       clearMarkdownBlockCache()
       clearLayoutCache()
+      warmRenderPipeline()
     })
     const capture = createScreenCapture()
     let bridge: ChatBridge | undefined
