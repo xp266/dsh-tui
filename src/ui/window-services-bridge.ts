@@ -17,6 +17,7 @@ export function registerWindowServices(bridge: ChatBridge): () => void {
     fetchProviderModels: bridge.fetchProviderModels,
     saveProviderKey: bridge.saveProviderKey,
     saveProviderModels: bridge.saveProviderModels,
+    deleteProvider: bridge.deleteProvider,
     readModelEntries: bridge.readModelEntries,
     describeModel: bridge.describeModel,
     saveModelEntry: bridge.saveModelEntry,

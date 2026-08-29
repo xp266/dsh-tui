@@ -18,6 +18,7 @@ function fakeApi() {
     fetchProviderModels: vi.fn(async () => DISCOVERED),
     saveProviderKey: vi.fn(async () => {}),
     saveProviderModels: vi.fn(async () => {}),
+    deleteProvider: vi.fn(async () => {}),
     readModelEntries: vi.fn(() => []),
     describeModel: vi.fn(async (_provider: string, model: string) => ({ name: model, image: false })),
     saveModelEntry: vi.fn(async () => {}),

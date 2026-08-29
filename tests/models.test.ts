@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import {
   deleteModelEntry,
+  deleteProviderProfile,
   fetchCustomModels,
   fetchProviderModels,
   isProviderIdValid,
@@ -238,5 +239,70 @@ describe('model entry settings', () => {
     })
     await deleteModelEntry(write, reader, 'llm-pi-ai', 'NineR', 'missing')
     expect(write.update).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('deleteProviderProfile', () => {
+  const custom: OfficialProvider = {
+    provider: 'my-gw',
+    displayName: 'My Gateway',
+    settingsNs: 'llm-pi-ai',
+    settingsPath: ['providers', 'my-gw'],
+    declared: true,
+  }
+
+  function fakeSettings(section: unknown) {
+    return {
+      get: vi.fn(() => section),
+      mutate: vi.fn(async () => {}),
+    }
+  }
+
+  function fakeStore(info: { configured: boolean; writable: boolean }) {
+    return {
+      unset: vi.fn(async () => {}),
+      describe: vi.fn(async () => info),
+    }
+  }
+
+  it('unsets the managed credential and removes the profile', async () => {
+    const settings = fakeSettings({ providers: { 'my-gw': { displayName: 'My Gateway', apiKeyEnv: 'MY_GW_API_KEY' } } })
+    const store = fakeStore({ configured: true, writable: true })
+    await deleteProviderProfile(settings, store, custom)
+    expect(store.unset).toHaveBeenCalledWith('MY_GW_API_KEY')
+    expect(settings.mutate).toHaveBeenCalledWith('llm-pi-ai', [{ op: 'unset', path: ['providers', 'my-gw'] }])
+  })
+
+  it('leaves a foreign credential reference alone and still removes the profile', async () => {
+    const settings = fakeSettings({ providers: { 'my-gw': { apiKeyEnv: 'MY_OWN_ENV_VAR' } } })
+    const store = fakeStore({ configured: true, writable: true })
+    await deleteProviderProfile(settings, store, custom)
+    expect(store.unset).not.toHaveBeenCalled()
+    expect(store.describe).not.toHaveBeenCalled()
+    expect(settings.mutate).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips credential removal when the reference is not writable', async () => {
+    const settings = fakeSettings({ providers: { 'my-gw': { apiKeyEnv: 'MY_GW_API_KEY' } } })
+    const store = fakeStore({ configured: true, writable: false })
+    await deleteProviderProfile(settings, store, custom)
+    expect(store.unset).not.toHaveBeenCalled()
+    expect(settings.mutate).toHaveBeenCalledTimes(1)
+  })
+
+  it('removes the profile even without a stored credential', async () => {
+    const settings = fakeSettings({ providers: {} })
+    const store = fakeStore({ configured: false, writable: true })
+    await deleteProviderProfile(settings, store, custom)
+    expect(store.unset).not.toHaveBeenCalled()
+    expect(settings.mutate).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects deleting an adapter-owned provider', async () => {
+    const settings = fakeSettings(undefined)
+    const store = fakeStore({ configured: false, writable: true })
+    await expect(deleteProviderProfile(settings, store, { ...custom, declared: false })).rejects.toThrow('only custom providers can be deleted')
+    expect(settings.mutate).not.toHaveBeenCalled()
+    expect(store.unset).not.toHaveBeenCalled()
   })
 })

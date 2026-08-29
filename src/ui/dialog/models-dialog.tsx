@@ -20,6 +20,7 @@ export interface ModelApi {
   fetchProviderModels(provider: OfficialProvider, apiKey: string): Promise<LlmDiscoveredModel[] | undefined>
   saveProviderKey(provider: OfficialProvider, apiKey: string): Promise<void>
   saveProviderModels(provider: OfficialProvider, models: LlmDiscoveredModel[]): Promise<void>
+  deleteProvider(provider: OfficialProvider): Promise<void>
   readModelEntries(ns: string, provider: string): ModelEntryConfig[]
   describeModel(provider: string, model: string): Promise<DescribedModel>
   saveModelEntry(ns: string, provider: string, entry: ModelEntryConfig): Promise<void>

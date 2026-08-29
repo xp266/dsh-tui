@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Ref } from 'react'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import type { CustomProviderForm, OfficialProvider } from '../../chat/models.ts'
@@ -8,7 +8,7 @@ import { errorLine, loadingLine } from './status-lines.ts'
 import { useAsyncAction } from '../hooks/use-async-action.ts'
 import { useAsyncList } from '../hooks/use-async-list.ts'
 import { Dialog } from './dialog.tsx'
-import type { DialogFooterLine, DialogHandle, DialogRow } from './dialog.tsx'
+import type { DialogFooterLine, DialogHandle, DialogItem, DialogRow } from './dialog.tsx'
 import { DIALOG_MAX_HEIGHT, DIALOG_WIDTH_MEDIUM } from './sizes.ts'
 import type { ModelApi } from './models-dialog.tsx'
 
@@ -24,6 +24,12 @@ type Window =
   | { kind: 'add-provider-key' }
   | { kind: 'add-custom' }
   | { kind: 'select-models' }
+
+const ARM_TIMEOUT_MS = 3000
+
+const DELETE_HINT: DialogFooterLine[] = [
+  { text: 'Ctrl+D to delete the custom provider', color: COLORS.dialogHintText },
+]
 
 
 const EMPTY_FORM: CustomProviderForm = {
@@ -48,7 +54,40 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set())
   const [fetching, setFetching] = useState(false)
   const fetchingRef = useRef(false)
+  const [armedKey, setArmedKey] = useState<string | null>(null)
+  const armedRef = useRef<string | null>(null)
+  const armTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const providerItemRefs = useRef(new Map<DialogItem, OfficialProvider>())
   const { items: directory, loading, error: loadError, reload } = useAsyncList(api.listProviderDirectory, 'providers')
+  const disarm = () => {
+    clearTimeout(armTimer.current)
+    if (armedRef.current !== null) {
+      armedRef.current = null
+      setArmedKey(null)
+    }
+  }
+  useEffect(() => () => clearTimeout(armTimer.current), [])
+  const deleteProvider = async (entry: OfficialProvider) => {
+    const result = await run(() => api.deleteProvider(entry))
+    if (!result.ok) return
+    clearError()
+    reload()
+  }
+  const handleCtrlD = (focused: DialogItem | undefined): boolean => {
+    if (focused?.type !== 'button') return false
+    const entry = providerItemRefs.current.get(focused)
+    if (entry === undefined || entry.declared !== true) return false
+    if (armedRef.current === entry.provider) {
+      disarm()
+      void deleteProvider(entry)
+      return true
+    }
+    clearTimeout(armTimer.current)
+    armedRef.current = entry.provider
+    setArmedKey(entry.provider)
+    armTimer.current = setTimeout(disarm, ARM_TIMEOUT_MS)
+    return true
+  }
   const openCustom = () => {
     clearError()
     setWindow({ kind: 'add-custom' })
@@ -221,20 +260,30 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
       />
     )
   }
+  const providerItemMap = new Map<DialogItem, OfficialProvider>()
   const providerRows: DialogRow[] = [
-    ...directory.map(entry => ({
-      items: [
-        { type: 'button', label: entry.displayName || entry.provider, right: sourceOf(entry), onPress: () => selectDirectoryProvider(entry) },
-      ],
-    })),
+    ...directory.map(entry => {
+      const armed = armedKey === entry.provider
+      const item: DialogItem = {
+        type: 'button',
+        label: entry.displayName || entry.provider,
+        right: armed ? 'Press Ctrl+D again to delete' : sourceOf(entry),
+        onPress: () => selectDirectoryProvider(entry),
+        ...(armed ? { rightColor: COLORS.errorText } : {}),
+      }
+      providerItemMap.set(item, entry)
+      return { items: [item] }
+    }),
     {
       items: [
         { type: 'button', label: 'Custom Provider', right: 'add manually', onPress: openCustom },
       ],
     },
   ]
+  providerItemRefs.current = providerItemMap
   const providerFooter: DialogFooterLine[] = [
     ...(loading ? [loadingLine()] : []),
+    ...DELETE_HINT,
     ...statusLines,
   ]
   const providerErrors: DialogFooterLine[] = [
@@ -253,6 +302,8 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
       errors={providerErrors}
       onClose={onClose}
       search
+      onCtrlD={handleCtrlD}
+      onActivity={disarm}
     />
   )
 }

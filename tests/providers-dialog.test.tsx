@@ -25,6 +25,7 @@ function fakeApi() {
     fetchProviderModels: vi.fn(async (): Promise<LlmDiscoveredModel[] | undefined> => DISCOVERED),
     saveProviderKey: vi.fn(async () => {}),
     saveProviderModels: vi.fn(async () => {}),
+    deleteProvider: vi.fn(async () => {}),
     readModelEntries: vi.fn(() => []),
     saveModelEntry: vi.fn(async () => {}),
     deleteModelEntry: vi.fn(async () => {}),
@@ -212,6 +213,38 @@ describe('ProvidersDialog provider list', () => {
     await pressKeyUntil('\r', stdin, 'inline validation error', frameIncludes(lastFrame, 'Provider ID must start'))
     expect(api.fetchCustomModels).not.toHaveBeenCalled()
     expect(api.saveCustomProvider).not.toHaveBeenCalled()
+    view.unmount()
+  })
+
+  it('shows the Ctrl+D delete hint in the list footer', async () => {
+    const { view, lastFrame } = renderDialog()
+    await until('providers loaded', frameIncludes(lastFrame, 'Ctrl+D to delete the custom provider'))
+    view.unmount()
+  })
+
+  it('arms a custom provider and deletes it after a second Ctrl+D', async () => {
+    const { api, view, lastFrame, stdin } = renderDialog()
+    await until('providers loaded', frameIncludes(lastFrame, 'Custom Provider'))
+    await pressDownUntil(stdin, lastFrame, 'Acme Gateway')
+    await pressKeyUntil('\u0004', stdin, 'armed', frameIncludes(lastFrame, 'Press Ctrl+D again to delete'))
+    expect(api.deleteProvider).not.toHaveBeenCalled()
+    await pressKeyUntil('\u0004', stdin, 'deleted', () => api.deleteProvider.mock.calls.length > 0)
+    const entry = DIRECTORY.find(candidate => candidate.provider === 'acme-gateway')
+    expect(api.deleteProvider).toHaveBeenCalledWith(entry)
+    await until('list reloaded', () => api.listProviderDirectory.mock.calls.length > 1)
+    view.unmount()
+  })
+
+  it('ignores Ctrl+D on adapter-owned providers', async () => {
+    const { api, view, lastFrame, stdin } = renderDialog()
+    await until('providers loaded', frameIncludes(lastFrame, 'Custom Provider'))
+    await pressDownUntil(stdin, lastFrame, 'amazon-bedrock')
+    act(() => {
+      stdin.write('\u0004')
+    })
+    await new Promise(resolve => setTimeout(resolve, 150))
+    expect((lastFrame() ?? '')).not.toContain('Press Ctrl+D again to delete')
+    expect(api.deleteProvider).not.toHaveBeenCalled()
     view.unmount()
   })
 })

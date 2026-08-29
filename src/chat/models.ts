@@ -227,3 +227,39 @@ export async function deleteModelEntry(
   if (next.length === models.length) return
   await write.update(ns, { providers: { [provider]: { models: next } } })
 }
+
+export type SettingsPathOp =
+  | { op: 'set'; path: readonly string[]; value: unknown }
+  | { op: 'unset'; path: readonly string[] }
+
+export interface SettingsMutator {
+  get(ns: string): unknown
+  mutate(ns: string, ops: readonly SettingsPathOp[]): Promise<void>
+}
+
+export interface KeyRemover {
+  unset(ref: string): Promise<void>
+  describe(ref: string): Promise<{ configured: boolean; writable: boolean }>
+}
+
+/**
+ * Delete one adapter-declared provider profile through the harness's official
+ * write path: path-addressed `unset` on the owning settings namespace, plus
+ * credential removal when the profile stores its key under the conventional
+ * managed reference. Mirrors the web bundle's removeProviderProfile.
+ */
+export async function deleteProviderProfile(
+  settings: SettingsMutator,
+  store: KeyRemover,
+  provider: OfficialProvider,
+): Promise<void> {
+  if (provider.declared !== true) throw new Error('only custom providers can be deleted')
+  const managedRef = providerKeyRef(provider.provider)
+  const profile = providerSection(settings, provider.settingsNs, provider.provider)
+  const apiKeyEnv = typeof profile?.apiKeyEnv === 'string' ? profile.apiKeyEnv : undefined
+  if (apiKeyEnv === managedRef) {
+    const info = await store.describe(managedRef).catch(() => undefined)
+    if (info?.configured === true && info.writable) await store.unset(managedRef)
+  }
+  await settings.mutate(provider.settingsNs, [{ op: 'unset', path: [...provider.settingsPath] }])
+}
