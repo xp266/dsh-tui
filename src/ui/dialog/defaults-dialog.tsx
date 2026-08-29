@@ -6,7 +6,7 @@ import type { PresetSummary } from '../../chat/presets.ts'
 import { useAsyncAction } from '../hooks/use-async-action.ts'
 import { useAsyncList } from '../hooks/use-async-list.ts'
 import { Dialog } from './dialog.tsx'
-import { DEFAULTS_DIALOG_MAX_HEIGHT, DIALOG_WIDTH_WIDE } from './sizes.ts'
+import { DIALOG_MAX_HEIGHT, DIALOG_WIDTH_MEDIUM } from './sizes.ts'
 import type { DialogFooterLine, DialogHandle, DialogRow } from './dialog.tsx'
 
 export interface DefaultsApi {
@@ -116,19 +116,20 @@ export function DefaultsDialog({ api, onClose, ref }: DefaultsDialogProps) {
       ],
     },
   ]
-  const footer: DialogFooterLine[] = [
-    ...(loading ? [loadingLine()] : []),
+  const footer: DialogFooterLine[] = loading ? [loadingLine()] : []
+  const errors: DialogFooterLine[] = [
     ...(error !== null ? [errorLine(error)] : []),
     ...(saveError !== null ? [errorLine(saveError)] : []),
   ]
   return (
     <Dialog
       ref={ref}
-      width={DIALOG_WIDTH_WIDE}
-      maxHeight={DEFAULTS_DIALOG_MAX_HEIGHT}
+      width={DIALOG_WIDTH_MEDIUM}
+      maxHeight={DIALOG_MAX_HEIGHT}
       title="defaults"
       rows={rows}
       footer={footer}
+      errors={errors}
       onClose={onClose}
     />
   )

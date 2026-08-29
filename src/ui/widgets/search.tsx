@@ -1,6 +1,6 @@
 import { Box, Text } from 'ink'
 import { COLORS } from '../../theme.ts'
-import { padToWidth, textWidth, truncate } from '../../core/text.ts'
+import { caretScrollStart, padToWidth, textWidth, truncate } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
 import { caretNonceColor } from '../../core/caret-nonce.ts'
 import { registerWidget } from './registry.ts'
@@ -29,7 +29,8 @@ registerWidget<SearchItem>('search', {
   },
   render({ item, focused, cursor, width, y, x, clip }) {
     const isEmpty = item.value === ''
-    const text = truncate(searchTextOf(item), width)
+    const start = caretScrollStart(item.value, cursor ?? item.value.length, width)
+    const text = isEmpty ? 'Search' : truncate(item.value.slice(start), width)
     if (clip !== 0) {
       return (
         <Box flexDirection="column">

@@ -15,7 +15,7 @@ function checkboxRow(label: string, checked: boolean): DialogRow {
 function frameWith(rows: DialogRow[]): string {
   const { lastFrame } = render(
     <Box width={80} height={24}>
-      <Dialog width={60} maxHeight={22} title="Select Models" rows={rows} onClose={() => {}} />
+      <Dialog width={60} maxHeight={0.6} title="Select Models" rows={rows} onClose={() => {}} />
     </Box>,
   )
   return lastFrame() ?? ''
@@ -42,10 +42,10 @@ describe('dialog checkbox checkmark', () => {
 describe('dialog wrapped input', () => {
   it('wraps a long value across multiple background rows instead of truncating', () => {
     const rows: DialogRow[] = [
-      { items: [{ type: 'input', label: 'API URL', value: 'https://example.com/' + 'a'.repeat(120), onChange: () => {} }] },
+      { items: [{ type: 'input', label: 'API URL', value: 'https://example.com/' + 'a'.repeat(90), onChange: () => {} }] },
     ]
     const frame = stripAnsi(frameWith(rows))
     expect(frame).toContain('https://example.com/')
-    expect((frame.match(/a/g) ?? []).length).toBeGreaterThanOrEqual(120)
+    expect((frame.match(/a/g) ?? []).length).toBeGreaterThanOrEqual(90)
   })
 })

@@ -60,7 +60,7 @@ function DialogHarness() {
   ]
   return (
     <Box width={80} height={24}>
-      <Dialog width={60} maxHeight={22} title="t" rows={rows} onClose={() => {}} />
+      <Dialog width={60} maxHeight={0.6} title="t" rows={rows} onClose={() => {}} />
     </Box>
   )
 }

@@ -1,10 +1,7 @@
-export const DIALOG_WIDTH_NARROW = 50
 export const DIALOG_WIDTH_MEDIUM = 60
-export const DIALOG_WIDTH_WIDE = 70
+export const DIALOG_WIDTH_LARGE = 88
 
-export const EFFORT_DIALOG_MAX_HEIGHT = 12
-export const DEFAULTS_DIALOG_MAX_HEIGHT = 14
-export const PRESETS_DIALOG_MAX_HEIGHT = 14
-export const TODO_DIALOG_MAX_HEIGHT = 16
-export const SESSIONS_DIALOG_MAX_HEIGHT = 18
-export const MODELS_DIALOG_MAX_HEIGHT = 22
+export const DIALOG_MAX_HEIGHT = 0.6
+
+export const INPUT_MAX_ROWS = 3
+export const ERROR_MAX_ROWS = 3

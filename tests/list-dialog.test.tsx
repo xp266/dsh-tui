@@ -48,8 +48,20 @@ describe('list dialog', () => {
     const frame = lastFrame() ?? ''
     expect(frame).toContain('Recent')
     expect(frame).toContain('Today')
-    expect(frame).toContain('Other')
     expect(frame).toContain('Ungrouped')
+    for (let i = 0; i < 4; i++) {
+      act(() => {
+        stdin.write('\u001b[B')
+      })
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    expect(lastFrame() ?? '').toContain('Other')
+    for (let i = 0; i < 4; i++) {
+      act(() => {
+        stdin.write('\u001b[A')
+      })
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
     act(() => {
       stdin.write('\r')
     })
@@ -149,8 +161,9 @@ describe('list dialog', () => {
     })
     await until(() => (lastFrame() ?? '').includes('Press Ctrl+D again'))
     const frame = lastFrame() ?? ''
-    expect(frame.split('Press Ctrl+D again').length - 1).toBe(1)
-    expect(frame.split('/w').length - 1).toBe(3)
+    const lines = frame.split('\n')
+    expect(lines.filter(line => line.includes('Press Ctrl+D again')).length).toBe(1)
+    expect(lines.some(line => line.includes('aaa') && line.includes('/w'))).toBe(true)
     act(() => {
       stdin.write('\u0004')
     })

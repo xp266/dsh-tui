@@ -37,6 +37,16 @@ function wrapFooter(footer: DialogFooterLine[] | undefined, width: number): Foot
 
 export { wrapFooter }
 
+export function wrapStatusLines(lines: DialogFooterLine[] | undefined, width: number): FooterRenderLine[] {
+  if (lines === undefined) return []
+  const rows: FooterRenderLine[] = []
+  for (const line of lines) {
+    if (line.text === '') continue
+    for (const text of wrapLines(line.text, width)) rows.push({ text, color: line.color })
+  }
+  return rows
+}
+
 export function rowHeight(row: DialogRow, width: number): number {
   let height = 1
   for (const item of row.items) {

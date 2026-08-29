@@ -32,7 +32,7 @@ function renderDialog(rows: DialogRow[]): { handle(): DialogHandle | null } {
   const ref: { current: DialogHandle | null } = { current: null }
   render(
     <Box width={WIDTH} height={HEIGHT}>
-      <Dialog ref={ref} width={60} maxHeight={22} title="t" rows={rows} onClose={() => {}} />
+      <Dialog ref={ref} width={60} maxHeight={0.6} title="t" rows={rows} onClose={() => {}} />
     </Box>,
   )
   return { handle: () => ref.current }

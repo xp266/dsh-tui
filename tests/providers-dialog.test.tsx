@@ -138,7 +138,7 @@ describe('ProvidersDialog provider list', () => {
     const deepseekLines = linesOf(frame).filter(line => line.includes('DeepSeek'))
     expect(deepseekLines.length).toBe(1)
     const customEntryLine = linesOf(frame).find(line => line.includes('Custom Provider'))
-    expect(customEntryLine).toContain('add custom provider')
+    expect(customEntryLine).toContain('add manually')
     view.unmount()
   })
 
@@ -208,7 +208,7 @@ describe('ProvidersDialog provider list', () => {
       await pressDown(stdin)
     }
     await focusItem(lastFrame, 'Submit')
-    await pressKeyUntil('\r', stdin, 'inline validation error', frameIncludes(lastFrame, 'Provider ID must start with a letter'))
+    await pressKeyUntil('\r', stdin, 'inline validation error', frameIncludes(lastFrame, 'Provider ID must start'))
     expect(api.fetchCustomModels).not.toHaveBeenCalled()
     expect(api.saveCustomProvider).not.toHaveBeenCalled()
     view.unmount()

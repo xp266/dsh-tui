@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ReactNode } from 'react'
 import { adjustScroll, clampFocus, filterRowsWithHeaders, moveFocus, rowBlockSpan, rowHeight, rowTopOffset, selectableSpan, snapRow } from '../src/ui/dialog/dialog.tsx'
+import { INPUT_MAX_ROWS } from '../src/ui/dialog/sizes.ts'
 import type { DialogRow } from '../src/ui/dialog/dialog.tsx'
 import { actionPositions, renderRow, selectBlock } from '../src/ui/dialog/dialog-item.tsx'
 
@@ -111,7 +112,7 @@ describe('dialog row heights', () => {
   it('grows input rows by one line per wrapped value line', () => {
     const long: DialogRow = { items: [{ type: 'input', label: 'L', value: 'x'.repeat(100), onChange: () => {} }] }
     expect(rowHeight(long, WIDTH)).toBe(2 + Math.ceil(100 / WIDTH))
-    expect(rowHeight(long, 10)).toBe(12)
+    expect(rowHeight(long, 10)).toBe(2 + INPUT_MAX_ROWS)
   })
 
   it('accumulates row offsets', () => {

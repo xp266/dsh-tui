@@ -3,7 +3,7 @@ import { errorLine } from './status-lines.ts'
 import type { EffortSummary } from '../../chat/efforts.ts'
 import { useAsyncAction } from '../hooks/use-async-action.ts'
 import { ListDialog } from './list-dialog.tsx'
-import { DIALOG_WIDTH_NARROW, EFFORT_DIALOG_MAX_HEIGHT } from './sizes.ts'
+import { DIALOG_WIDTH_MEDIUM, DIALOG_MAX_HEIGHT } from './sizes.ts'
 import type { DialogHandle, DialogFooterLine } from './dialog.tsx'
 
 export interface EffortsApi {
@@ -32,14 +32,14 @@ export function EffortDialog({ api, onClose, ref }: EffortDialogProps) {
     <ListDialog
       ref={ref}
       title="reasoning effort"
-      width={DIALOG_WIDTH_NARROW}
-      maxHeight={EFFORT_DIALOG_MAX_HEIGHT}
+      width={DIALOG_WIDTH_MEDIUM}
+      maxHeight={DIALOG_MAX_HEIGHT}
       load={api.listEfforts}
       labelOf={effort => effort.name}
       rightOf={effort => (effort.id === current ? 'current' : undefined)}
       onSelect={effort => void selectEffort(effort.id)}
       onClose={onClose}
-      footerLines={footerLines}
+      errors={footerLines}
     />
   )
 }

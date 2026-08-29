@@ -1,6 +1,6 @@
 import type { Ref } from 'react'
 import { Dialog } from './dialog.tsx'
-import { DIALOG_WIDTH_MEDIUM, TODO_DIALOG_MAX_HEIGHT } from './sizes.ts'
+import { DIALOG_WIDTH_MEDIUM, DIALOG_MAX_HEIGHT } from './sizes.ts'
 import type { DialogHandle, DialogRow } from './dialog.tsx'
 import { todoSymbol } from '../../chat/todo-view.ts'
 import type { TodoItemLike } from '../../chat/todo-view.ts'
@@ -21,7 +21,7 @@ export function TodoDialog({ ref, api, onClose }: TodoDialogProps) {
       ref={ref}
       title="todo"
       width={DIALOG_WIDTH_MEDIUM}
-      maxHeight={TODO_DIALOG_MAX_HEIGHT}
+      maxHeight={DIALOG_MAX_HEIGHT}
       rows={todoRows(api)}
       onClose={onClose}
     />

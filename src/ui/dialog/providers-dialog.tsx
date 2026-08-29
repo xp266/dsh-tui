@@ -9,7 +9,7 @@ import { useAsyncAction } from '../hooks/use-async-action.ts'
 import { useAsyncList } from '../hooks/use-async-list.ts'
 import { Dialog } from './dialog.tsx'
 import type { DialogFooterLine, DialogHandle, DialogRow } from './dialog.tsx'
-import { DIALOG_WIDTH_MEDIUM, MODELS_DIALOG_MAX_HEIGHT } from './sizes.ts'
+import { DIALOG_MAX_HEIGHT, DIALOG_WIDTH_MEDIUM } from './sizes.ts'
 import type { ModelApi } from './models-dialog.tsx'
 
 export interface ProvidersDialogProps {
@@ -189,11 +189,11 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
       },
     ],
   }))
-  const footerLines: DialogFooterLine[] = [
+  const statusLines: DialogFooterLine[] = [
     ...(window.kind === 'select-models' ? [{ text: 'Press Space to toggle, Enter to confirm', color: COLORS.dialogHintText }] : []),
     ...(fetching && (window.kind === 'add-provider-key' || window.kind === 'add-custom') ? [{ text: 'Fetching models...' }] : []),
-    ...(error !== null ? [errorLine(error)] : []),
   ]
+  const errorLines: DialogFooterLine[] = error !== null ? [errorLine(error)] : []
   if (window.kind !== 'providers') {
     const title =
       window.kind === 'add-provider-key'
@@ -211,10 +211,11 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
         ref={ref}
         key={window.kind}
         width={DIALOG_WIDTH_MEDIUM}
-        maxHeight={MODELS_DIALOG_MAX_HEIGHT}
+        maxHeight={DIALOG_MAX_HEIGHT}
         title={title}
         rows={rows}
-        footer={footerLines}
+        footer={statusLines}
+        errors={errorLines}
         onClose={onClose}
         search={window.kind === 'select-models'}
       />
@@ -228,28 +229,28 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
     })),
     {
       items: [
-        { type: 'button', label: 'Custom Provider', right: 'add custom provider', onPress: openCustom },
+        { type: 'button', label: 'Custom Provider', right: 'add manually', onPress: openCustom },
       ],
     },
   ]
-  const statusLine: DialogFooterLine | undefined = loading
-    ? loadingLine()
-    : loadError !== null
-      ? errorLine(loadError)
-      : undefined
   const providerFooter: DialogFooterLine[] = [
-    ...(statusLine === undefined ? [] : [statusLine]),
-    ...footerLines,
+    ...(loading ? [loadingLine()] : []),
+    ...statusLines,
+  ]
+  const providerErrors: DialogFooterLine[] = [
+    ...(loadError !== null ? [errorLine(loadError)] : []),
+    ...errorLines,
   ]
   return (
     <Dialog
       key="providers"
       ref={ref}
       width={DIALOG_WIDTH_MEDIUM}
-      maxHeight={MODELS_DIALOG_MAX_HEIGHT}
+      maxHeight={DIALOG_MAX_HEIGHT}
       title="providers"
       rows={providerRows}
       footer={providerFooter}
+      errors={providerErrors}
       onClose={onClose}
       search
     />

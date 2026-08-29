@@ -5,12 +5,13 @@ import type { ReactNode, Ref } from 'react'
 import { useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { COLORS } from '../../theme.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
-import { textWidth, colToCharIndex } from '../../core/text.ts'
+import { textWidth, colToCharIndex, caretScrollStart, truncate } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
 import { Region } from '../region.tsx'
 import { renderRow } from './dialog-item.tsx'
-import { adjustScroll, hitRowIndex, rowHeight, rowTopOffset, wrapFooter } from './geometry.ts'
+import { adjustScroll, hitRowIndex, rowHeight, rowTopOffset, wrapFooter, wrapStatusLines } from './geometry.ts'
 import type { DialogFooterLine } from './geometry.ts'
+import { ERROR_MAX_ROWS } from './sizes.ts'
 import { asTextItem, clampFocus, filterRowsWithHeaders, focusedItem, isSelectableRow, selectableSpan, snapRow } from './items.ts'
 import type { DialogFocus, DialogItem, DialogRow } from './items.ts'
 import { applyNavigation, useDialogInput } from './use-dialog-input.ts'
@@ -27,6 +28,7 @@ export interface DialogProps {
   title?: string
   rows: DialogRow[]
   footer?: DialogFooterLine[]
+  errors?: DialogFooterLine[]
   onClose: () => void
   search?: boolean
   searchRight?: boolean
@@ -50,6 +52,7 @@ export function Dialog({
   title,
   rows,
   footer,
+  errors,
   onClose,
   search = false,
   searchRight = false,
@@ -69,6 +72,7 @@ export function Dialog({
   const [searchValue, setSearchValue] = useState('')
   const [carouselPress, setCarouselPress] = useState<'left' | 'right' | null>(null)
   const carouselPressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const [errorScrollTop, setErrorScrollTop] = useState(0)
   const handleSearch = (value: string) => {
     setSearchValue(value)
     setScrollTop(0)
@@ -78,8 +82,9 @@ export function Dialog({
   const displayRows = search ? [searchRow, ...filteredRows] : rows
   const contentRows = search ? filteredRows : rows
   const [focus, setFocus] = useState<DialogFocus>(() => ({ row: snapRow(search ? [searchRow, ...rows] : rows, search ? 1 : 0), col: 0 }))
-  const windowWidth = Math.min(width + 2, columns)
-  const contentWidth = Math.max(1, windowWidth - 2)
+  const widthCells = width <= 1 ? Math.floor(columns * width) : width
+  const windowWidth = Math.min(Math.max(1, widthCells), columns)
+  const contentWidth = Math.max(1, windowWidth - 4)
   const fixedHeight = search ? rowHeight(searchRow, contentWidth) : 0
   const focusMinRow = search ? 1 : 0
   const focusMaxRow = Math.max(focusMinRow, displayRows.length - 1)
@@ -89,23 +94,40 @@ export function Dialog({
       return next.row === current.row && next.col === current.col ? current : next
     })
   }, [displayRows, focusMinRow, focusMaxRow])
+  const errorKey = (errors ?? []).map(line => line.text).join('\n')
+  useEffect(() => {
+    setErrorScrollTop(0)
+  }, [errorKey])
   const titleLines = title === undefined ? 0 : 2
   const footerRows = wrapFooter(footer, contentWidth)
   const extraHeight = footerRows.length > 0 ? 1 + footerRows.length : 0
   const desired = displayRows.reduce((sum, row) => sum + rowHeight(row, contentWidth), 0) + titleLines + extraHeight + 2
-  const windowHeight = Math.min(desired, maxHeight, totalRows)
+  const maxRows = Math.max(1, maxHeight <= 1 ? Math.floor(totalRows * maxHeight) : maxHeight)
+  const windowHeight = Math.min(desired, maxRows, totalRows)
   const contentHeight = Math.max(1, windowHeight - 2 - titleLines - extraHeight)
   const viewportHeight = Math.max(1, contentHeight - fixedHeight)
   const top = Math.max(0, Math.floor((totalRows - windowHeight) / 2))
   const left = Math.max(0, Math.floor((columns - windowWidth) / 2))
-  const frameLeft = 1
+  const frameLeft = 2
+  const errorRows = wrapStatusLines(errors, contentWidth)
+  const availableBelow = Math.max(0, totalRows - (top + windowHeight))
+  const errorVisible = Math.max(0, Math.min(ERROR_MAX_ROWS, errorRows.length, availableBelow - 1))
+  const maxErrorScroll = Math.max(0, errorRows.length - errorVisible)
+  const errorScroll = Math.min(errorScrollTop, maxErrorScroll)
   const headerBottom = 1 + titleLines
   const contentTop = headerBottom + fixedHeight
+  const safeFocus: DialogFocus = {
+    row: Math.min(Math.max(focus.row, focusMinRow), focusMaxRow),
+    col: Math.min(Math.max(focus.col, 0), selectableSpan(displayRows[focus.row])),
+  }
+  const contentRowsHeight = contentRows.reduce((sum, row) => sum + rowHeight(row, contentWidth), 0)
+  const maxScroll = Math.max(0, contentRowsHeight - viewportHeight)
+  const scroll = adjustScroll(contentRows, { row: Math.max(0, safeFocus.row - (search ? 1 : 0)), col: 0 }, Math.min(scrollTop, maxScroll), viewportHeight, contentWidth)
   const live = useRef<DialogLiveState>({
     rows: displayRows,
     contentRows,
     focus,
-    scrollTop,
+    scrollTop: scroll,
     cursor,
     value: '',
     searchValue,
@@ -119,7 +141,7 @@ export function Dialog({
   live.current.rows = displayRows
   live.current.contentRows = contentRows
   live.current.focus = focus
-  live.current.scrollTop = scrollTop
+  live.current.scrollTop = scroll
   live.current.cursor = cursor
   live.current.searchValue = searchValue
   live.current.viewportHeight = viewportHeight
@@ -128,10 +150,8 @@ export function Dialog({
   live.current.contentWidth = contentWidth
   live.current.top = top
   live.current.windowHeight = windowHeight
-  const safeFocus: DialogFocus = {
-    row: Math.min(Math.max(focus.row, focusMinRow), focusMaxRow),
-    col: Math.min(Math.max(focus.col, 0), selectableSpan(displayRows[focus.row])),
-  }
+  const errorLive = useRef({ top: 0, height: 0, maxScroll: 0 })
+  errorLive.current = { top: top + windowHeight, height: errorVisible + 1, maxScroll: maxErrorScroll }
   const current = focusedItem(displayRows[safeFocus.row], safeFocus.col)
   const currentText = current === undefined ? null : asTextItem(current)
   live.current.value = currentText?.value ?? ''
@@ -144,8 +164,9 @@ export function Dialog({
   if (search && !editingFormInput) {
     const onSearchRow = safeFocus.row === 0
     const caret = onSearchRow ? Math.min(cursor, searchValue.length) : searchValue.length
+    const start = caretScrollStart(searchValue, caret, contentWidth)
     setCursorPosition({
-      x: left + frameLeft + textWidth(searchValue.slice(0, Math.max(0, caret))),
+      x: left + frameLeft + textWidth(searchValue.slice(start, Math.max(0, caret))),
       y: top + headerBottom,
     })
   } else {
@@ -157,7 +178,7 @@ export function Dialog({
       const rowOffset = rowTopOffset(contentRows, contentIndex, contentWidth)
       setCursorPosition({
         x: left + frameLeft + caretOffset.dx,
-        y: top + contentTop + rowOffset + caretOffset.dy - scrollTop,
+        y: top + contentTop + rowOffset + caretOffset.dy - scroll,
       })
     }
   }
@@ -197,7 +218,14 @@ export function Dialog({
   useImperativeHandle(ref, () => ({
     wheelAt(y, dir) {
       onActivity?.()
-      if (y < live.current.top || y >= live.current.top + live.current.windowHeight) return false
+      if (y < live.current.top || y >= live.current.top + live.current.windowHeight) {
+        const error = errorLive.current
+        if (error.height > 1 && y >= error.top && y < error.top + error.height) {
+          setErrorScrollTop(current => Math.max(0, Math.min(current + dir, error.maxScroll)))
+          return true
+        }
+        return false
+      }
       applyNavigation(live.current, dir === -1 ? 'up' : 'down', search, { setFocus, setScrollTop })
       return true
     },
@@ -207,13 +235,16 @@ export function Dialog({
       if (search) {
         const searchTop = top + headerBottom
         if (y >= searchTop && y < searchTop + fixedHeight) {
-          const col = Math.max(0, Math.min(x - (left + frameLeft), textWidth(searchValue)))
+          const clickCaret = safeFocus.row === 0 ? Math.min(cursor, searchValue.length) : searchValue.length
+          const start = caretScrollStart(searchValue, clickCaret, contentWidth)
+          const visible = truncate(searchValue.slice(start), contentWidth)
+          const col = Math.max(0, Math.min(x - (left + frameLeft), textWidth(visible)))
           setFocus({ row: 0, col: 0 })
-          setCursor(colToCharIndex(searchValue, col))
+          setCursor(Math.min(searchValue.length, start + colToCharIndex(visible, col)))
           return
         }
       }
-      const rowIndex = hitRowIndex(y, top + fixedHeight, titleLines, contentRows, scrollTop, contentWidth)
+      const rowIndex = hitRowIndex(y, top + fixedHeight, titleLines, contentRows, scroll, contentWidth)
       if (rowIndex === null) return
       const rowSpec = contentRows[rowIndex]
       if (!isSelectableRow(rowSpec)) return
@@ -221,7 +252,7 @@ export function Dialog({
       const rowOffset = rowTopOffset(contentRows, rowIndex, contentWidth)
       const hit: ClickHit = {
         localX: x - (left + frameLeft),
-        localY: y - (top + contentTop + rowOffset - scrollTop),
+        localY: y - (top + contentTop + rowOffset - scroll),
         width: contentWidth,
       }
       const clickActions: ClickActions = {
@@ -243,25 +274,25 @@ export function Dialog({
       }
       setFocus({ row: displayRow, col: 0 })
       const contentRow = Math.max(0, Math.min(rowIndex, contentRows.length - 1))
-      setScrollTop(adjustScroll(contentRows, { row: contentRow, col: 0 }, scrollTop, viewportHeight, contentWidth))
+      setScrollTop(adjustScroll(contentRows, { row: contentRow, col: 0 }, scroll, viewportHeight, contentWidth))
     },
   }))
   const visibleRows: ReactNode[] = []
   let offset = 0
   for (let i = 0; i < contentRows.length; i++) {
     const height = rowHeight(contentRows[i]!, contentWidth)
-    if (offset + height <= scrollTop) {
+    if (offset + height <= scroll) {
       offset += height
       continue
     }
-    if (offset >= scrollTop + viewportHeight) break
-    const clip = Math.max(0, scrollTop - offset)
-    const rel = Math.max(0, offset - scrollTop)
+    if (offset >= scroll + viewportHeight) break
+    const clip = Math.max(0, scroll - offset)
+    const rel = Math.max(0, offset - scroll)
     const baseY = contentTop + rel
     const focused = safeFocus.row === i + (search ? 1 : 0)
     visibleRows.push(
       <Box key={`row-${i}`} position="absolute" top={rel} left={0} width={contentWidth}>
-        {renderRow(contentRows[i], focused, contentWidth, baseY, 0, carouselPress, focused ? safeFocus.col : 0, clip, focused ? cursor : undefined)}
+        {renderRow(contentRows[i], focused, contentWidth, baseY, frameLeft, carouselPress, focused ? safeFocus.col : 0, clip, focused ? cursor : undefined)}
       </Box>,
     )
     offset += height
@@ -276,7 +307,10 @@ export function Dialog({
         height={windowHeight}
         flexDirection="column"
         backgroundColor={COLORS.dialogBackground}
-        padding={1}
+        paddingLeft={2}
+        paddingRight={2}
+        paddingTop={1}
+        paddingBottom={1}
       >
         {title !== undefined && (
           <>
@@ -291,7 +325,7 @@ export function Dialog({
         <Box flexDirection="column">
           {search && (
             <Box flexDirection="column">
-              {renderRow(searchRow, safeFocus.row === 0, contentWidth, headerBottom, 0, carouselPress, 0, 0, safeFocus.row === 0 ? cursor : undefined)}
+              {renderRow(searchRow, safeFocus.row === 0, contentWidth, headerBottom, frameLeft, carouselPress, 0, 0, safeFocus.row === 0 ? cursor : undefined)}
             </Box>
           )}
           <Box flexDirection="column" height={viewportHeight} overflow="hidden">
@@ -315,6 +349,30 @@ export function Dialog({
           </>
         )}
       </Box>
+      {errorVisible > 0 && (
+        <Box
+          position="absolute"
+          top={top + windowHeight}
+          left={left}
+          width={windowWidth}
+          height={errorVisible + 1}
+          flexDirection="column"
+          backgroundColor={COLORS.dialogBackground}
+          paddingLeft={2}
+          paddingRight={2}
+          paddingBottom={1}
+        >
+          {errorRows.slice(errorScroll, errorScroll + errorVisible).map((line, index) => (
+            <SelectableText
+              key={errorScroll + index}
+              y={windowHeight + index}
+              col={frameLeft}
+              text={line.text}
+              color={line.color}
+            />
+          ))}
+        </Box>
+      )}
     </Region>
   )
 }

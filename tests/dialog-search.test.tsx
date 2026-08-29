@@ -19,7 +19,7 @@ function AsyncRows({ loaded }: { loaded: boolean }) {
   }, [loaded])
   return (
     <Box width={100} height={24}>
-      <Dialog width={60} maxHeight={22} title="list" rows={list} onClose={() => {}} search />
+      <Dialog width={60} maxHeight={0.6} title="list" rows={list} onClose={() => {}} search />
     </Box>
   )
 }
@@ -31,7 +31,7 @@ function focusedSegment(frame: string): string {
 function renderSearch(rows: DialogRow[]) {
   return render(
     <Box width={100} height={24}>
-      <Dialog width={60} maxHeight={22} title="list" rows={rows} onClose={() => {}} search />
+      <Dialog width={60} maxHeight={0.6} title="list" rows={rows} onClose={() => {}} search />
     </Box>,
   )
 }
@@ -56,7 +56,7 @@ describe('dialog search', () => {
     const ref: { current: DialogHandle | null } = { current: null }
     const { lastFrame, stdin } = render(
       <Box width={100} height={24}>
-        <Dialog ref={ref} width={60} maxHeight={22} title="list" rows={rows(1)} onClose={() => {}} search />
+        <Dialog ref={ref} width={60} maxHeight={0.6} title="list" rows={rows(1)} onClose={() => {}} search />
       </Box>,
     )
     act(() => {
@@ -64,7 +64,7 @@ describe('dialog search', () => {
     })
     expect(lastFrame() ?? '').toContain('ab')
     act(() => {
-      ref.current?.clickAt(12, 21)
+      ref.current?.clickAt(12, 23)
     })
     act(() => {
       stdin.write('Z')
@@ -165,5 +165,16 @@ describe('dialog search', () => {
     })
     frame = lastFrame() ?? ''
     expect(frame).toContain('item-0')
+  })
+
+  it('shifts long search text left so it stays inside the bar', () => {
+    const { lastFrame, stdin } = renderSearch(rows(1))
+    const text = 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123'
+    act(() => {
+      stdin.write(text)
+    })
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('XYZ012')
+    expect(frame).not.toContain('abcde')
   })
 })

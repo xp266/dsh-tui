@@ -10,6 +10,10 @@ function fakeBridge(): ChatBridge {
   return createFakeBridge()
 }
 
+function flatten(frame: string): string {
+  return frame.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').replace(/\s+/g, ' ')
+}
+
 async function settle(): Promise<void> {
   await new Promise(resolve => setTimeout(resolve, 20))
 }
@@ -55,7 +59,7 @@ describe('App dialog keyboard', () => {
     await settle()
     const frame = lastFrame() ?? ''
     expect(frame).toContain('models')
-    expect(frame).toContain('Ctrl+A add providers · Ctrl+E configure')
+    expect(flatten(frame)).toContain('Ctrl+A add providers · Ctrl+E configure')
     expect(frame).not.toContain('+Add')
   })
 
@@ -91,7 +95,7 @@ describe('App dialog keyboard', () => {
     )
     const { lastFrame, stdin } = render(<App bridge={bridge} />)
     await openAddCustomForm(stdin)
-    expect(lastFrame() ?? '').toContain('Submit')
+    expect(lastFrame() ?? '').toContain('Provider ID')
     for (const ch of 'acme') {
       act(() => {
         stdin.write(ch)
@@ -162,6 +166,12 @@ describe('App dialog keyboard', () => {
   it('separates the protocol carousel and the submit row with a blank line', async () => {
     const { lastFrame, stdin } = render(<App bridge={fakeBridge()} />)
     await openAddCustomForm(stdin)
+    for (let i = 0; i < 5; i++) {
+      act(() => {
+        stdin.write('\u001b[B')
+      })
+      await settle()
+    }
     const lines = (lastFrame() ?? '').split('\n')
     const carousel = lines.findIndex(line => line.includes('API Protocol:'))
     const submit = lines.findIndex(line => line.includes('Submit'))

@@ -17,6 +17,7 @@ export interface ListDialogProps<T> {
   onSelect(item: T): void
   onClose(): void
   footerLines?: DialogFooterLine[]
+  errors?: DialogFooterLine[]
 }
 
 export function ListDialog<T>({
@@ -32,17 +33,18 @@ export function ListDialog<T>({
   onSelect,
   onClose,
   footerLines,
+  errors,
 }: ListDialogProps<T>) {
   const { items, loading, error } = useAsyncList(load)
   const itemRows: DialogRow[] = items.map(item => {
     const button: DialogItem = { type: 'button', label: labelOf(item), right: rightOf?.(item), onPress: () => onSelect(item) }
     return { items: [button] }
   })
-  const footer: DialogFooterLine[] = loading
-    ? [loadingLine()]
-    : error !== null
-      ? [errorLine(error)]
-      : footerLines ?? []
+  const footer: DialogFooterLine[] = loading ? [loadingLine()] : footerLines ?? []
+  const errorLines: DialogFooterLine[] = [
+    ...(error !== null ? [errorLine(error)] : []),
+    ...(errors ?? []),
+  ]
   return (
     <Dialog
       ref={ref}
@@ -51,6 +53,7 @@ export function ListDialog<T>({
       title={title}
       rows={itemRows}
       footer={footer}
+      errors={errorLines}
       onClose={onClose}
       search={search}
       searchRight={searchRight}

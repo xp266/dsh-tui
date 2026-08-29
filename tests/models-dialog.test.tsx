@@ -28,6 +28,10 @@ function focusedSegment(frame: string): string {
   return frame.match(/\x1b\[7m([^\x1b]*)/)?.[1] ?? ''
 }
 
+function flatten(frame: string): string {
+  return frame.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').replace(/\s+/g, ' ')
+}
+
 async function until(label: string, check: () => boolean, timeoutMs = 3000): Promise<void> {
   const start = Date.now()
   while (!check()) {
@@ -104,7 +108,7 @@ describe('ModelsDialog model list', () => {
     expect(frame).toContain('Ox Alpha')
     expect(frame).toContain('big-pickle')
     expect(frame).toContain('opencodeZen')
-    expect(frame).toContain('Ctrl+A add providers · Ctrl+E configure')
+    expect(flatten(frame)).toContain('Ctrl+A add providers · Ctrl+E configure')
     expect(frame).not.toContain('+Add')
     const lines = frame.split('\n').map(line => line.replace(/\x1b\[[0-9;]*m/g, '').trim())
     expect(lines).not.toContain('Models')
@@ -143,10 +147,12 @@ describe('ModelsDialog model list', () => {
     await pressDownUntil(stdin, lastFrame, 'Ox Alpha')
     await pressDownUntil(stdin, lastFrame, 'big-pickle')
     await pressKeyUntil('\u0005', stdin, 'configure window open', frameIncludes(lastFrame, 'Configure Model'))
-    const frame = lastFrame() ?? ''
-    expect(frame).toContain('131072')
-    expect(frame).toContain('8192')
-    expect(frame).toContain('high')
+    expect(lastFrame() ?? '').toContain('131072')
+    expect(lastFrame() ?? '').toContain('8192')
+    for (let i = 0; i < 8 && !(lastFrame() ?? '').includes('high'); i++) {
+      await pressDown(stdin)
+    }
+    expect(lastFrame() ?? '').toContain('high')
     expect(api.readModelEntries).toHaveBeenCalledWith('llm-pi-ai', 'opencodeZen')
     for (let i = 0; i < 20 && !focusedSegment(lastFrame() ?? '').includes('Submit'); i++) {
       await pressDown(stdin)

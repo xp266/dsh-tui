@@ -13,7 +13,7 @@ function renderDialog(guarded: boolean, onClose: () => void) {
   return render(
     <Box width={80} height={24}>
       <CloseGuardContext.Provider value={guarded}>
-        <Dialog width={60} maxHeight={22} title="t" rows={rows()} onClose={onClose} />
+        <Dialog width={60} maxHeight={0.6} title="t" rows={rows()} onClose={onClose} />
       </CloseGuardContext.Provider>
     </Box>,
   )

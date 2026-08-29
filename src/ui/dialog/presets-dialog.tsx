@@ -3,7 +3,7 @@ import { errorLine } from './status-lines.ts'
 import type { PresetSummary } from '../../chat/presets.ts'
 import { useAsyncAction } from '../hooks/use-async-action.ts'
 import { ListDialog } from './list-dialog.tsx'
-import { DIALOG_WIDTH_MEDIUM, PRESETS_DIALOG_MAX_HEIGHT } from './sizes.ts'
+import { DIALOG_WIDTH_MEDIUM, DIALOG_MAX_HEIGHT } from './sizes.ts'
 import type { DialogHandle, DialogFooterLine } from './dialog.tsx'
 
 export interface PresetsApi {
@@ -33,14 +33,14 @@ export function PresetsDialog({ api, onClose, ref }: PresetsDialogProps) {
       ref={ref}
       title="preset"
       width={DIALOG_WIDTH_MEDIUM}
-      maxHeight={PRESETS_DIALOG_MAX_HEIGHT}
+      maxHeight={DIALOG_MAX_HEIGHT}
       load={api.listPresets}
       search
       labelOf={preset => preset.name}
       rightOf={preset => (preset.id === current ? 'current' : undefined)}
       onSelect={preset => void selectPreset(preset.id)}
       onClose={onClose}
-      footerLines={footerLines}
+      errors={footerLines}
     />
   )
 }

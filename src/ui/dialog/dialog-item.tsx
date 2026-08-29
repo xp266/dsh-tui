@@ -19,7 +19,7 @@ export function renderRow(
   clip = 0,
   cursor?: number,
 ): ReactNode {
-  let col = left + 1
+  let col = left
   return (
     <Box flexDirection="row">
       {row.items.map((item, index) => {

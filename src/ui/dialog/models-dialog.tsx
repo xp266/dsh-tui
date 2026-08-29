@@ -9,7 +9,7 @@ import { useAsyncAction } from '../hooks/use-async-action.ts'
 import { useAsyncList } from '../hooks/use-async-list.ts'
 import { Dialog } from './dialog.tsx'
 import type { DialogFooterLine, DialogHandle, DialogItem, DialogRow } from './dialog.tsx'
-import { DIALOG_WIDTH_MEDIUM, MODELS_DIALOG_MAX_HEIGHT } from './sizes.ts'
+import { DIALOG_MAX_HEIGHT, DIALOG_WIDTH_MEDIUM } from './sizes.ts'
 
 export interface ModelApi {
   listModels(): Promise<ConfiguredModel[]>
@@ -153,10 +153,10 @@ export function ModelsDialog({ api, onClose, onModelSelected, onAddProvider, ref
         ref={ref}
         key="configure-model"
         width={DIALOG_WIDTH_MEDIUM}
-        maxHeight={MODELS_DIALOG_MAX_HEIGHT}
+        maxHeight={DIALOG_MAX_HEIGHT}
         title="Configure Model"
         rows={configureRows}
-        footer={footerLines}
+        errors={footerLines}
         onClose={onClose}
       />
     )
@@ -171,17 +171,15 @@ export function ModelsDialog({ api, onClose, onModelSelected, onAddProvider, ref
     modelItemRefs.current.set(item, model)
     return { items: [item] }
   })
-  const statusLine: DialogFooterLine | undefined = loading
-    ? loadingLine()
-    : loadError !== null
-      ? errorLine(loadError)
-      : undefined
   const listFooter: DialogFooterLine[] = [
     {
       text: 'Ctrl+A add providers · Ctrl+E configure',
       color: COLORS.dialogHintText,
     },
-    ...(statusLine === undefined ? [] : [statusLine]),
+    ...(loading ? [loadingLine()] : []),
+  ]
+  const listErrors: DialogFooterLine[] = [
+    ...(loadError !== null ? [errorLine(loadError)] : []),
     ...footerLines,
   ]
   const handleCtrlEItem = (focused: DialogItem | undefined): boolean => {
@@ -193,10 +191,11 @@ export function ModelsDialog({ api, onClose, onModelSelected, onAddProvider, ref
       key="list"
       ref={ref}
       width={DIALOG_WIDTH_MEDIUM}
-      maxHeight={MODELS_DIALOG_MAX_HEIGHT}
+      maxHeight={DIALOG_MAX_HEIGHT}
       title="models"
       rows={listRows}
       footer={listFooter}
+      errors={listErrors}
       onClose={onClose}
       search
       searchRight

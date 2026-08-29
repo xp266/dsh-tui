@@ -212,6 +212,20 @@ export function colToCharIndex(line: string, col: number): number {
   return line.length
 }
 
+export function caretScrollStart(text: string, caret: number, width: number): number {
+  const clamped = Math.min(Math.max(0, caret), text.length)
+  const caretCol = textWidth(text.slice(0, clamped))
+  if (caretCol <= width) return 0
+  const minPrefix = caretCol - width
+  let prefix = 0
+  for (const { segment, index } of segmentGraphemes(text)) {
+    if (index >= clamped) break
+    if (prefix >= minPrefix) return index
+    prefix += charWidth(segment)
+  }
+  return clamped
+}
+
 export function padToWidth(text: string, width: number): string {
   const used = textWidth(text)
   return text + ' '.repeat(Math.max(0, width - used))

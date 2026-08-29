@@ -20,7 +20,7 @@ function formRows(onConfirm: () => void, onCancel: () => void): DialogRow[] {
 function renderForm(onConfirm: () => void, onCancel: () => void) {
   return render(
     <Box width={100} height={24}>
-      <Dialog width={60} maxHeight={22} title="t" rows={formRows(onConfirm, onCancel)} onClose={() => {}} />
+      <Dialog width={60} maxHeight={0.6} title="t" rows={formRows(onConfirm, onCancel)} onClose={() => {}} />
     </Box>,
   )
 }

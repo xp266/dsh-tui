@@ -8,7 +8,7 @@ import type { SessionSectionKind } from '../../chat/session-groups.ts'
 import { useAsyncAction } from '../hooks/use-async-action.ts'
 import { useAsyncList } from '../hooks/use-async-list.ts'
 import { Dialog } from './dialog.tsx'
-import { DIALOG_WIDTH_WIDE, SESSIONS_DIALOG_MAX_HEIGHT } from './sizes.ts'
+import { DIALOG_MAX_HEIGHT, DIALOG_WIDTH_LARGE } from './sizes.ts'
 import type { DialogFooterLine, DialogHandle, DialogItem, DialogRow } from './dialog.tsx'
 
 export interface SessionsApi {
@@ -123,22 +123,20 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
     }
   })
   itemRows.current = rowRefs
-  const statusLine: DialogFooterLine | undefined = loading
-    ? loadingLine()
-    : loadError !== null
-      ? errorLine(loadError)
-      : error !== null
-        ? errorLine(error)
-        : undefined
-  const footer: DialogFooterLine[] = [...(statusLine === undefined ? [] : [statusLine]), ...ARCHIVE_HINT]
+  const footer: DialogFooterLine[] = [...(loading ? [loadingLine()] : []), ...ARCHIVE_HINT]
+  const errors: DialogFooterLine[] = [
+    ...(loadError !== null ? [errorLine(loadError)] : []),
+    ...(error !== null ? [errorLine(error)] : []),
+  ]
   return (
     <Dialog
       ref={ref}
       title="sessions"
-      width={DIALOG_WIDTH_WIDE}
-      maxHeight={SESSIONS_DIALOG_MAX_HEIGHT}
+      width={DIALOG_WIDTH_LARGE}
+      maxHeight={DIALOG_MAX_HEIGHT}
       rows={rows}
       footer={footer}
+      errors={errors}
       onClose={onClose}
       search
       searchRight

@@ -11,7 +11,7 @@ function rows(): DialogRow[] {
 function renderFooter(footer: { text: string; color?: string }[]) {
   return render(
     <Box width={100} height={24}>
-      <Dialog width={60} maxHeight={22} title="t" rows={rows()} footer={footer} onClose={() => {}} />
+      <Dialog width={60} maxHeight={0.6} title="t" rows={rows()} footer={footer} onClose={() => {}} />
     </Box>,
   )
 }
@@ -20,7 +20,7 @@ describe('dialog footer', () => {
   it('keeps the window compact when no footer is present', () => {
     const { lastFrame } = render(
       <Box width={100} height={24}>
-        <Dialog width={60} maxHeight={22} title="t" rows={rows()} onClose={() => {}} />
+        <Dialog width={60} maxHeight={0.6} title="t" rows={rows()} onClose={() => {}} />
       </Box>,
     )
     const frame = lastFrame() ?? ''
@@ -37,7 +37,7 @@ describe('dialog footer', () => {
   it('caps a footer line at two rows with an ellipsis', () => {
     const { lastFrame } = renderFooter([{ text: 'x'.repeat(200) }])
     const frame = lastFrame() ?? ''
-    expect((frame.match(/x/g) ?? []).length).toBe(119)
+    expect((frame.match(/x/g) ?? []).length).toBe(111)
     expect(frame).toContain('…')
   })
 

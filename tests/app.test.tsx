@@ -10,6 +10,10 @@ function stripAnsi(text: string): string {
   return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
 }
 
+function flatten(text: string): string {
+  return stripAnsi(text).replace(/[▄▀]/g, '').replace(/\s+/g, ' ')
+}
+
 async function waitForFrame(lastFrame: () => string | undefined, text: string): Promise<string> {
   let frame = lastFrame() ?? ''
   for (let i = 0; i < 120 && !frame.includes(text); i++) {
@@ -116,7 +120,7 @@ describe('App layout', () => {
     await new Promise(resolve => setTimeout(resolve, 50))
     const frame = lastFrame() ?? ''
     expect(frame).toContain('glm-4.7-flash')
-    expect(frame).toContain('Ctrl+A add providers · Ctrl+E configure')
+    expect(flatten(frame)).toContain('Ctrl+A add providers · Ctrl+E configure')
     expect(frame).not.toContain('+Add')
   })
 
@@ -190,7 +194,8 @@ describe('App layout', () => {
     await new Promise(resolve => setTimeout(resolve, 30))
     stdin.write('\r')
     const frame = await waitForFrame(lastFrame, 'the preset is fixed')
-    expect(frame).toContain('the preset is fixed once the session has started')
+    expect(flatten(frame)).toContain('the preset is fixed once the session has started')
+    expect(flatten(frame)).toContain('new to start a new session')
   })
 
   it('cycles the permission mode with Tab', async () => {
