@@ -677,7 +677,6 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     return sessionList.get()
   }
 
-  void sessionList.get()
   void refreshEffortNames()
   void modelsList.get().catch(() => {})
 
