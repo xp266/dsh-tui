@@ -24,6 +24,7 @@ export function createFakeBridge(overrides: Partial<ChatBridge> = {}): ChatBridg
     readModelEntries: () => [],
     saveModelEntry: vi.fn(async () => {}),
     deleteModelEntry: vi.fn(async () => {}),
+    describeModel: vi.fn(async (_provider: string, model: string) => ({ name: model, image: false })),
     cwd: () => process.cwd(),
     listPresets: vi.fn(async () => []),
     currentPreset: () => 'standard',

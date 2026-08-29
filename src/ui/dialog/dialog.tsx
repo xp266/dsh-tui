@@ -69,6 +69,7 @@ export function Dialog({
   const totalRows = stdout?.rows ?? 24
   const [scrollTop, setScrollTop] = useState(0)
   const [cursor, setCursor] = useState(0)
+  const cursorSyncRef = useRef<{ row: number; col: number; type: string | undefined }>({ row: -1, col: -1, type: undefined })
   const [searchValue, setSearchValue] = useState('')
   const [carouselPress, setCarouselPress] = useState<'left' | 'right' | null>(null)
   const carouselPressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -142,7 +143,6 @@ export function Dialog({
   live.current.contentRows = contentRows
   live.current.focus = focus
   live.current.scrollTop = scroll
-  live.current.cursor = cursor
   live.current.searchValue = searchValue
   live.current.viewportHeight = viewportHeight
   live.current.focusMinRow = focusMinRow
@@ -155,7 +155,15 @@ export function Dialog({
   const current = focusedItem(displayRows[safeFocus.row], safeFocus.col)
   const currentText = current === undefined ? null : asTextItem(current)
   live.current.value = currentText?.value ?? ''
+  const cursorSynced = cursorSyncRef.current.row === safeFocus.row
+    && cursorSyncRef.current.col === safeFocus.col
+    && cursorSyncRef.current.type === current?.type
+  const effectiveCursor = cursorSynced || currentText === null || currentText.type === 'search'
+    ? cursor
+    : currentText.value.length
+  live.current.cursor = effectiveCursor
   useEffect(() => {
+    cursorSyncRef.current = { row: safeFocus.row, col: safeFocus.col, type: current?.type }
     if (currentText !== null && currentText.type !== 'search') {
       setCursor(currentText.value.length)
     }
@@ -170,7 +178,7 @@ export function Dialog({
       y: top + headerBottom,
     })
   } else {
-    const caretOffset = current === undefined ? undefined : widgetOf(current.type).caret?.(current, cursor, contentWidth)
+    const caretOffset = current === undefined ? undefined : widgetOf(current.type).caret?.(current, effectiveCursor, contentWidth)
     if (caretOffset === undefined) {
       setCursorPosition(undefined)
     } else {
@@ -292,7 +300,7 @@ export function Dialog({
     const focused = safeFocus.row === i + (search ? 1 : 0)
     visibleRows.push(
       <Box key={`row-${i}`} position="absolute" top={rel} left={0} width={contentWidth}>
-        {renderRow(contentRows[i], focused, contentWidth, baseY, frameLeft, carouselPress, focused ? safeFocus.col : 0, clip, focused ? cursor : undefined)}
+        {renderRow(contentRows[i], focused, contentWidth, baseY, frameLeft, carouselPress, focused ? safeFocus.col : 0, clip, focused ? effectiveCursor : undefined)}
       </Box>,
     )
     offset += height

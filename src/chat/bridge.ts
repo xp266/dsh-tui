@@ -26,7 +26,7 @@ import {
   saveProviderKey,
   saveProviderModels,
 } from './models.ts'
-import type { ConfiguredModel, CustomProviderForm, ModelEntryConfig, OfficialProvider } from './models.ts'
+import type { ConfiguredModel, CustomProviderForm, DescribedModel, ModelEntryConfig, OfficialProvider } from './models.ts'
 import { formatDiffDiffs, diffLineGroups, formatReadLines, readBodyCol, relativize, summarizeOthers, summarizeParams, truncateSummary } from './tool-view.ts'
 import type { DiffLike, ReadLineLike, ToolDiffView } from './tool-view.ts'
 import { computeSessionList } from './session-list.ts'
@@ -140,6 +140,7 @@ export interface ChatBridge {
   readModelEntries(ns: string, provider: string): ModelEntryConfig[]
   saveModelEntry(ns: string, provider: string, entry: ModelEntryConfig): Promise<void>
   deleteModelEntry(ns: string, provider: string, modelId: string): Promise<void>
+  describeModel(provider: string, model: string): Promise<DescribedModel>
   cwd(): string
   listPresets(): Promise<PresetSummary[]>
   currentPreset(): string
@@ -318,6 +319,15 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
 
   async function refreshEffortNames(): Promise<void> {
     await resolveEffortSummaries(currentSelection())
+  }
+
+  async function describeModel(provider: string, model: string): Promise<DescribedModel> {
+    const info = await llm.resolveModelInfo(provider, model)
+    return {
+      name: info.name,
+      ...(info.context === undefined ? {} : { contextWindow: info.context.contextWindow }),
+      image: info.inputModalities?.includes('image') ?? false,
+    }
   }
 
   async function createAgent(cwd: string, presetId?: string): Promise<AgentHandle> {
@@ -703,6 +713,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     saveProviderKey: (provider, apiKey) => saveProviderKey(ctx.settings, ctx.credentials, provider, apiKey),
     saveProviderModels: (provider, models) => saveProviderModels(ctx.settings, provider, models),
     readModelEntries: (ns, provider) => readModelEntries(settingsService(), ns, provider),
+    describeModel,
     saveModelEntry: (ns, provider, entry) => {
       const settings = settingsService()
       return saveModelEntry(settings, settings, ns, provider, entry)

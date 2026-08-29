@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react'
 import type { Ref } from 'react'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
-import type { ConfiguredModel, CustomProviderForm, ModelEffortKey, ModelEntryConfig, OfficialProvider } from '../../chat/models.ts'
-import { MODEL_EFFORT_LEVELS, PI_AI_SETTINGS_NS } from '../../chat/models.ts'
+import type { ConfiguredModel, CustomProviderForm, DescribedModel, ModelEntryConfig, OfficialProvider } from '../../chat/models.ts'
+import { PI_AI_SETTINGS_NS } from '../../chat/models.ts'
 import { COLORS } from '../../theme.ts'
 import { errorLine, loadingLine } from './status-lines.ts'
 import { useAsyncAction } from '../hooks/use-async-action.ts'
@@ -21,6 +21,7 @@ export interface ModelApi {
   saveProviderKey(provider: OfficialProvider, apiKey: string): Promise<void>
   saveProviderModels(provider: OfficialProvider, models: LlmDiscoveredModel[]): Promise<void>
   readModelEntries(ns: string, provider: string): ModelEntryConfig[]
+  describeModel(provider: string, model: string): Promise<DescribedModel>
   saveModelEntry(ns: string, provider: string, entry: ModelEntryConfig): Promise<void>
   deleteModelEntry(ns: string, provider: string, modelId: string): Promise<void>
 }
@@ -45,11 +46,12 @@ export function ModelsDialog({ api, onClose, onModelSelected, onAddProvider, ref
   const modelItemRefs = useRef(new Map<DialogItem, ConfiguredModel>())
   modelItemRefs.current = new Map()
   const [configTarget, setConfigTarget] = useState<ConfiguredModel | null>(null)
-  const [configDraft, setConfigDraft] = useState<{ contextWindow: string; maxTokens: string; efforts: ReadonlySet<ModelEffortKey> }>({
+  const [configDraft, setConfigDraft] = useState<{ name: string; contextWindow: string; image: string }>({
+    name: '',
     contextWindow: '',
-    maxTokens: '',
-    efforts: new Set(),
+    image: '',
   })
+  const configureRequestRef = useRef(0)
   const selectModel = async (model: ConfiguredModel) => {
     await run(async () => {
       await api.selectModel(model.provider, model.id)
@@ -61,38 +63,44 @@ export function ModelsDialog({ api, onClose, onModelSelected, onAddProvider, ref
     const settings = api.readModelEntries(PI_AI_SETTINGS_NS, model.provider).find(entry => entry.id === model.id)
     setConfigTarget(model)
     setConfigDraft({
+      name: settings?.name ?? '',
       contextWindow: settings?.contextWindow === undefined ? '' : String(settings.contextWindow),
-      maxTokens: settings?.maxTokens === undefined ? '' : String(settings.maxTokens),
-      efforts: new Set(
-        settings?.reasoningEfforts === false || settings?.reasoningEfforts === undefined
-          ? []
-          : (Object.keys(settings.reasoningEfforts) as ModelEffortKey[]),
-      ),
+      image: settings?.input === undefined ? '' : String(settings.input.includes('image')),
     })
     clearError()
     setWindow({ kind: 'configure-model' })
+    const request = ++configureRequestRef.current
+    void api.describeModel(model.provider, model.id).then(info => {
+      if (configureRequestRef.current !== request) return
+      setConfigDraft(current => ({
+        name: current.name === '' ? info.name : current.name,
+        contextWindow: current.contextWindow === '' && info.contextWindow !== undefined ? String(info.contextWindow) : current.contextWindow,
+        image: current.image === '' ? String(info.image) : current.image,
+      }))
+    }).catch(() => {})
   }
   const submitConfigure = async () => {
     if (configTarget === null) return
     await run(async () => {
+      const name = configDraft.name.trim()
       const contextWindow = configDraft.contextWindow.trim() === '' ? undefined : Number(configDraft.contextWindow)
-      const maxTokens = configDraft.maxTokens.trim() === '' ? undefined : Number(configDraft.maxTokens)
       if (contextWindow !== undefined && (!Number.isInteger(contextWindow) || contextWindow <= 0)) {
         throw new Error('Context window must be a positive integer')
       }
-      if (maxTokens !== undefined && (!Number.isInteger(maxTokens) || maxTokens <= 0)) {
-        throw new Error('Max tokens must be a positive integer')
+      const image = configDraft.image.trim().toLowerCase()
+      let input: string[] | undefined
+      if (image !== '') {
+        if (image !== 'true' && image !== 'false') throw new Error('imageModality must be true or false')
+        input = image === 'true' ? ['text', 'image'] : ['text']
       }
-      const efforts = configDraft.efforts
-      const reasoningEfforts = efforts.size === 0
-        ? undefined
-        : Object.fromEntries([...efforts].map(level => [level, level === 'off' ? null : level])) as Partial<Record<ModelEffortKey, string | null>>
-      const entry: ModelEntryConfig = {
-        id: configTarget.id,
-        ...(contextWindow === undefined ? {} : { contextWindow }),
-        ...(maxTokens === undefined ? {} : { maxTokens }),
-        ...(reasoningEfforts === undefined ? {} : { reasoningEfforts }),
-      }
+      const existing = api.readModelEntries(PI_AI_SETTINGS_NS, configTarget.provider).find(entry => entry.id === configTarget.id)
+      const entry: ModelEntryConfig = { ...existing, id: configTarget.id }
+      if (name === '') delete entry.name
+      else entry.name = name
+      if (contextWindow === undefined) delete entry.contextWindow
+      else entry.contextWindow = contextWindow
+      if (input === undefined) delete entry.input
+      else entry.input = input
       await api.saveModelEntry(PI_AI_SETTINGS_NS, configTarget.provider, entry)
       setConfigTarget(null)
       clearError()
@@ -104,42 +112,22 @@ export function ModelsDialog({ api, onClose, onModelSelected, onAddProvider, ref
     openConfigure(model)
     return true
   }
-  const toggleEffort = (level: ModelEffortKey) => {
-    setConfigDraft(current => {
-      const next = new Set(current.efforts)
-      if (next.has(level)) next.delete(level)
-      else next.add(level)
-      return { ...current, efforts: next }
-    })
-  }
   const configureRows: DialogRow[] = configTarget === null ? [] : [
-    { items: [{ type: 'static', label: `Configure ${configTarget.name} (${configTarget.provider})` }] },
     {
       items: [
-        { type: 'input', label: 'Context Window', value: configDraft.contextWindow, onChange: value => setConfigDraft(current => ({ ...current, contextWindow: value })) },
+        { type: 'input', label: 'name', value: configDraft.name, onChange: value => setConfigDraft(current => ({ ...current, name: value })) },
       ],
     },
     {
       items: [
-        { type: 'input', label: 'Max Tokens', value: configDraft.maxTokens, onChange: value => setConfigDraft(current => ({ ...current, maxTokens: value })) },
+        { type: 'input', label: 'contextWindow', value: configDraft.contextWindow, onChange: value => setConfigDraft(current => ({ ...current, contextWindow: value })) },
       ],
     },
     {
       items: [
-        { type: 'static', label: 'Reasoning levels (Space to toggle)' },
+        { type: 'input', label: 'imageModality', value: configDraft.image, onChange: value => setConfigDraft(current => ({ ...current, image: value })) },
       ],
     },
-    ...MODEL_EFFORT_LEVELS.map(level => ({
-      items: [
-        {
-          type: 'checkbox' as const,
-          label: level,
-          checked: configDraft.efforts.has(level),
-          onToggle: () => toggleEffort(level),
-          onConfirm: () => void submitConfigure(),
-        },
-      ],
-    })),
     {
       items: [
         { type: 'actions', confirmLabel: 'Submit', cancelLabel: 'Cancel', onConfirm: () => void submitConfigure(), onCancel: () => setWindow({ kind: 'list' }) },

@@ -19,6 +19,7 @@ function fakeApi() {
     saveProviderKey: vi.fn(async () => {}),
     saveProviderModels: vi.fn(async () => {}),
     readModelEntries: vi.fn(() => []),
+    describeModel: vi.fn(async (_provider: string, model: string) => ({ name: model, image: false })),
     saveModelEntry: vi.fn(async () => {}),
     deleteModelEntry: vi.fn(async () => {}),
   }
@@ -138,6 +139,7 @@ describe('ModelsDialog model list', () => {
         provider === 'opencodeZen'
           ? [{ id: 'big-pickle', contextWindow: 131072, maxTokens: 8192, reasoningEfforts: { off: null, high: 'high' } }]
           : []),
+      describeModel: vi.fn(async () => ({ name: 'Big Pickle', contextWindow: 999999, image: true })),
     }
     const { lastFrame, stdin } = render(
       <Box width={100} height={24}>
@@ -147,22 +149,22 @@ describe('ModelsDialog model list', () => {
     await pressDownUntil(stdin, lastFrame, 'Ox Alpha')
     await pressDownUntil(stdin, lastFrame, 'big-pickle')
     await pressKeyUntil('\u0005', stdin, 'configure window open', frameIncludes(lastFrame, 'Configure Model'))
+    expect(lastFrame() ?? '').not.toContain('(opencodeZen)')
     expect(lastFrame() ?? '').toContain('131072')
-    expect(lastFrame() ?? '').toContain('8192')
-    for (let i = 0; i < 8 && !(lastFrame() ?? '').includes('high'); i++) {
-      await pressDown(stdin)
-    }
-    expect(lastFrame() ?? '').toContain('high')
-    expect(api.readModelEntries).toHaveBeenCalledWith('llm-pi-ai', 'opencodeZen')
+    await until('resolved values filled', frameIncludes(lastFrame, 'Big Pickle'))
+    expect(api.describeModel).toHaveBeenCalledWith('opencodeZen', 'big-pickle')
     for (let i = 0; i < 20 && !focusedSegment(lastFrame() ?? '').includes('Submit'); i++) {
       await pressDown(stdin)
     }
     await focusItem(lastFrame, 'Submit')
+    expect(lastFrame() ?? '').toContain('true')
     await pressKeyUntil('\r', stdin, 'model saved', () => api.saveModelEntry.mock.calls.length > 0)
     expect(api.saveModelEntry).toHaveBeenCalledWith('llm-pi-ai', 'opencodeZen', {
       id: 'big-pickle',
+      name: 'Big Pickle',
       contextWindow: 131072,
       maxTokens: 8192,
+      input: ['text', 'image'],
       reasoningEfforts: { off: null, high: 'high' },
     })
   })

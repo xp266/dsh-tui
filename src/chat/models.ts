@@ -21,6 +21,12 @@ export interface ModelEntryConfig {
   reasoningEfforts?: false | Partial<Record<ModelEffortKey, string | null>>
 }
 
+export interface DescribedModel {
+  name: string
+  contextWindow?: number
+  image: boolean
+}
+
 export interface CustomProviderForm {
   providerId: string
   displayName: string
