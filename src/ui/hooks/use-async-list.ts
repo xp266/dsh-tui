@@ -26,6 +26,10 @@ function writeListCache<T>(key: string, items: T[]): void {
   listCache.set(key, items)
 }
 
+export function clearAsyncListCache(): void {
+  listCache.clear()
+}
+
 export function useAsyncList<T>(load: () => Promise<T[]>, cacheKey?: string): AsyncListState<T> {
   const keyRef = useRef(cacheKey)
   keyRef.current = cacheKey
@@ -53,7 +57,7 @@ export function useAsyncList<T>(load: () => Promise<T[]>, cacheKey?: string): As
     }
     setLoading(false)
     hintTimerRef.current = setTimeout(() => {
-      if (!cancelled.current) setLoading(true)
+      if (!cancelled.current && itemsRef.current.length === 0) setLoading(true)
     }, LOADING_HINT_DELAY_MS)
     loadRef.current()
       .then(next => {

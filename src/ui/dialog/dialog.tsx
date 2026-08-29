@@ -71,7 +71,7 @@ export function Dialog({
   const [cursor, setCursor] = useState(0)
   const cursorSyncRef = useRef<{ row: number; col: number; type: string | undefined }>({ row: -1, col: -1, type: undefined })
   const [searchValue, setSearchValue] = useState('')
-  const [carouselPress, setCarouselPress] = useState<'left' | 'right' | null>(null)
+  const [carouselPress, setCarouselPress] = useState<{ row: number; side: 'left' | 'right' } | null>(null)
   const carouselPressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [errorScrollTop, setErrorScrollTop] = useState(0)
   const handleSearch = (value: string) => {
@@ -218,8 +218,8 @@ export function Dialog({
     setScrollTop,
     setCursor,
   })
-  const flashCarousel = (side: 'left' | 'right') => {
-    setCarouselPress(side)
+  const flashCarousel = (row: number, side: 'left' | 'right') => {
+    setCarouselPress({ row, side })
     clearTimeout(carouselPressTimer.current)
     carouselPressTimer.current = setTimeout(() => setCarouselPress(null), 120)
   }
@@ -265,7 +265,7 @@ export function Dialog({
       }
       const clickActions: ClickActions = {
         focus: col => setFocus({ row: displayRow, col }),
-        flash: flashCarousel,
+        flash: side => flashCarousel(rowIndex, side),
       }
       for (const item of rowSpec?.items ?? []) {
         if (widgetOf(item.type).onClick?.(item, hit, clickActions) === true) return
@@ -300,7 +300,7 @@ export function Dialog({
     const focused = safeFocus.row === i + (search ? 1 : 0)
     visibleRows.push(
       <Box key={`row-${i}`} position="absolute" top={rel} left={0} width={contentWidth}>
-        {renderRow(contentRows[i], focused, contentWidth, baseY, frameLeft, carouselPress, focused ? safeFocus.col : 0, clip, focused ? effectiveCursor : undefined)}
+        {renderRow(contentRows[i], focused, contentWidth, baseY, frameLeft, carouselPress?.row === i ? carouselPress.side : null, focused ? safeFocus.col : 0, clip, focused ? effectiveCursor : undefined)}
       </Box>,
     )
     offset += height
@@ -333,7 +333,7 @@ export function Dialog({
         <Box flexDirection="column">
           {search && (
             <Box flexDirection="column">
-              {renderRow(searchRow, safeFocus.row === 0, contentWidth, headerBottom, frameLeft, carouselPress, 0, 0, safeFocus.row === 0 ? cursor : undefined)}
+              {renderRow(searchRow, safeFocus.row === 0, contentWidth, headerBottom, frameLeft, null, 0, 0, safeFocus.row === 0 ? cursor : undefined)}
             </Box>
           )}
           <Box flexDirection="column" height={viewportHeight} overflow="hidden">
