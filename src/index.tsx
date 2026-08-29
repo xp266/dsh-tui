@@ -77,12 +77,12 @@ export function apply(ctx: Context) {
       .then(loaded => {
         bridge = loaded
         exposeInteractions = extensionPoint === undefined ? undefined : exposeInteractionsFace(extensionPoint, loaded.interactions.panels)
-        start()
+        app?.rerender(buildAppNode())
       })
       .catch(error => {
         console.error('chat bridge init failed', error)
-        start()
       })
+    start()
     return () => {
       disposed = true
       exposeInteractions?.()
