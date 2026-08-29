@@ -65,7 +65,6 @@ describe('App dialog keyboard', () => {
     await settle()
     const frame = lastFrame() ?? ''
     expect(frame).toContain('providers')
-    expect(frame).toContain('DeepSeek')
     expect(frame).toContain('Custom Provider')
   })
 

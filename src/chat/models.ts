@@ -33,15 +33,13 @@ export interface OfficialProvider {
   provider: string
   displayName: string
   settingsNs: string
+  settingsPath: readonly string[]
   declared?: boolean
 }
 
 export const API_PROTOCOLS = ['openai-completions', 'openai-responses', 'anthropic-messages']
 
-export const DEEPSEEK_KEY_REF = 'DEEPSEEK_API_KEY'
-
 export const PI_AI_SETTINGS_NS = 'llm-pi-ai'
-
 export async function listConfiguredModels(llm: Pick<LlmRuntime, 'listProviders' | 'listModels'>): Promise<ConfiguredModel[]> {
   const models: ConfiguredModel[] = []
   for (const provider of llm.listProviders()) {
@@ -58,16 +56,13 @@ export function listProviderDirectory(llm: Pick<LlmRuntime, 'listConfigurablePro
     provider: entry.provider,
     displayName: entry.displayName,
     settingsNs: entry.settingsNs,
+    settingsPath: entry.settingsPath,
     ...(entry.declared === undefined ? {} : { declared: entry.declared }),
   }))
 }
 
 export interface KeyStorer {
   set(ref: string, value: string): Promise<void>
-}
-
-export async function addDeepSeekKey(store: KeyStorer, apiKey: string): Promise<void> {
-  await store.set(DEEPSEEK_KEY_REF, apiKey)
 }
 
 export interface ModelFetcher {
@@ -130,23 +125,36 @@ export async function saveCustomProvider(
   })
 }
 
-export async function saveBuiltinProvider(
+function patchAtPath(patch: object, path: readonly string[]): object {
+  const root: Record<string, unknown> = {}
+  let cursor = root
+  for (const segment of path) {
+    const next: Record<string, unknown> = {}
+    cursor[segment] = next
+    cursor = next
+  }
+  Object.assign(cursor, patch)
+  return root
+}
+
+export async function saveProviderKey(
   write: SettingsWriter,
   store: KeyStorer,
   provider: OfficialProvider,
   apiKey: string,
+): Promise<void> {
+  if (apiKey.trim() === '') throw new Error('API key must not be empty')
+  const keyRef = providerKeyRef(provider.provider)
+  await store.set(keyRef, apiKey)
+  await write.update(provider.settingsNs, patchAtPath({ apiKeyEnv: keyRef }, provider.settingsPath))
+}
+
+export async function saveProviderModels(
+  write: SettingsWriter,
+  provider: OfficialProvider,
   models: LlmDiscoveredModel[],
 ): Promise<void> {
-  const keyRef = providerKeyRef(provider.provider)
-  if (apiKey.length > 0) await store.set(keyRef, apiKey)
-  await write.update(provider.settingsNs, {
-    providers: {
-      [provider.provider]: {
-        ...(apiKey.length > 0 ? { apiKeyEnv: keyRef } : {}),
-        models: storedModels(models),
-      },
-    },
-  })
+  await write.update(provider.settingsNs, patchAtPath({ models: storedModels(models) }, provider.settingsPath))
 }
 
 const KEY_REF_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/

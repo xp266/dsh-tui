@@ -14,12 +14,12 @@ import { DIALOG_WIDTH_MEDIUM, MODELS_DIALOG_MAX_HEIGHT } from './sizes.ts'
 export interface ModelApi {
   listModels(): Promise<ConfiguredModel[]>
   selectModel(provider: string, model: string): Promise<void>
-  addDeepSeekKey(apiKey: string): Promise<void>
   fetchCustomModels(form: CustomProviderForm): Promise<LlmDiscoveredModel[]>
   saveCustomProvider(form: CustomProviderForm, models: LlmDiscoveredModel[]): Promise<void>
   listProviderDirectory(): Promise<OfficialProvider[]>
-  fetchProviderModels(provider: OfficialProvider, apiKey: string): Promise<LlmDiscoveredModel[]>
-  saveBuiltinProvider(provider: OfficialProvider, apiKey: string, models: LlmDiscoveredModel[]): Promise<void>
+  fetchProviderModels(provider: OfficialProvider, apiKey: string): Promise<LlmDiscoveredModel[] | undefined>
+  saveProviderKey(provider: OfficialProvider, apiKey: string): Promise<void>
+  saveProviderModels(provider: OfficialProvider, models: LlmDiscoveredModel[]): Promise<void>
   readModelEntries(ns: string, provider: string): ModelEntryConfig[]
   saveModelEntry(ns: string, provider: string, entry: ModelEntryConfig): Promise<void>
   deleteModelEntry(ns: string, provider: string, modelId: string): Promise<void>

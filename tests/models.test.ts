@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import {
-  addDeepSeekKey,
-  DEEPSEEK_KEY_REF,
   deleteModelEntry,
   fetchCustomModels,
   fetchProviderModels,
@@ -11,9 +9,10 @@ import {
   listProviderDirectory,
   providerKeyRef,
   readModelEntries,
-  saveBuiltinProvider,
   saveCustomProvider,
   saveModelEntry,
+  saveProviderKey,
+  saveProviderModels,
 } from '../src/chat/models.ts'
 import type { CustomProviderForm, OfficialProvider } from '../src/chat/models.ts'
 
@@ -35,12 +34,6 @@ describe('model management', () => {
       { id: 'glm-4.7-flash', name: 'glm-4.7-flash', provider: 'zai', providerName: 'zai' },
       { id: 'deepseek-v4-flash', name: 'deepseek-v4-flash', provider: 'deepseek-official', providerName: 'DeepSeek' },
     ])
-  })
-
-  it('stores the DeepSeek key under the official env ref', async () => {
-    const store = { set: vi.fn(async () => {}) }
-    await addDeepSeekKey(store, 'sk-123')
-    expect(store.set).toHaveBeenCalledWith(DEEPSEEK_KEY_REF, 'sk-123')
   })
 
   it('fetches custom provider models through discovery', async () => {
@@ -143,15 +136,15 @@ describe('model management', () => {
       ],
     }
     expect(listProviderDirectory(llm)).toEqual([
-      { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek' },
-      { provider: 'amazon-bedrock', displayName: 'amazon-bedrock', settingsNs: 'llm-pi-ai', declared: false },
-      { provider: 'anthropic', displayName: 'anthropic', settingsNs: 'llm-pi-ai', declared: false },
-      { provider: 'opencodezen', displayName: 'opencodeZen', settingsNs: 'llm-pi-ai', declared: true },
+      { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [] },
+      { provider: 'amazon-bedrock', displayName: 'amazon-bedrock', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'amazon-bedrock'], declared: false },
+      { provider: 'anthropic', displayName: 'anthropic', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'anthropic'], declared: false },
+      { provider: 'opencodezen', displayName: 'opencodeZen', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'opencodezen'], declared: true },
     ])
   })
   it('fetches provider models by route id and omits a blank key', async () => {
     const fetcher = { discoverModels: vi.fn(async (_ns: string, _request: object) => [{ id: 'm1' }]) }
-    const provider: OfficialProvider = { provider: 'amazon-bedrock', displayName: 'amazon-bedrock', settingsNs: 'llm-pi-ai' }
+    const provider: OfficialProvider = { provider: 'amazon-bedrock', displayName: 'amazon-bedrock', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'amazon-bedrock'] }
     await fetchProviderModels(fetcher, provider.settingsNs, provider.provider, '')
     expect(fetcher.discoverModels).toHaveBeenCalledWith(
       'llm-pi-ai',
@@ -166,32 +159,40 @@ describe('model management', () => {
     )
   })
 
-  it('saves a builtin provider with credential and picked models', async () => {
+  it('saves a provider key under a credential ref at the settings path', async () => {
     const write = { update: vi.fn(async (_ns: string, _patch: unknown) => {}) }
     const store = { set: vi.fn(async () => {}) }
-    const provider: OfficialProvider = { provider: 'minimax-cn', displayName: 'minimax-cn', settingsNs: 'llm-pi-ai' }
-    const models: LlmDiscoveredModel[] = [{ id: 'abab6.5s-chat', name: 'abab6.5s', contextWindow: 245760 }]
-    await saveBuiltinProvider(write, store, provider, 'key-9', models)
+    const nested: OfficialProvider = { provider: 'minimax-cn', displayName: 'minimax-cn', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'minimax-cn'] }
+    await saveProviderKey(write, store, nested, 'key-9')
     expect(store.set).toHaveBeenCalledWith('MINIMAX_CN_API_KEY', 'key-9')
     expect(write.update).toHaveBeenCalledWith('llm-pi-ai', {
-      providers: {
-        'minimax-cn': {
-          apiKeyEnv: 'MINIMAX_CN_API_KEY',
-          models: [{ id: 'abab6.5s-chat', name: 'abab6.5s', contextWindow: 245760 }],
-        },
-      },
+      providers: { 'minimax-cn': { apiKeyEnv: 'MINIMAX_CN_API_KEY' } },
     })
+    const flat: OfficialProvider = { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [] }
+    await saveProviderKey(write, store, flat, 'sk-1')
+    expect(write.update).toHaveBeenCalledWith('llm-deepseek', { apiKeyEnv: 'DEEPSEEK_OFFICIAL_API_KEY' })
   })
 
-  it('omits the key ref when saving a builtin provider without a key', async () => {
+  it('rejects a blank provider key', async () => {
     const write = { update: vi.fn(async (_ns: string, _patch: unknown) => {}) }
     const store = { set: vi.fn(async () => {}) }
-    const provider: OfficialProvider = { provider: 'amazon-bedrock', displayName: 'amazon-bedrock', settingsNs: 'llm-pi-ai' }
-    await saveBuiltinProvider(write, store, provider, '', [{ id: 'm1' }])
+    const provider: OfficialProvider = { provider: 'amazon-bedrock', displayName: 'amazon-bedrock', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'amazon-bedrock'] }
+    await expect(saveProviderKey(write, store, provider, '  ')).rejects.toThrow('API key must not be empty')
     expect(store.set).not.toHaveBeenCalled()
-    const patch = write.update.mock.calls[0]?.[1] as unknown as { providers: Record<string, object> }
-    expect(patch.providers['amazon-bedrock']).not.toHaveProperty('apiKeyEnv')
-    expect(patch.providers['amazon-bedrock']).toMatchObject({ models: [{ id: 'm1' }] })
+    expect(write.update).not.toHaveBeenCalled()
+  })
+
+  it('saves picked models at the settings path', async () => {
+    const write = { update: vi.fn(async (_ns: string, _patch: unknown) => {}) }
+    const models: LlmDiscoveredModel[] = [{ id: 'abab6.5s-chat', name: 'abab6.5s', contextWindow: 245760 }]
+    const nested: OfficialProvider = { provider: 'minimax-cn', displayName: 'minimax-cn', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'minimax-cn'] }
+    await saveProviderModels(write, nested, models)
+    expect(write.update).toHaveBeenCalledWith('llm-pi-ai', {
+      providers: { 'minimax-cn': { models: [{ id: 'abab6.5s-chat', name: 'abab6.5s', contextWindow: 245760 }] } },
+    })
+    const flat: OfficialProvider = { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [] }
+    await saveProviderModels(write, flat, [{ id: 'm1' }])
+    expect(write.update).toHaveBeenCalledWith('llm-deepseek', { models: [{ id: 'm1' }] })
   })
 })
 describe('model entry settings', () => {

@@ -21,7 +21,6 @@ export interface ProvidersDialogProps {
 
 type Window =
   | { kind: 'providers' }
-  | { kind: 'add-deepseek' }
   | { kind: 'add-provider-key' }
   | { kind: 'add-custom' }
   | { kind: 'select-models' }
@@ -36,13 +35,12 @@ const EMPTY_FORM: CustomProviderForm = {
 }
 
 function sourceOf(entry: OfficialProvider): string {
-  return entry.declared === false ? 'official plugin' : 'third-party plugin'
+  return entry.declared === true ? 'custom' : entry.settingsNs
 }
 
 export function ProvidersDialog({ api, onClose, onModelSelected, ref }: ProvidersDialogProps) {
   const [window, setWindow] = useState<Window>({ kind: 'providers' })
   const { error, setError, clearError, run } = useAsyncAction()
-  const [deepSeekKey, setDeepSeekKey] = useState('')
   const [form, setForm] = useState<CustomProviderForm>(EMPTY_FORM)
   const [provider, setProvider] = useState<OfficialProvider | null>(null)
   const [providerKey, setProviderKey] = useState('')
@@ -51,10 +49,6 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
   const [fetching, setFetching] = useState(false)
   const fetchingRef = useRef(false)
   const { items: directory, loading, error: loadError, reload } = useAsyncList(api.listProviderDirectory)
-  const openDeepSeek = () => {
-    clearError()
-    setWindow({ kind: 'add-deepseek' })
-  }
   const openCustom = () => {
     clearError()
     setWindow({ kind: 'add-custom' })
@@ -65,16 +59,12 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
     setProviderKey('')
     setWindow({ kind: 'add-provider-key' })
   }
+  const resetProvider = () => {
+    setProvider(null)
+    setProviderKey('')
+  }
   const setField = <K extends keyof CustomProviderForm>(key: K, value: CustomProviderForm[K]) => {
     setForm(current => ({ ...current, [key]: value }))
-  }
-  const submitDeepSeek = async () => {
-    await run(async () => {
-      await api.addDeepSeekKey(deepSeekKey)
-      setDeepSeekKey('')
-      clearError()
-      setWindow({ kind: 'providers' })
-    })
   }
   const fetchIntoSelection = async (fetchModels: () => Promise<LlmDiscoveredModel[]>) => {
     const found = await fetchModels()
@@ -97,12 +87,26 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
     fetchingRef.current = false
     setFetching(false)
   }
-  const submitProvider = async () => {
+  const submitProviderKey = async () => {
     if (provider === null || fetchingRef.current) return
     fetchingRef.current = true
-    clearError()
     setFetching(true)
-    await run(() => fetchIntoSelection(() => api.fetchProviderModels(provider, providerKey)))
+    await run(async () => {
+      if (providerKey.trim() !== '') await api.saveProviderKey(provider, providerKey)
+      const found = await api.fetchProviderModels(provider, providerKey)
+      if (found === undefined) {
+        resetProvider()
+        clearError()
+        setWindow({ kind: 'providers' })
+        reload()
+        return
+      }
+      if (found.length === 0) throw new Error('Failed to fetch models')
+      setDiscovered(found)
+      setPicked(new Set())
+      clearError()
+      setWindow({ kind: 'select-models' })
+    })
     fetchingRef.current = false
     setFetching(false)
   }
@@ -119,9 +123,8 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
       if (picked.size === 0) throw new Error('Select at least one model')
       const chosen = discovered.filter(model => picked.has(model.id))
       if (provider !== null) {
-        await api.saveBuiltinProvider(provider, providerKey, chosen)
-        setProvider(null)
-        setProviderKey('')
+        await api.saveProviderModels(provider, chosen)
+        resetProvider()
       } else {
         await api.saveCustomProvider(form, chosen)
         setForm(EMPTY_FORM)
@@ -131,18 +134,6 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
       reload()
     })
   }
-  const deepSeekRows: DialogRow[] = [
-    {
-      items: [
-        { type: 'input', label: 'API Key', value: deepSeekKey, onChange: setDeepSeekKey },
-      ],
-    },
-    {
-      items: [
-        { type: 'actions', confirmLabel: 'Submit', cancelLabel: 'Cancel', onConfirm: () => void submitDeepSeek(), onCancel: onClose },
-      ],
-    },
-  ]
   const providerKeyRows: DialogRow[] = [
     {
       items: [
@@ -151,7 +142,7 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
     },
     {
       items: [
-        { type: 'actions', confirmLabel: 'Submit', cancelLabel: 'Cancel', onConfirm: () => void submitProvider(), onCancel: onClose },
+        { type: 'actions', confirmLabel: 'Submit', cancelLabel: 'Cancel', onConfirm: () => void submitProviderKey(), onCancel: onClose },
       ],
     },
   ]
@@ -205,20 +196,16 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
   ]
   if (window.kind !== 'providers') {
     const title =
-      window.kind === 'add-deepseek'
-        ? 'Add DeepSeek'
-        : window.kind === 'add-provider-key'
-          ? `Add ${provider?.displayName ?? provider?.provider ?? ''}`
-          : window.kind === 'add-custom'
-            ? 'Add Custom Provider'
-            : 'Select Models'
-    const rows = window.kind === 'add-deepseek'
-      ? deepSeekRows
-      : window.kind === 'add-provider-key'
-        ? providerKeyRows
+      window.kind === 'add-provider-key'
+        ? `Add ${provider?.displayName ?? provider?.provider ?? ''}`
         : window.kind === 'add-custom'
-          ? customRows
-          : selectRows
+          ? 'Add Custom Provider'
+          : 'Select Models'
+    const rows = window.kind === 'add-provider-key'
+      ? providerKeyRows
+      : window.kind === 'add-custom'
+        ? customRows
+        : selectRows
     return (
       <Dialog
         ref={ref}
@@ -234,21 +221,14 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
     )
   }
   const providerRows: DialogRow[] = [
-    {
+    ...directory.map(entry => ({
       items: [
-        { type: 'button', label: 'DeepSeek', right: 'deepseek official', onPress: openDeepSeek },
+        { type: 'button', label: entry.displayName || entry.provider, right: sourceOf(entry), onPress: () => selectDirectoryProvider(entry) },
       ],
-    },
-    ...directory
-      .filter(entry => entry.provider !== 'deepseek')
-      .map(entry => ({
-        items: [
-          { type: 'button', label: entry.displayName || entry.provider, right: sourceOf(entry), onPress: () => selectDirectoryProvider(entry) },
-        ],
-      })),
+    })),
     {
       items: [
-        { type: 'button', label: 'Custom Provider', right: 'custom', onPress: openCustom },
+        { type: 'button', label: 'Custom Provider', right: 'add custom provider', onPress: openCustom },
       ],
     },
   ]

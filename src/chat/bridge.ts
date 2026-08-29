@@ -15,16 +15,16 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { textFromBlocks } from './blocks.ts'
 import {
-  addDeepSeekKey,
-  deleteModelEntry,
   fetchCustomModels,
   fetchProviderModels,
+  deleteModelEntry,
   listConfiguredModels,
   listProviderDirectory,
   readModelEntries,
-  saveBuiltinProvider,
   saveCustomProvider,
   saveModelEntry,
+  saveProviderKey,
+  saveProviderModels,
 } from './models.ts'
 import type { ConfiguredModel, CustomProviderForm, ModelEntryConfig, OfficialProvider } from './models.ts'
 import { formatDiffDiffs, diffLineGroups, formatReadLines, readBodyCol, relativize, summarizeOthers, summarizeParams, truncateSummary } from './tool-view.ts'
@@ -131,12 +131,12 @@ export interface ChatBridge {
   activeSessionId(): string
   listModels(): Promise<ConfiguredModel[]>
   selectModel(provider: string, model: string): Promise<void>
-  addDeepSeekKey(apiKey: string): Promise<void>
   fetchCustomModels(form: CustomProviderForm): Promise<LlmDiscoveredModel[]>
   saveCustomProvider(form: CustomProviderForm, models: LlmDiscoveredModel[]): Promise<void>
   listProviderDirectory(): Promise<OfficialProvider[]>
-  fetchProviderModels(provider: OfficialProvider, apiKey: string): Promise<LlmDiscoveredModel[]>
-  saveBuiltinProvider(provider: OfficialProvider, apiKey: string, models: LlmDiscoveredModel[]): Promise<void>
+  fetchProviderModels(provider: OfficialProvider, apiKey: string): Promise<LlmDiscoveredModel[] | undefined>
+  saveProviderKey(provider: OfficialProvider, apiKey: string): Promise<void>
+  saveProviderModels(provider: OfficialProvider, models: LlmDiscoveredModel[]): Promise<void>
   readModelEntries(ns: string, provider: string): ModelEntryConfig[]
   saveModelEntry(ns: string, provider: string, entry: ModelEntryConfig): Promise<void>
   deleteModelEntry(ns: string, provider: string, modelId: string): Promise<void>
@@ -689,12 +689,19 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     activeSessionId: () => String(activeAgent.id),
     listModels: () => listConfiguredModels(llm),
     selectModel,
-    addDeepSeekKey: key => addDeepSeekKey(ctx.credentials, key),
     fetchCustomModels: form => fetchCustomModels(llm, form),
     saveCustomProvider: (form, models) => saveCustomProvider(ctx.settings, ctx.credentials, form, models),
     listProviderDirectory: async () => listProviderDirectory(llm),
-    fetchProviderModels: (provider, apiKey) => fetchProviderModels(llm, provider.settingsNs, provider.provider, apiKey),
-    saveBuiltinProvider: (provider, apiKey, models) => saveBuiltinProvider(ctx.settings, ctx.credentials, provider, apiKey, models),
+    fetchProviderModels: async (provider, apiKey) => {
+      try {
+        return await fetchProviderModels(llm, provider.settingsNs, provider.provider, apiKey)
+      } catch (error) {
+        if ((error as { code?: string }).code === 'NO_DISCOVERY') return undefined
+        throw error
+      }
+    },
+    saveProviderKey: (provider, apiKey) => saveProviderKey(ctx.settings, ctx.credentials, provider, apiKey),
+    saveProviderModels: (provider, models) => saveProviderModels(ctx.settings, provider, models),
     readModelEntries: (ns, provider) => readModelEntries(settingsService(), ns, provider),
     saveModelEntry: (ns, provider, entry) => {
       const settings = settingsService()
