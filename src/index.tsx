@@ -1,4 +1,5 @@
-import './terminal/capabilities.ts'
+import { setColorLevel } from './terminal/capabilities.ts'
+import { probeColorLevel } from './terminal/probe.ts'
 import { render } from 'ink'
 import type { Context } from '@deepseek-ai/cordis'
 import { App } from './ui/app.tsx'
@@ -94,7 +95,11 @@ export function apply(ctx: Context) {
         console.error('chat bridge init failed', error)
       })
     const themeScope = registerThemeSettings(ctx)
-    void initTheme(themeScope).finally(() => start())
+    void (async () => {
+      const probed = await probeColorLevel()
+      if (probed !== undefined) setColorLevel(probed)
+      await initTheme(themeScope)
+    })().finally(() => start())
     return () => {
       disposed = true
       exposeInteractions?.()

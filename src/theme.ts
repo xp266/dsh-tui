@@ -142,7 +142,7 @@ const lightPalette: Theme = {
   diffAddedBackground: '#ddf0ea',
   diffRemovedBackground: '#f5e8e5',
 
-  scrollTrackBackground: '#e6dede',
+  scrollTrackBackground: '#e4e4e4',
   scrollThumbBackground: '#9a9a9a',
 
   selectionBg: '#0066ff',

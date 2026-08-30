@@ -3,21 +3,23 @@ import { env } from '../env.ts'
 
 export type ColorLevel = 0 | 1 | 2 | 3
 
-const TRUECOLOR_TERM_PROGRAMS = new Set([
-  'iTerm.app',
-  'WezTerm',
-  'vscode',
-  'Hyper',
-  'ghostty',
-  'WarpTerminal',
-  'Rio',
-])
-
 function parseForcedColorLevel(value: string | undefined): ColorLevel | undefined {
   if (value === '0' || value === '1' || value === '2' || value === '3') return Number(value) as ColorLevel
   if (value === 'truecolor') return 3
   if (value === 'none' || value === 'false') return 0
   return undefined
+}
+
+function fallbackColorLevel(): ColorLevel {
+  const term = process.env.TERM ?? ''
+  if (term === 'dumb') return 0
+  const colorterm = process.env.COLORTERM ?? ''
+  if (colorterm === 'truecolor' || colorterm === '24bit') return 3
+  if (term.includes('truecolor')) return 3
+  if (process.env.WT_SESSION !== undefined) return 3
+  if (term.includes('256color')) return 2
+  if (term !== '' || process.env.TERM_PROGRAM !== undefined) return 1
+  return process.stdout.isTTY ? 1 : 0
 }
 
 function detectColorLevel(): ColorLevel {
@@ -31,15 +33,7 @@ function detectColorLevel(): ColorLevel {
     const parsed = Number(forceColor)
     if (parsed === 1 || parsed === 2 || parsed === 3) return parsed
   }
-  const term = process.env.TERM ?? ''
-  if (term === 'dumb') return 0
-  const colorterm = process.env.COLORTERM ?? ''
-  if (colorterm === 'truecolor' || colorterm === '24bit') return 3
-  if (term.includes('truecolor')) return 3
-  if (TRUECOLOR_TERM_PROGRAMS.has(process.env.TERM_PROGRAM ?? '') || process.env.WT_SESSION !== undefined) return 3
-  if (term.includes('256color')) return 2
-  if (term !== '' || process.env.TERM_PROGRAM !== undefined) return 1
-  return process.stdout.isTTY ? 1 : 0
+  return fallbackColorLevel()
 }
 
 function detectUnicode(): boolean {
@@ -52,7 +46,13 @@ function detectUnicode(): boolean {
   return !locale.includes('.')
 }
 
-export const colorLevel: ColorLevel = detectColorLevel()
+export let colorLevel: ColorLevel = detectColorLevel()
+
+export function setColorLevel(level: ColorLevel): void {
+  colorLevel = level
+  chalk.level = level
+}
+
 chalk.level = colorLevel
 
 export const unicode: boolean = detectUnicode()

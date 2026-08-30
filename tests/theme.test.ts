@@ -3,7 +3,7 @@ import { COLORS, setThemeMode, themeMode } from '../src/theme.ts'
 import { glyphs } from '../src/terminal/glyphs.ts'
 import { registerThemeSettings, THEME_SETTINGS_NAMESPACE } from '../src/theme-settings.ts'
 
-const ENV_KEYS = ['DSH_TUI_COLOR', 'DSH_TUI_ASCII', 'NO_COLOR', 'FORCE_COLOR', 'TERM', 'COLORTERM', 'TERM_PROGRAM', 'WT_SESSION', 'CI', 'LC_ALL', 'LANG'] as const
+const ENV_KEYS = ['DSH_TUI_COLOR', 'DSH_TUI_ASCII', 'NO_COLOR', 'FORCE_COLOR', 'TERM', 'COLORTERM', 'TERM_PROGRAM', 'WT_SESSION', 'LC_ALL', 'LANG'] as const
 
 async function detectWith(env: Partial<Record<(typeof ENV_KEYS)[number], string>>): Promise<{ colorLevel: number; unicode: boolean }> {
   const saved: Record<string, string | undefined> = {}
@@ -25,10 +25,31 @@ async function detectWith(env: Partial<Record<(typeof ENV_KEYS)[number], string>
 }
 
 describe('terminal capability detection', () => {
-  it('detects the highest color level the terminal supports', async () => {
-    expect((await detectWith({ TERM: 'xterm-256color', COLORTERM: 'truecolor' })).colorLevel).toBe(3)
+  it('falls back to env signals when the terminal cannot be probed', async () => {
     expect((await detectWith({ TERM: 'xterm-256color' })).colorLevel).toBe(2)
     expect((await detectWith({ TERM: 'xterm' })).colorLevel).toBe(1)
+    expect((await detectWith({ TERM: 'xterm-256color', COLORTERM: 'truecolor' })).colorLevel).toBe(3)
+    expect((await detectWith({ TERM: 'xterm-256color', WT_SESSION: 'x' })).colorLevel).toBe(3)
+  })
+
+  it('parses the terminal SGR state report into a color level', async () => {
+    const { parseSgrProbe } = await import('../src/terminal/probe.ts')
+    expect(parseSgrProbe('\x1bP1$r0;38;2;250;251;252m\x1b\\')).toBe(3)
+    expect(parseSgrProbe('\x1bP1$rm0;38:2::250:251:252\x1b\\')).toBe(3)
+    expect(parseSgrProbe('\x1bP1$r0;38;5;244m\x1b\\')).toBe(2)
+    expect(parseSgrProbe('\x1bP1$r0m\x1b\\')).toBe(1)
+    expect(parseSgrProbe('\x1bP0$r\x1b\\')).toBeUndefined()
+    expect(parseSgrProbe('\x1b[?62;22c')).toBeUndefined()
+  })
+
+  it('rebinds the live color level for probe results', async () => {
+    vi.resetModules()
+    const cap = await import('../src/terminal/capabilities.ts')
+    const original = cap.colorLevel
+    cap.setColorLevel(1)
+    expect(cap.colorLevel).toBe(1)
+    cap.setColorLevel(original)
+    expect(cap.colorLevel).toBe(original)
   })
 
   it('disables color for NO_COLOR and dumb terminals', async () => {
