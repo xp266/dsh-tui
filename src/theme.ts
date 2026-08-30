@@ -41,8 +41,8 @@ const darkPalette = {
 
   diffAdded: '#00da1d',
   diffRemoved: '#d80b00',
-  diffAddedBackground: '#15231f',
-  diffRemovedBackground: '#543934',
+  diffAddedBackground: '#384751',
+  diffRemovedBackground: '#4f312c',
 
   scrollTrackBackground: '#2b2b2b',
   scrollThumbBackground: '#5b5b5b',
