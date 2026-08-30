@@ -204,6 +204,133 @@ describe('list dialog', () => {
     expect(api.archiveSession).toHaveBeenCalledWith('aaa')
   })
 
+  it('archives a second session right after the first archive settles', async () => {
+    const now = Date.now()
+    const hour = 60 * 60 * 1000
+    const items: SessionSummary[] = [
+      { id: 'aaa', name: 'aaa', directory: '/w', ungrouped: false, updatedAt: 1, modifiedAt: now - hour },
+      { id: 'bbb', name: 'bbb', directory: '/w', ungrouped: false, updatedAt: 1, modifiedAt: now - 2 * hour },
+    ]
+    const api = {
+      listSessions: vi.fn(async () => items),
+      openSession: vi.fn(async () => {}),
+      archiveSession: vi.fn(async () => {}),
+      activeSessionId: () => '',
+      newSession: vi.fn(async () => {}),
+    }
+    const { lastFrame, stdin } = render(
+      <Box width={100} height={24}>
+        <SessionsDialog api={api} onClose={() => {}} onSessionSelected={() => {}} />
+      </Box>,
+    )
+    await untilFocused(lastFrame, 'aaa')
+    act(() => {
+      stdin.write('\u0004')
+    })
+    await until(() => (lastFrame() ?? '').includes('Press Ctrl+D again'))
+    act(() => {
+      stdin.write('\u0004')
+    })
+    await until(() => api.archiveSession.mock.calls.length > 0)
+    await until(() => (lastFrame() ?? '').includes('bbb'), 500)
+    act(() => {
+      stdin.write('\u0004')
+    })
+    await until(() => (lastFrame() ?? '').includes('Press Ctrl+D again'), 500)
+    act(() => {
+      stdin.write('\u0004')
+    })
+    await until(() => api.archiveSession.mock.calls.length > 1, 500)
+    expect(api.archiveSession).toHaveBeenLastCalledWith('bbb')
+  })
+
+  it('keeps a pending archive hidden while the list refreshes under it', async () => {
+    const now = Date.now()
+    const hour = 60 * 60 * 1000
+    const aaa: SessionSummary = { id: 'aaa', name: 'aaa', directory: '/w', ungrouped: false, updatedAt: 1, modifiedAt: now - hour }
+    const bbb: SessionSummary = { id: 'bbb', name: 'bbb', directory: '/w', ungrouped: false, updatedAt: 1, modifiedAt: now - 2 * hour }
+    let items: SessionSummary[] = [aaa, bbb]
+    let notify: (() => void) | undefined
+    let resolveArchive: (() => void) | undefined
+    const api = {
+      listSessions: vi.fn(async () => items),
+      onSessionsChanged: (listener: () => void) => {
+        notify = listener
+        return () => {
+          notify = undefined
+        }
+      },
+      openSession: vi.fn(async () => {}),
+      archiveSession: vi.fn(() => new Promise<void>(resolve => {
+        resolveArchive = resolve
+      })),
+      activeSessionId: () => '',
+      newSession: vi.fn(async () => {}),
+    }
+    const { lastFrame, stdin } = render(
+      <Box width={100} height={24}>
+        <SessionsDialog api={api} onClose={() => {}} onSessionSelected={() => {}} />
+      </Box>,
+    )
+    await untilFocused(lastFrame, 'aaa')
+    act(() => {
+      stdin.write('\u0004')
+    })
+    await until(() => (lastFrame() ?? '').includes('Press Ctrl+D again'))
+    act(() => {
+      stdin.write('\u0004')
+    })
+    await until(() => api.archiveSession.mock.calls.length > 0)
+    act(() => {
+      notify?.()
+    })
+    await until(() => api.listSessions.mock.calls.length > 1, 500)
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(lastFrame() ?? '').not.toContain('aaa')
+    items = [bbb]
+    resolveArchive?.()
+    act(() => {
+      notify?.()
+    })
+    await until(() => api.listSessions.mock.calls.length > 2, 500)
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(lastFrame() ?? '').toContain('bbb')
+    expect(lastFrame() ?? '').not.toContain('aaa')
+  })
+
+  it('swaps in fresh rows when the session list changes underneath', async () => {
+    let notify: (() => void) | undefined
+    const now = Date.now()
+    const items: SessionSummary[] = [
+      { id: 'aaa', name: 'aaa', directory: '/w', ungrouped: false, updatedAt: 1, modifiedAt: now - hour() },
+    ]
+    const api = {
+      listSessions: vi.fn(async () => items),
+      onSessionsChanged: (listener: () => void) => {
+        notify = listener
+        return () => {
+          notify = undefined
+        }
+      },
+      openSession: vi.fn(async () => {}),
+      archiveSession: vi.fn(async () => {}),
+      activeSessionId: () => '',
+      newSession: vi.fn(async () => {}),
+    }
+    const { lastFrame } = render(
+      <Box width={100} height={24}>
+        <SessionsDialog api={api} onClose={() => {}} onSessionSelected={() => {}} />
+      </Box>,
+    )
+    await untilFocused(lastFrame, 'aaa')
+    api.listSessions.mockImplementation(async () => [
+      ...items,
+      { id: 'zzz', name: 'zzz', directory: '/w', ungrouped: false, updatedAt: 1, modifiedAt: now - 2 * hour() },
+    ])
+    notify?.()
+    await until(() => (lastFrame() ?? '').includes('zzz'), 500)
+  })
+
   it('keeps section headers attached to their items while scrolling', async () => {
     const now = Date.now()
     const hour = 60 * 60 * 1000
@@ -258,3 +385,7 @@ describe('list dialog', () => {
     }
   })
 })
+
+function hour(): number {
+  return 60 * 60 * 1000
+}

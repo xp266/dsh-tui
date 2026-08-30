@@ -130,6 +130,7 @@ export interface ChatBridge {
   interrupt(): void
   subscribe(handler: (event: SessionEvent) => void): () => void
   listSessions(): Promise<SessionSummary[]>
+  onSessionListChanged(listener: () => void): () => void
   openSession(id: string): Promise<void>
   newSession(): Promise<void>
   archiveSession(id: string): Promise<void>
@@ -185,24 +186,43 @@ interface CachedList<T> {
   get(force?: boolean): Promise<T[]>
   invalidate(): void
   clear(): void
+  onRefresh(listener: () => void): () => void
 }
 
-function cachedList<T>(load: () => Promise<T[]>, ttlMs: number, options: { staleWhileRevalidate?: boolean } = {}): CachedList<T> {
+const INVALIDATE_REFRESH_DELAY_MS = 100
+
+function cachedList<T>(
+  load: () => Promise<T[]>,
+  ttlMs: number,
+  options: { staleWhileRevalidate?: boolean; refreshOnInvalidate?: boolean } = {},
+): CachedList<T> {
   let cache: T[] | undefined
   let refresh: Promise<T[]> | undefined
   let refreshedAt = 0
+  let invalidations = 0
+  let invalidateTimer: ReturnType<typeof setTimeout> | undefined
+  const listeners = new Set<() => void>()
   const startRefresh = (): Promise<T[]> => {
     if (refresh !== undefined) return refresh
+    const epoch = invalidations
     refresh = load()
       .then(records => {
         cache = records
-        refreshedAt = Date.now()
+        if (epoch === invalidations) refreshedAt = Date.now()
+        for (const listener of [...listeners]) listener()
         return records
       })
       .finally(() => {
         refresh = undefined
       })
     return refresh
+  }
+  const scheduleRefresh = (): void => {
+    if (invalidateTimer !== undefined) return
+    invalidateTimer = setTimeout(() => {
+      invalidateTimer = undefined
+      void startRefresh().catch(() => {})
+    }, INVALIDATE_REFRESH_DELAY_MS)
   }
   return {
     get(force = false) {
@@ -216,10 +236,18 @@ function cachedList<T>(load: () => Promise<T[]>, ttlMs: number, options: { stale
     },
     invalidate() {
       refreshedAt = 0
+      invalidations += 1
+      if (options.refreshOnInvalidate === true) scheduleRefresh()
     },
     clear() {
       cache = undefined
       refreshedAt = 0
+    },
+    onRefresh(listener) {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
     },
   }
 }
@@ -241,6 +269,12 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   const effortNames = new Map<string, string>()
   let currentCwd = process.cwd()
   void registerWorkspace(ctx, currentCwd)
+  const sessionList = cachedList(
+    () => computeSessionList(ctx),
+    SESSION_LIST_TTL_MS,
+    { staleWhileRevalidate: true, refreshOnInvalidate: true },
+  )
+  void sessionList.get().catch(() => {})
   let activeHandle: AgentHandle | undefined = await createAgent(currentCwd)
   let activeAgent = activeHandle.agent
   const commandsService = ctx.get('commands') as CommandsServiceLike | undefined
@@ -264,7 +298,6 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   } catch {}
   syncRegistry()
   const llm = ctx.llm
-  const sessionList = cachedList(() => computeSessionList(ctx), SESSION_LIST_TTL_MS)
   const efforts = cachedList(() => resolveEffortSummaries(currentSelection()), EFFORT_LIST_TTL_MS)
   const presetsList = cachedList(
     async () => {
@@ -685,7 +718,6 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
 
   void refreshEffortNames()
   void modelsList.get().catch(() => {})
-  void sessionList.get().catch(() => {})
 
   return {
     modelName: () => currentSelection()?.model ?? 'deepseek-v4-flash',
@@ -716,6 +748,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       } catch {}
     },
     listSessions,
+    onSessionListChanged: listener => sessionList.onRefresh(listener),
     openSession,
     newSession,
     archiveSession,

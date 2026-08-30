@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Ref } from 'react'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import type { CustomProviderForm, OfficialProvider } from '../../chat/models.ts'
@@ -58,6 +58,10 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
   const armedRef = useRef<string | null>(null)
   const armTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const providerItemRefs = useRef(new Map<DialogItem, OfficialProvider>())
+  const latestProviderItemMap = useRef(providerItemRefs.current)
+  useLayoutEffect(() => {
+    providerItemRefs.current = latestProviderItemMap.current
+  })
   const { items: directory, loading, error: loadError, reload } = useAsyncList(api.listProviderDirectory, 'providers')
   const disarm = () => {
     clearTimeout(armTimer.current)
@@ -280,7 +284,7 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
       ],
     },
   ]
-  providerItemRefs.current = providerItemMap
+  latestProviderItemMap.current = providerItemMap
   const providerFooter: DialogFooterLine[] = [
     ...(loading ? [loadingLine()] : []),
     ...DELETE_HINT,

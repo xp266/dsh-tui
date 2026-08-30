@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Ref } from 'react'
 import { COLORS } from '../../theme.ts'
 import { errorLine, loadingLine } from './status-lines.ts'
@@ -17,6 +17,7 @@ export interface SessionsApi {
   archiveSession(id: string): Promise<void>
   activeSessionId(): string
   newSession(): Promise<void>
+  onSessionsChanged?(listener: () => void): () => void
 }
 
 export interface SessionsDialogProps {
@@ -52,6 +53,16 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
   const armedRef = useRef<string | null>(null)
   const armTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const itemRows = useRef(new Map<DialogItem, ArmedRow>())
+  const pendingArchives = useRef(new Set<string>())
+  const loadSessions = useCallback(async () => {
+    const rows = await api.listSessions()
+    if (pendingArchives.current.size === 0) return rows
+    const present = new Set(rows.map(row => row.id))
+    for (const id of [...pendingArchives.current]) {
+      if (!present.has(id)) pendingArchives.current.delete(id)
+    }
+    return rows.filter(row => !pendingArchives.current.has(row.id))
+  }, [api])
   const selectSession = async (session: SessionSummary) => {
     await run(async () => {
       onBeforeSessionSelected?.()
@@ -60,7 +71,7 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
       onClose()
     })
   }
-  const { items, loading, error: loadError, reload, remove } = useAsyncList(api.listSessions, 'sessions')
+  const { items, loading, error: loadError, reload, remove } = useAsyncList(loadSessions, 'sessions')
   const sections = useMemo(() => groupSessions(items), [items])
   const disarm = () => {
     clearTimeout(armTimer.current)
@@ -70,8 +81,10 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
     }
   }
   useEffect(() => () => clearTimeout(armTimer.current), [])
+  useEffect(() => api.onSessionsChanged?.(() => reload()), [api, reload])
   const archive = (id: string) => {
     const wasActive = api.activeSessionId() === id
+    pendingArchives.current.add(id)
     remove(session => session.id === id)
     disarm()
     void api.archiveSession(id)
@@ -83,6 +96,7 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
         clearError()
       })
       .catch(cause => {
+        pendingArchives.current.delete(id)
         void run(async () => {
           throw cause instanceof Error ? cause : new Error(String(cause))
         })
@@ -122,7 +136,9 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
       rows.push({ items: [item] })
     }
   })
-  itemRows.current = rowRefs
+  useLayoutEffect(() => {
+    itemRows.current = rowRefs
+  })
   const footer: DialogFooterLine[] = [...(loading ? [loadingLine()] : []), ...ARCHIVE_HINT]
   const errors: DialogFooterLine[] = [
     ...(loadError !== null ? [errorLine(loadError)] : []),

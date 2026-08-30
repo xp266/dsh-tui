@@ -9,6 +9,7 @@ export function createFakeBridge(overrides: Partial<ChatBridge> = {}): ChatBridg
     interrupt: vi.fn(),
     subscribe: () => () => {},
     listSessions: vi.fn(async () => []),
+    onSessionListChanged: () => () => {},
     openSession: vi.fn(async () => {}),
     newSession: vi.fn(async () => {}),
     archiveSession: vi.fn(async () => {}),

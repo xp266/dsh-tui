@@ -20,6 +20,8 @@ import { createTuiExtensionPoint, exposeInteractionsFace } from './ui/extension-
 
 export const name = 'dsh-tui'
 
+const BOOT_LIST_TIMEOUT_MS = 10000
+
 async function initTheme(scope: ThemeSettingsScope | undefined): Promise<void> {
   const saved = scope?.get().mode
   applyTheme(saved === 'dark' || saved === 'light' ? saved : await detectBackgroundMode())
@@ -85,21 +87,24 @@ export function apply(ctx: Context) {
         app?.rerender(buildAppNode())
       })
     }
-    void createChatBridge(ctx)
-      .then(loaded => {
-        bridge = loaded
-        exposeInteractions = extensionPoint === undefined ? undefined : exposeInteractionsFace(extensionPoint, loaded.interactions.panels)
-        app?.rerender(buildAppNode())
-      })
-      .catch(error => {
-        console.error('chat bridge init failed', error)
-      })
     const themeScope = registerThemeSettings(ctx)
     void (async () => {
       const probed = await probeColorLevel()
       if (probed !== undefined) setColorLevel(probed)
       await initTheme(themeScope)
-    })().finally(() => start())
+      bridge = await createChatBridge(ctx)
+      exposeInteractions = extensionPoint === undefined ? undefined : exposeInteractionsFace(extensionPoint, bridge.interactions.panels)
+      await Promise.race([
+        bridge.listSessions().catch(() => {}),
+        new Promise<void>(resolve => {
+          setTimeout(resolve, BOOT_LIST_TIMEOUT_MS).unref()
+        }),
+      ])
+    })()
+      .catch(error => {
+        console.error('chat bridge init failed', error)
+      })
+      .finally(() => start())
     return () => {
       disposed = true
       exposeInteractions?.()

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import type { Ref } from 'react'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import type { ConfiguredModel, CustomProviderForm, DescribedModel, ModelEntryConfig, OfficialProvider } from '../../chat/models.ts'
@@ -46,7 +46,10 @@ export function ModelsDialog({ api, onClose, onModelSelected, onAddProvider, ref
   const { error, clearError, run } = useAsyncAction()
   const { items: models, loading, error: loadError, reload } = useAsyncList(api.listModels, 'models')
   const modelItemRefs = useRef(new Map<DialogItem, ConfiguredModel>())
-  modelItemRefs.current = new Map()
+  const modelItemMap = new Map<DialogItem, ConfiguredModel>()
+  useLayoutEffect(() => {
+    modelItemRefs.current = modelItemMap
+  })
   const [configTarget, setConfigTarget] = useState<ConfiguredModel | null>(null)
   const [configDraft, setConfigDraft] = useState<{ name: string; contextWindow: string; image: string }>({
     name: '',
@@ -158,7 +161,7 @@ export function ModelsDialog({ api, onClose, onModelSelected, onAddProvider, ref
       right: model.providerName,
       onPress: () => void selectModel(model),
     }
-    modelItemRefs.current.set(item, model)
+    modelItemMap.set(item, model)
     return { items: [item] }
   })
   const listFooter: DialogFooterLine[] = [

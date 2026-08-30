@@ -25,6 +25,7 @@ export function registerWindowServices(bridge: ChatBridge): () => void {
   }
   const sessions: SessionsApi = {
     listSessions: bridge.listSessions,
+    onSessionsChanged: bridge.onSessionListChanged,
     openSession: bridge.openSession,
     newSession: bridge.newSession,
     archiveSession: bridge.archiveSession,
