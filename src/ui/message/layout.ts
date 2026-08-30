@@ -8,12 +8,11 @@ import { renderToolDiffBody, toolDiffHeader } from './tool-diff.ts'
 import { segmentsKey } from '../../core/segments.ts'
 import type { Segment } from '../../core/segments.ts'
 import { COLORS } from '../../theme.ts'
+import { glyphs } from '../../terminal/glyphs.ts'
 import { PLAN_TOOL_NAME } from '../../chat/store.ts'
 import { BUBBLE_WIDTH_OFFSET, CHROME_MARGIN_X, HEADER_LABEL_COL, SCROLLBAR_COL_FROM_EDGE, SCROLLBAR_GAP_COLS } from '../../core/metrics.ts'
 
 export { HEADER_LABEL_COL }
-
-export const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
 export type RowKind = 'pad' | 'text' | 'header' | 'blank'
 
@@ -520,7 +519,7 @@ export function fitLabel(label: string, width: number): string {
 }
 
 export function headerSymbol(collapsed: boolean): string {
-  return collapsed ? '-' : '↓'
+  return collapsed ? glyphs.headerCollapsed : glyphs.headerExpanded
 }
 
 export interface ScrollbarGeometry {

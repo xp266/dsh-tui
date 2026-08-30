@@ -1,4 +1,5 @@
 import { textWidth } from '../core/text.ts'
+import { glyphs } from '../terminal/glyphs.ts'
 
 export const TODO_TOOL_NAME = 'todo_write'
 
@@ -10,9 +11,9 @@ export interface TodoItemLike {
 }
 
 const TODO_SYMBOLS: Record<TodoStatus, string> = {
-  pending: '[ ]',
-  in_progress: '[●]',
-  completed: '[√]',
+  pending: glyphs.todoPending,
+  in_progress: glyphs.todoInProgress,
+  completed: glyphs.todoDone,
 }
 
 export const TODO_HANG_COLS = textWidth(`${TODO_SYMBOLS.in_progress} `)

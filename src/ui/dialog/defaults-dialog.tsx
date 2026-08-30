@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import type { Ref } from 'react'
 import { permissionModeInfo } from '../../theme.ts'
+import type { ThemeMode } from '../../theme.ts'
 import { errorLine, loadingLine } from './status-lines.ts'
 import type { PresetSummary } from '../../chat/presets.ts'
 import { useAsyncAction } from '../hooks/use-async-action.ts'
@@ -16,6 +17,8 @@ export interface DefaultsApi {
   listPermissionPresets(): Promise<string[]>
   defaultPermission(): string
   setDefaultPermission(id: string): Promise<void>
+  themeMode(): ThemeMode
+  setThemeMode(mode: ThemeMode): Promise<void>
 }
 
 export interface DefaultsDialogProps {
@@ -58,17 +61,28 @@ export function DefaultsDialog({ api, onClose, ref }: DefaultsDialogProps) {
     }
     setPermissionDefault(api.defaultPermission())
   }
+  const [themeDefault, setThemeDefault] = useState<ThemeMode>(api.themeMode())
+  const saveTheme = async (mode: ThemeMode) => {
+    setThemeDefault(mode)
+    const result = await run(() => api.setThemeMode(mode))
+    if (result.ok) {
+      clearSaveError()
+      return
+    }
+    setThemeDefault(api.themeMode())
+  }
   const presetIds = presets.map(preset => preset.id)
   const presetNames = presets.map(preset => preset.name)
   const presetValue = presetNames[presetIds.indexOf(presetDefault)] ?? presetDefault
   const permissionNames = permissionIds.map(id => permissionModeInfo(id).name)
   const permissionValue = permissionNames[permissionIds.indexOf(permissionDefault)] ?? permissionDefault
-  const originalRef = useRef({ preset: api.defaultPresetId(), permission: api.defaultPermission() })
+  const originalRef = useRef({ preset: api.defaultPresetId(), permission: api.defaultPermission(), theme: api.themeMode() })
   const revertAndClose = async () => {
     const original = originalRef.current
     try {
       if (presetDefault !== original.preset) await api.setDefaultPreset(original.preset)
       if (permissionDefault !== original.permission) await api.setDefaultPermission(original.permission)
+      if (themeDefault !== original.theme) await api.setThemeMode(original.theme)
     } catch {
     }
     onClose()
@@ -99,6 +113,21 @@ export function DefaultsDialog({ api, onClose, ref }: DefaultsDialogProps) {
           onChange: name => {
             const id = permissionIds[permissionNames.indexOf(name)]
             if (id !== undefined) void savePermission(id)
+          },
+          spaced: true,
+        },
+      ],
+    },
+    {
+      items: [
+        {
+          type: 'select',
+          label: 'Theme',
+          value: themeDefault === 'light' ? 'Light' : 'Dark',
+          options: ['Dark', 'Light'],
+          onChange: name => {
+            const mode: ThemeMode = name === 'Light' ? 'light' : 'dark'
+            if (mode !== themeDefault) void saveTheme(mode)
           },
           spaced: true,
         },

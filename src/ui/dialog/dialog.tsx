@@ -88,7 +88,7 @@ export function Dialog({
   const contentWidth = Math.max(1, windowWidth - 4)
   const fixedHeight = search ? rowHeight(searchRow, contentWidth) : 0
   const focusMinRow = search ? 1 : 0
-  const focusMaxRow = Math.max(focusMinRow, displayRows.length - 1)
+  const focusMaxRow = Math.max(0, displayRows.length - 1)
   useEffect(() => {
     setFocus(current => {
       const next = clampFocus(displayRows, current, focusMinRow, focusMaxRow)
@@ -118,7 +118,7 @@ export function Dialog({
   const headerBottom = 1 + titleLines
   const contentTop = headerBottom + fixedHeight
   const safeFocus: DialogFocus = {
-    row: Math.min(Math.max(focus.row, focusMinRow), focusMaxRow),
+    row: Math.min(Math.max(focus.row, 0), focusMaxRow),
     col: Math.min(Math.max(focus.col, 0), selectableSpan(displayRows[focus.row])),
   }
   const contentRowsHeight = contentRows.reduce((sum, row) => sum + rowHeight(row, contentWidth), 0)
@@ -170,11 +170,10 @@ export function Dialog({
   }, [current?.type, safeFocus.row, safeFocus.col, displayRows.length])
   const editingFormInput = current !== undefined && current.type !== 'search' && asTextItem(current) !== null
   if (search && !editingFormInput) {
-    const onSearchRow = safeFocus.row === 0
-    const caret = onSearchRow ? Math.min(cursor, searchValue.length) : searchValue.length
+    const caret = Math.min(Math.max(0, cursor), searchValue.length)
     const start = caretScrollStart(searchValue, caret, contentWidth)
     setCursorPosition({
-      x: left + frameLeft + textWidth(searchValue.slice(start, Math.max(0, caret))),
+      x: left + frameLeft + textWidth(searchValue.slice(start, caret)),
       y: top + headerBottom,
     })
   } else {
@@ -333,7 +332,7 @@ export function Dialog({
         <Box flexDirection="column">
           {search && (
             <Box flexDirection="column">
-              {renderRow(searchRow, safeFocus.row === 0, contentWidth, headerBottom, frameLeft, null, 0, 0, safeFocus.row === 0 ? cursor : undefined)}
+              {renderRow(searchRow, safeFocus.row === 0, contentWidth, headerBottom, frameLeft, null, 0, 0, cursor)}
             </Box>
           )}
           <Box flexDirection="column" height={viewportHeight} overflow="hidden">

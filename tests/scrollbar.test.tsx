@@ -3,6 +3,7 @@ import { render } from 'ink-testing-library'
 import { Box } from 'ink'
 import { MessageList } from '../src/ui/message/message-list.tsx'
 import { scrollbarGeometry } from '../src/ui/message/layout.ts'
+import { SCROLL_THUMB_INDEX, SCROLL_TRACK_INDEX } from './helpers/colors.ts'
 import type { Message } from '../src/model/message.ts'
 
 const W = 40
@@ -48,9 +49,9 @@ describe('scrollbar rendering', () => {
       expect(padded[W - 2]).toBe(' ')
       expect(padded[W - 3]).not.toBe('')
     }
-    expect(raw[0]).toContain('\x1b[48;5;246m')
-    expect(raw[1]).toContain('\x1b[48;5;237m')
-    expect(visibleColOfColor(raw[0], '246')).toBe(W - 3)
+    expect(raw[0]).toContain(`\x1b[48;5;${SCROLL_THUMB_INDEX}m`)
+    expect(raw[1]).toContain(`\x1b[48;5;${SCROLL_TRACK_INDEX}m`)
+    expect(visibleColOfColor(raw[0], String(SCROLL_THUMB_INDEX))).toBe(W - 3)
   })
 
   it('thumb moves to bottom at max scroll', () => {
@@ -58,8 +59,8 @@ describe('scrollbar rendering', () => {
     const total = messages.length * 4
     const maxScroll = total - H
     const { raw } = framesAt(messages, maxScroll)
-    expect(raw[H - 1]).toContain('\x1b[48;5;246m')
-    expect(raw[0]).not.toContain('\x1b[48;5;246m')
+    expect(raw[H - 1]).toContain(`\x1b[48;5;${SCROLL_THUMB_INDEX}m`)
+    expect(raw[0]).not.toContain(`\x1b[48;5;${SCROLL_THUMB_INDEX}m`)
     void scrollbarGeometry
   })
 

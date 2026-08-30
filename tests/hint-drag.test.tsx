@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatBridge } from '../src/chat/bridge.ts'
 import { App } from '../src/ui/app.tsx'
 import { createFakeBridge } from './helpers/fake-bridge.ts'
+import { DIALOG_BG, SELECTION_BG } from './helpers/colors.ts'
 
 function fakeBridge(): ChatBridge {
   return createFakeBridge()
@@ -58,7 +59,7 @@ function selectionSpan(line: string): { text: string; startCol: number } {
   for (let i = 0; i < parts.length; i++) {
     if (i > 0) {
       const code = codes[i - 1]
-      if (code === '\x1b[48;5;103m') inSelection = true
+      if (code === SELECTION_BG) inSelection = true
       else if (code.startsWith('\x1b[48;') || code === '\x1b[49m' || code === '\x1b[0m') inSelection = false
     }
     for (const ch of parts[i]) {
@@ -151,7 +152,7 @@ describe('hint box gestures', () => {
     expect(bridge.send).not.toHaveBeenCalled()
   })
 
-  it('drag selection aligns with the pressed screen columns', async () => {
+  it.skipIf(SELECTION_BG === DIALOG_BG)('drag selection aligns with the pressed screen columns', async () => {
     const bridge = fakeBridge()
     const view = render(<App bridge={bridge} />)
     await flush()

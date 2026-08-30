@@ -87,6 +87,8 @@ function defaultsApi() {
     listPermissionPresets: vi.fn(async () => ['workspace-write', 'read-only']),
     defaultPermission: () => 'workspace-write',
     setDefaultPermission: vi.fn(async () => {}),
+    themeMode: () => 'dark' as const,
+    setThemeMode: vi.fn(async () => {}),
   }
 }
 
@@ -107,11 +109,15 @@ describe('defaults dialog submit and cancel', () => {
       stdin.write('\u001b[B')
     })
     act(() => {
+      stdin.write('\u001b[B')
+    })
+    act(() => {
       stdin.write('\r')
     })
     expect(onClose).toHaveBeenCalledTimes(1)
     expect(api.setDefaultPreset).not.toHaveBeenCalled()
     expect(api.setDefaultPermission).not.toHaveBeenCalled()
+    expect(api.setThemeMode).not.toHaveBeenCalled()
   })
 
   it('reverts unsaved changes when Cancel is pressed', async () => {
@@ -128,6 +134,9 @@ describe('defaults dialog submit and cancel', () => {
     })
     await sleep(20)
     expect(api.setDefaultPreset).toHaveBeenCalledWith('code')
+    act(() => {
+      stdin.write('\u001b[B')
+    })
     act(() => {
       stdin.write('\u001b[B')
     })

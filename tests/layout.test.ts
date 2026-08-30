@@ -3,6 +3,7 @@ import type { Message } from '../src/model/message.ts'
 import { buildRowIndex, fitLabel, rowCount, rowInfoAt, rowIndexFor, selectionText } from '../src/ui/message/layout.ts'
 import type { LineSelection } from '../src/model/selection.ts'
 import { textWidth } from '../src/core/text.ts'
+import { COLORS } from '../src/theme.ts'
 import { createMdPalette } from '../src/ui/message/md/palette.ts'
 import type { MarkStyle, Segment } from '../src/core/segments.ts'
 
@@ -226,7 +227,7 @@ describe('compaction bubble layout', () => {
     expect(rowInfoAt([running], WIDTH, 0)).toMatchObject({ kind: 'pad', background: true })
     const header = rowInfoAt([running], WIDTH, 1)
     expect(header).toMatchObject({ kind: 'text', text: 'Compact', colStart: 4, background: true })
-    expect(header?.segments?.[0]).toMatchObject({ style: { color: '#cc7e25', bold: true } })
+    expect(header?.segments?.[0]).toMatchObject({ style: { color: COLORS.sectionHeader, bold: true } })
     expect(header?.spinner ?? false).toBe(false)
     expect(rowInfoAt([running], WIDTH, 2)).toMatchObject({ kind: 'pad' })
     expect(rowInfoAt([running], WIDTH, 3)).toMatchObject({ kind: 'blank' })
@@ -245,7 +246,7 @@ describe('compaction bubble layout', () => {
     expect(rowInfoAt([done], WIDTH, 0)).toMatchObject({ kind: 'pad', background: true })
     const header = rowInfoAt([done], WIDTH, 1)
     expect(header).toMatchObject({ kind: 'text', text: 'Compact', background: true })
-    expect(header?.segments?.[0]?.style).toMatchObject({ color: '#cc7e25', bold: true })
+    expect(header?.segments?.[0]?.style).toMatchObject({ color: COLORS.sectionHeader, bold: true })
     expect(header?.spinner).toBeUndefined()
     expect(rowInfoAt([done], WIDTH, 2)).toMatchObject({ kind: 'pad' })
     const bodyRow = rowInfoAt([done], WIDTH, 3)
@@ -270,7 +271,7 @@ describe('compaction bubble layout', () => {
     expect(header?.kind).toBe('text')
     const errorBody = rowInfoAt([failed], WIDTH, 3)
     expect(errorBody?.text).toBe('error: summary diverged')
-    expect(errorBody?.segments?.[0]?.style).toMatchObject({ color: '#ff6b6b' })
+    expect(errorBody?.segments?.[0]?.style).toMatchObject({ color: COLORS.errorText })
   })
 
   it('never emits control characters into rendered summary rows', () => {

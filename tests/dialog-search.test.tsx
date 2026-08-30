@@ -177,4 +177,27 @@ describe('dialog search', () => {
     expect(frame).toContain('XYZ012')
     expect(frame).not.toContain('abcde')
   })
+
+  it('moves the hardware cursor when arrows move the search caret', async () => {
+    const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
+    const instance = renderSearch(rows(1))
+    await sleep(40)
+    act(() => {
+      instance.stdin.write('ab')
+    })
+    await sleep(80)
+    act(() => {
+      instance.stdin.write('\u001b[D')
+    })
+    await sleep(80)
+    act(() => {
+      instance.stdin.write('\u001b[D')
+    })
+    await sleep(80)
+    const tail = instance.frames.slice(-8).join('')
+    instance.unmount()
+    expect(tail).toContain('38;5;18')
+    expect(tail).toContain('38;5;17')
+    expect(tail).toContain('38;5;16')
+  })
 })

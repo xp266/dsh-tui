@@ -1,7 +1,8 @@
 import { Box, Text } from 'ink'
 import { memo } from 'react'
 import { COLORS } from '../../theme.ts'
-import { headerSymbol, SPINNER_FRAMES, HEADER_LABEL_COL } from './layout.ts'
+import { glyphs } from '../../terminal/glyphs.ts'
+import { headerSymbol, HEADER_LABEL_COL } from './layout.ts'
 import type { RowInfo } from './layout.ts'
 import { SelectableText } from '../selection.tsx'
 
@@ -10,7 +11,7 @@ function TickGlyph({ y, col, color, tick }: { y: number; col: number; color?: st
     <SelectableText
       y={y}
       col={col}
-      text={`${SPINNER_FRAMES[tick % SPINNER_FRAMES.length]} `}
+      text={`${glyphs.spinnerFrames[tick % glyphs.spinnerFrames.length]} `}
       color={color}
       messageLayer
     />

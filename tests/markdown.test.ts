@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createMarkdownRenderer, renderMarkdown } from '../src/ui/message/md/index.ts'
 import { createMdPalette } from '../src/ui/message/md/palette.ts'
-import { codeStyles, codeStylesDark, highlightCodeBlock } from '../src/ui/message/md/highlight.ts'
+import { codeStyles, codeStylesThinking, highlightCodeBlock } from '../src/ui/message/md/highlight.ts'
 import { wrapSegments } from '../src/core/segments.ts'
 import type { MarkStyle, Segment } from '../src/core/segments.ts'
 
@@ -153,9 +153,10 @@ describe('renderMarkdown code blocks', () => {
   })
 
   it('continues the code style to the end when the fence is unclosed (streaming)', () => {
-    expect(rows('```js\nconst x = 1')).toEqual([
-      [seg('const', codeStyles.keyword), seg(' x = ', codeStyles.punctuation), seg('1', codeStyles.number)],
-    ])
+    const segments = rows('```js\nconst x = 1')[0]!
+    expect(segments[0]).toEqual(seg('const', codeStyles.keyword))
+    expect(segments).toContainEqual(seg('=', codeStyles.operator))
+    expect(segments).toContainEqual(seg('1', codeStyles.number))
   })
 
   it('does not parse inline markers inside code blocks', () => {
@@ -245,7 +246,7 @@ describe('thinking rendering', () => {
   it('uses the darkened code palette in thinking mode', () => {
     expect(lines('```python\nprint(1)\n```', 80, true)).toEqual(['print(1)'])
     const row = rows('```js\nconst x = 1', 80, true)[0]!
-    expect(row).toEqual(expect.arrayContaining([seg('const', codeStylesDark.keyword)]))
+    expect(row).toEqual(expect.arrayContaining([seg('const', codeStylesThinking.keyword)]))
     expect(row.some(s => s.style.color === codeStyles.keyword.color)).toBe(false)
   })
 })

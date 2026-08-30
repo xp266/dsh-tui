@@ -1,7 +1,7 @@
 export {
   clearHighlightCache,
   codeStyles,
-  codeStylesDark,
+  codeStylesThinking,
   highlightCodeBlock,
 } from './highlight.ts'
 export { createMdPalette } from './palette.ts'

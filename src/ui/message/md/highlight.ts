@@ -234,15 +234,15 @@ const ROLE_STYLE_LIGHT: Record<CodeRole, () => MarkStyle> = {
   strikeFlag: () => ({ strike: true }),
 }
 
-const ROLE_STYLE_DARK: Record<CodeRole, () => MarkStyle> = {
-  comment: () => ({ color: COLORS.codeCommentDark, italic: true }),
-  string: () => ({ color: COLORS.codeStringDark }),
-  number: () => ({ color: COLORS.codeNumberDark }),
-  constant: () => ({ color: COLORS.codeConstantDark }),
-  keyword: () => ({ color: COLORS.codeKeywordDark }),
-  function: () => ({ color: COLORS.codeFunctionDark }),
-  type: () => ({ color: COLORS.codeTypeDark }),
-  variable: () => ({ color: COLORS.codeVariableDark }),
+const ROLE_STYLE_THINKING: Record<CodeRole, () => MarkStyle> = {
+  comment: () => ({ color: COLORS.thinkCodeComment, italic: true }),
+  string: () => ({ color: COLORS.thinkCodeString }),
+  number: () => ({ color: COLORS.thinkCodeNumber }),
+  constant: () => ({ color: COLORS.thinkCodeConstant }),
+  keyword: () => ({ color: COLORS.thinkCodeKeyword }),
+  function: () => ({ color: COLORS.thinkCodeFunction }),
+  type: () => ({ color: COLORS.thinkCodeType }),
+  variable: () => ({ color: COLORS.thinkCodeVariable }),
   operator: () => ({ color: COLORS.thinkCodePlain }),
   added: () => ({ color: COLORS.success }),
   removed: () => ({ color: COLORS.errorText }),
@@ -263,7 +263,7 @@ function buildStyles(roleFns: Record<CodeRole, () => MarkStyle>): Record<string,
 }
 
 export const codeStyles = buildStyles(ROLE_STYLE_LIGHT)
-export const codeStylesDark = buildStyles(ROLE_STYLE_DARK)
+export const codeStylesThinking = buildStyles(ROLE_STYLE_THINKING)
 
 const LANGUAGE_ALIASES: Record<string, string> = {
   py: 'python',
@@ -479,7 +479,7 @@ export function highlightCodeBlock(text: string, lang: string, thinking = false,
       && text.startsWith(state.source)
       && state.source.endsWith('\n')
     try {
-      const styles = thinking ? codeStylesDark : codeStyles
+      const styles = thinking ? codeStylesThinking : codeStyles
       const plain: MarkStyle = { color: thinking ? COLORS.thinkCodePlain : COLORS.mdCodePlain }
       if (incremental) {
         const delta = text.slice(state!.source.length)

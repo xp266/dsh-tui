@@ -8,7 +8,7 @@ import { COLORS } from '../../theme.ts'
 import { CHROME_MARGIN_X, CHROME_TEXT_X } from '../../core/metrics.ts'
 import { textWidth, truncate } from '../../core/text.ts'
 import { useStatusLineTexts } from '../contributions.ts'
-import { SPINNER_FRAMES } from '../message/layout.ts'
+import { glyphs } from '../../terminal/glyphs.ts'
 import { Region } from '../region.tsx'
 import { SelectableText } from '../selection.tsx'
 
@@ -53,7 +53,7 @@ export function StatusBar({
 }: StatusBarProps) {
   const badge = running && todoBadge !== undefined ? `[Task ${todoBadge.current}/${todoBadge.total}] ` : ''
   const leftText = busy ? `${badge}${agentStatusLabel(activity, panel, retryStatus)}` : cwdLabel(bridge)
-  const extras = useStatusLineTexts(columns).join(' · ')
+  const extras = useStatusLineTexts(columns).join(` ${glyphs.separator} `)
   const extraCol = CHROME_TEXT_X + textWidth(leftText) + 2
   const hint = busy ? (escArmed ? WORKING_ARMED_HINT : WORKING_HINT) : undefined
   const hintCol = extraCol + (extras === '' ? 0 : textWidth(extras) + 2)
@@ -100,7 +100,7 @@ function SpinnerGlyph({ tick }: { tick: number }) {
     <SelectableText
       y={0}
       col={CHROME_MARGIN_X}
-      text={`${SPINNER_FRAMES[tick % SPINNER_FRAMES.length]} `}
+      text={`${glyphs.spinnerFrames[tick % glyphs.spinnerFrames.length]} `}
       color={COLORS.workspaceWriteText}
     />
   )
@@ -114,8 +114,8 @@ function agentStatusLabel(activity: AgentActivity, panel: ActivePanel | null, re
     const remain = retryStatus.untilTs === 0
       ? undefined
       : Math.max(0, Math.ceil((retryStatus.untilTs - Date.now()) / 1000))
-    const progress = `(${retryStatus.attempt}/${retryStatus.maxRetries} · ${retryStatus.code})`
-    return remain === undefined ? `Retrying… ${progress}` : `Retrying in ${remain}s ${progress}`
+    const progress = `(${retryStatus.attempt}/${retryStatus.maxRetries} ${glyphs.separator} ${retryStatus.code})`
+    return remain === undefined ? `Retrying${glyphs.ellipsis} ${progress}` : `Retrying in ${remain}s ${progress}`
   }
   return WORKING_PHASE_LABEL[activity.phase]
 }
@@ -133,7 +133,7 @@ function statsText(stats: TokenStats, streamedChars = 0): string {
     : stats.contextPercent
   const context = `Context ${contextPercent}%`
   const hit = `Hit ${stats.hitPercent}%`
-  const tokens = `${formatTokens(stats.input)} → ${formatTokens(stats.output + estimate)}`
+  const tokens = `${formatTokens(stats.input)} ${glyphs.tokenArrow} ${formatTokens(stats.output + estimate)}`
   return `${context} | ${hit} | ${tokens}`
 }
 

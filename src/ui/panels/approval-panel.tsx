@@ -6,6 +6,7 @@ import { wrapLines, padToWidth, textWidth } from '../../core/text.ts'
 import { mergeRuns } from '../../core/segments.ts'
 import type { Segment } from '../../core/segments.ts'
 import { COLORS } from '../../theme.ts'
+import { glyphs } from '../../terminal/glyphs.ts'
 import { CHROME_MARGIN_X, CHROME_PAD_X, CHROME_TEXT_X } from '../../core/metrics.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
 import { SelectableText } from '../selection.tsx'
@@ -191,7 +192,9 @@ export function PanelSurface({ columns, rows, body, bodyStart, background, block
     <Region>
       <Box position="absolute" top={0} left={0} width={columns} height={rows}>
         <Box position="absolute" top={bodyStart - 1} left={CHROME_MARGIN_X} width={blockWidth}>
-          <Text color={background}>{'▄'.repeat(blockWidth)}</Text>
+          {glyphs.halfBlockCaps
+            ? <Text color={background}>{glyphs.blockCapTop.repeat(blockWidth)}</Text>
+            : <Text backgroundColor={background}>{' '.repeat(blockWidth)}</Text>}
         </Box>
         {body.map((row, index) => {
           const padded = padRow(row, blockWidth - CHROME_PAD_X * 2)
@@ -213,7 +216,9 @@ export function PanelSurface({ columns, rows, body, bodyStart, background, block
           )
         })}
         <Box position="absolute" top={bodyStart + body.length} left={CHROME_MARGIN_X} width={blockWidth}>
-          <Text color={background}>{'▀'.repeat(blockWidth)}</Text>
+          {glyphs.halfBlockCaps
+            ? <Text color={background}>{glyphs.blockCapBottom.repeat(blockWidth)}</Text>
+            : <Text backgroundColor={background}>{' '.repeat(blockWidth)}</Text>}
         </Box>
       </Box>
     </Region>

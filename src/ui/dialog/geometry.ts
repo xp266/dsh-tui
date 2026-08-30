@@ -1,4 +1,5 @@
 import { textWidth, truncate, wrapLines } from '../../core/text.ts'
+import { glyphs } from '../../terminal/glyphs.ts'
 import type { DialogFocus, DialogRow } from './items.ts'
 import { isSelectableRow } from './items.ts'
 import { widgetOf } from '../widgets/registry.ts'
@@ -28,7 +29,7 @@ function wrapFooter(footer: DialogFooterLine[] | undefined, width: number): Foot
     const wrapped = wrapLines(line.text, width)
     const capped = wrapped.slice(0, FOOTER_MAX_LINES_PER_ENTRY)
     if (wrapped.length > FOOTER_MAX_LINES_PER_ENTRY) {
-      capped[1] = truncate(capped[1] ?? '', Math.max(1, width - 1)) + '…'
+      capped[1] = truncate(capped[1] ?? '', Math.max(1, width - glyphs.ellipsis.length)) + glyphs.ellipsis
     }
     for (const text of capped) rows.push({ text, color: line.color })
   }

@@ -1,4 +1,4 @@
-import './terminal/truecolor.ts'
+import './terminal/capabilities.ts'
 import { render } from 'ink'
 import type { Context } from '@deepseek-ai/cordis'
 import { App } from './ui/app.tsx'
@@ -7,6 +7,10 @@ import type { ChatBridge } from './chat/bridge.ts'
 import { createScreenCapture } from './terminal/screen.ts'
 import { writeCursorShape } from './terminal/cursor-shape.ts'
 import { startHotTheme } from './hot-theme.ts'
+import { applyTheme } from './apply-theme.ts'
+import { detectBackgroundMode } from './terminal/background.ts'
+import { registerThemeSettings } from './theme-settings.ts'
+import type { ThemeSettingsScope } from './theme-settings.ts'
 import { warmLanguages, onLanguagesWarm, clearHighlightCache } from './ui/message/md/highlight.ts'
 import { clearMarkdownBlockCache } from './ui/message/md/engine.ts'
 import { clearLayoutCache } from './ui/message/layout.ts'
@@ -14,6 +18,11 @@ import { warmRenderPipeline } from './ui/message/warmup.ts'
 import { createTuiExtensionPoint, exposeInteractionsFace } from './ui/extension-point.ts'
 
 export const name = 'dsh-tui'
+
+async function initTheme(scope: ThemeSettingsScope | undefined): Promise<void> {
+  const saved = scope?.get().mode
+  applyTheme(saved === 'dark' || saved === 'light' ? saved : await detectBackgroundMode())
+}
 
 export const inject = ['agentLoop', 'agents', 'sessions', 'workspaceRegistry', 'llm', 'settings', 'credentials', 'agentDefaultModel']
 
@@ -84,7 +93,8 @@ export function apply(ctx: Context) {
       .catch(error => {
         console.error('chat bridge init failed', error)
       })
-    start()
+    const themeScope = registerThemeSettings(ctx)
+    void initTheme(themeScope).finally(() => start())
     return () => {
       disposed = true
       exposeInteractions?.()

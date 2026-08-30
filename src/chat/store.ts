@@ -5,6 +5,7 @@ import { reasoningFromBlocks, textFromBlocks } from './blocks.ts'
 import type { ChatToolPresenter, ToolResultLike } from './bridge.ts'
 import { DIFF_TOOL_NAMES } from './bridge.ts'
 import type { CollapsibleMessage } from '../model/message.ts'
+import { glyphs } from '../terminal/glyphs.ts'
 import { extractPartialJsonFields } from './partial-json.ts'
 import { diffCallFromArgs, diffGroupsFromTexts, diffsFromResultMeta, diffLineGroups, flattenText, truncateSummary } from './tool-view.ts'
 import {
@@ -407,7 +408,7 @@ export function reduceChatEvent(
           label: 'Thinking',
           body: reasoning,
           running: false,
-          collapsed: false,
+          collapsed: true,
           thinking: true,
         }
         const anchor = turn.assistantIds.get(step)
@@ -471,7 +472,7 @@ export function reduceChatEvent(
         if (name === 'compact' && data.kind !== 'error') return { messages, turn, changed: false }
         const text = data.text ?? ''
         if (data.kind !== 'error' && text.trim() === '') return { messages, turn, changed: false }
-        const label = name === '' ? '' : `${name} · `
+        const label = name === '' ? '' : `${name} ${glyphs.separator} `
         messages.push({
           kind: 'bubble',
           id: nextId('cmd'),
@@ -552,7 +553,7 @@ function appendChunk(
     }
     const fresh = nextId('think')
     ids.set(step, fresh)
-    messages.push({ kind: 'collapsible', id: fresh, label: 'Thinking', body: text, running: true, collapsed: false, thinking: true })
+    messages.push({ kind: 'collapsible', id: fresh, label: 'Thinking', body: text, running: true, collapsed: true, thinking: true })
     return { messages, turn, changed: true }
   }
   let changed = false

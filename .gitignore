@@ -3,3 +3,4 @@ lib/
 *.tsbuildinfo
 .opencode/
 .DS_Store
+docs/

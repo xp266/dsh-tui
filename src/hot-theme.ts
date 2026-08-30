@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs'
-import { COLORS, PERMISSION_MODES } from './theme.ts'
+import { replacePalettes } from './theme.ts'
+import type { Theme, ThemeMode } from './theme.ts'
+import { env } from './env.ts'
 import { clearHighlightCache } from './ui/message/md/highlight.ts'
 import { clearMarkdownBlockCache } from './ui/message/md/engine.ts'
 import { clearLayoutCache } from './ui/message/layout.ts'
@@ -11,7 +13,7 @@ export interface HotThemeHandle {
 }
 
 export function startHotTheme(onChange: () => void): HotThemeHandle | undefined {
-  if (process.env.DSH_TUI_HOT_THEME !== '1') return undefined
+  if (!env.hotTheme) return undefined
   const themePath = new URL('../src/theme.ts', import.meta.url)
   let lastSource = ''
   try {
@@ -32,11 +34,9 @@ export function startHotTheme(onChange: () => void): HotThemeHandle | undefined 
     lastSource = source
     try {
       const fresh = (await import(`../src/theme.ts?t=${Date.now()}`)) as {
-        COLORS: typeof COLORS
-        PERMISSION_MODES: typeof PERMISSION_MODES
+        palettes: Record<ThemeMode, Theme>
       }
-      Object.assign(COLORS, fresh.COLORS)
-      Object.assign(PERMISSION_MODES, fresh.PERMISSION_MODES)
+      replacePalettes(fresh.palettes)
       clearLayoutCache()
       clearHighlightCache()
       clearMarkdownBlockCache()

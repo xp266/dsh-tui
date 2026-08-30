@@ -1,7 +1,7 @@
 import { Box, Text } from 'ink'
 import { COLORS } from '../../theme.ts'
 import { locToPoint, textWidth, wrapLines } from '../../core/text.ts'
-import { caretNonceColor } from '../../core/caret-nonce.ts'
+import { caretNonceBold, caretNonceColor, caretNonceText } from '../../core/caret-nonce.ts'
 import { SelectableText } from '../selection.tsx'
 import { registerWidget } from './registry.ts'
 import { INPUT_MAX_ROWS } from '../dialog/sizes.ts'
@@ -51,7 +51,12 @@ registerWidget<InputItem>('input', {
     }
     parts.push(
       <Box key="pad" height={1}>
-        <Text color={focused && cursor !== undefined ? caretNonceColor(cursor) : undefined}>{' '}</Text>
+        <Text
+          color={focused && cursor !== undefined ? caretNonceColor(cursor) : undefined}
+          bold={focused && cursor !== undefined ? caretNonceBold(cursor) : undefined}
+        >
+          {focused && cursor !== undefined ? caretNonceText(cursor) : ' '}
+        </Text>
       </Box>,
     )
     return <Box flexDirection="column">{parts}</Box>

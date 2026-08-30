@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import type { ChatBridge } from '../src/chat/bridge.ts'
-import { SPINNER_FRAMES } from '../src/ui/message/layout.ts'
+import { glyphs } from '../src/terminal/glyphs.ts'
 import { App } from '../src/ui/app.tsx'
 import { createFakeBridge } from './helpers/fake-bridge.ts'
 
@@ -20,7 +20,7 @@ function stripAnsi(text: string): string {
   return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
 }
 
-const SPINNER_CHARS = new Set(SPINNER_FRAMES.join(''))
+const SPINNER_CHARS = new Set(glyphs.spinnerFrames.join(''))
 
 describe('tool streaming bubble', () => {
   it('shows the spinner next to the tool name during argument streaming and drops it on commit', async () => {

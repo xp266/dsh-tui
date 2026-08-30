@@ -42,6 +42,8 @@ export function createFakeBridge(overrides: Partial<ChatBridge> = {}): ChatBridg
     setDefaultPermission: vi.fn(async () => {}),
     defaultPresetId: () => 'standard',
     setDefaultPreset: vi.fn(async () => {}),
+    themePreference: () => 'dark',
+    setThemePreference: vi.fn(async () => {}),
     tokenStats: () => ({ input: 0, output: 0, hitPercent: 0, contextPercent: 0 }),
     toolPresenter: { call: () => undefined, result: () => undefined, argsJson: () => undefined },
     interactions: new InteractionStore(),

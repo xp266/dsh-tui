@@ -127,6 +127,14 @@ export function useDialogInput(options: DialogInputOptions): void {
       const v = state.searchValue
       const onSearchRow = state.focus.row === 0
       const caret = onSearchRow ? Math.max(0, Math.min(state.cursor, v.length)) : v.length
+      if (isLeft || isRight) {
+        const next = Math.max(0, Math.min(v.length, caret + (isRight ? 1 : -1)))
+        if (next !== caret) {
+          state.cursor = next
+          setCursor(next)
+        }
+        return
+      }
       const applyEdit = (next: { value: string; cursor: number } | null): boolean => {
         if (next === null) return false
         requestSearch(next.value)

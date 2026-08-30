@@ -2,11 +2,12 @@ import { inputLayout, moveCaretLine } from '../../core/composer-layout.ts'
 import { INPUT_WIDTH_OFFSET } from '../../core/metrics.ts'
 import { textWidth, wrapLines } from '../../core/text.ts'
 import { editInsert, editBackspace } from '../../core/edit.ts'
-import { caretNonceColor } from '../../core/caret-nonce.ts'
+import { caretNonceBold, caretNonceColor, caretNonceText } from '../../core/caret-nonce.ts'
 import type { EditState } from '../../core/edit.ts'
 import { mergeRuns } from '../../core/segments.ts'
 import type { MarkStyle, Segment } from '../../core/segments.ts'
 import { COLORS } from '../../theme.ts'
+import { glyphs } from '../../terminal/glyphs.ts'
 import type { AskQuestionItemLike, AskUserQuestionAnswerItemLike, AskUserQuestionRequestLike } from '../../chat/interactions.ts'
 
 const questionStyle = (): MarkStyle => ({ color: COLORS.panelQuestionText, bold: true })
@@ -288,14 +289,14 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
     const draft = state.drafts[state.page]!
     for (let i = 0; i < rows; i++) {
       const focused = cursorRow === i
-      const marker = focused ? '❯' : ' '
+      const marker = focused ? glyphs.focusMarker : ' '
       const num = `${i + 1}.`
       if (focused) focusInBelow = below.length
       hitsInBelow.push({ line: below.length, optionIndex: i })
       if (i === rows - 1) {
         const checked = draft.customChecked
-        const box = multi ? (checked ? '[✓]' : '[ ]') : ''
-        const tick = !multi && checked ? '  ✓' : ''
+        const box = multi ? (checked ? glyphs.checkboxOn : glyphs.checkboxOff) : ''
+        const tick = !multi && checked ? `  ${glyphs.tick}` : ''
         below.push(lineOf([
           seg(marker, focused ? checkStyle() : undefined),
           ' ',
@@ -316,7 +317,7 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
         const visible = field.lines.slice(firstVisible, firstVisible + MAX_FIELD_ROWS)
         const fieldStart = below.length
         for (const [index, line] of visible.entries()) {
-          const nonce = editing && index === visible.length - 1 ? seg(' ', { color: caretNonceColor(cursor) }) : null
+          const nonce = editing && index === visible.length - 1 ? seg(caretNonceText(cursor), { color: caretNonceColor(cursor), bold: caretNonceBold(cursor) }) : null
           below.push(lineOf([' '.repeat(labX), seg(line, descriptionStyle()), ...(nonce === null ? [] : [nonce])]))
         }
         if (editing) {
@@ -328,8 +329,8 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
       } else {
         const option = question.options![i]!
         const chosen = draft.selected.includes(option.label)
-        const box = multi ? (chosen ? '[✓]' : '[ ]') : ''
-        const tick = !multi && chosen ? '  ✓' : ''
+        const box = multi ? (chosen ? glyphs.checkboxOn : glyphs.checkboxOff) : ''
+        const tick = !multi && chosen ? `  ${glyphs.tick}` : ''
         below.push(lineOf([
           seg(marker, focused ? checkStyle() : undefined),
           ' ',
@@ -362,13 +363,13 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
         const maxStart = detail.length - contentRows
         const start = Math.max(0, Math.min(state.detailScroll[state.page]!, maxStart))
         if (start > 0) {
-          body.push(lineOf([seg(`… ${start} lines above`, descriptionStyle())]))
+          body.push(lineOf([seg(`${glyphs.ellipsis} ${start} lines above`, descriptionStyle())]))
         }
         for (const line of detail.slice(start, start + contentRows)) {
           body.push(lineOf(['  ', seg(line, descriptionStyle())]))
         }
         if (start + contentRows < detail.length) {
-          body.push(lineOf([seg(`… ${detail.length - start - contentRows} more lines`, descriptionStyle())]))
+          body.push(lineOf([seg(`${glyphs.ellipsis} ${detail.length - start - contentRows} more lines`, descriptionStyle())]))
         }
       }
     }
@@ -406,8 +407,8 @@ function finalizeCaret(
 function legend(page: number, total: number): Segment[] {
   const prefix = `${page + 1}/${total}`
   const text = page + 1 === total
-    ? `${prefix}  ⇆ page  enter submit  esc close`
-    : `${prefix}  ⇆ page  ⇅ wrap  enter select  esc close`
+    ? `${prefix}  ${glyphs.pageFlip} page  enter submit  esc close`
+    : `${prefix}  ${glyphs.pageFlip} page  ${glyphs.wrapArrows} wrap  enter select  esc close`
   return lineOf([seg(text, descriptionStyle())])
 }
 

@@ -2,7 +2,7 @@ import { Box, Text } from 'ink'
 import { COLORS } from '../../theme.ts'
 import { caretScrollStart, padToWidth, textWidth, truncate } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
-import { caretNonceColor } from '../../core/caret-nonce.ts'
+import { caretNonceBold, caretNonceColor, caretNonceText } from '../../core/caret-nonce.ts'
 import { registerWidget } from './registry.ts'
 import type { DialogItem } from '../dialog/items.ts'
 
@@ -27,7 +27,7 @@ registerWidget<SearchItem>('search', {
     api.setCursor(next)
     return true
   },
-  render({ item, focused, cursor, width, y, x, clip }) {
+  render({ item, cursor, width, y, x, clip }) {
     const isEmpty = item.value === ''
     const start = caretScrollStart(item.value, cursor ?? item.value.length, width)
     const text = isEmpty ? 'Search' : truncate(item.value.slice(start), width)
@@ -46,7 +46,12 @@ registerWidget<SearchItem>('search', {
         <SelectableText y={y} col={x} text={padToWidth(text, width)} color={isEmpty ? COLORS.dialogHintText : undefined} />
       </Box>
         <Box height={1}>
-          <Text color={focused && cursor !== undefined ? caretNonceColor(cursor) : undefined}>{' '}</Text>
+          <Text
+            color={cursor !== undefined ? caretNonceColor(cursor) : undefined}
+            bold={cursor !== undefined ? caretNonceBold(cursor) : undefined}
+          >
+            {cursor !== undefined ? caretNonceText(cursor) : ' '}
+          </Text>
         </Box>
       </Box>
     )

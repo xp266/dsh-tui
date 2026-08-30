@@ -6,7 +6,8 @@ import { COLORS, permissionModeInfo } from '../theme.ts'
 import { writeOsc52 } from '../terminal/clipboard.ts'
 import type { ChatBridge } from '../chat/bridge.ts'
 import type { AgentActivity } from '../chat/store.ts'
-import { rowIndexFor, selectionText, SPINNER_FRAMES } from './message/layout.ts'
+import { rowIndexFor, selectionText } from './message/layout.ts'
+import { glyphs } from '../terminal/glyphs.ts'
 import { chromeSelectionText } from './selection-registry.ts'
 import type { ScreenCapture } from '../terminal/screen.ts'
 import type { LineSelection } from '../model/selection.ts'
@@ -111,7 +112,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   useEffect(() => {
     if (!busy) return
     setUiTick(0)
-    const timer = setInterval(() => setUiTick(tick => (tick + 1) % SPINNER_FRAMES.length), 100)
+    const timer = setInterval(() => setUiTick(tick => (tick + 1) % glyphs.spinnerFrames.length), 100)
     return () => clearInterval(timer)
   }, [busy])
   const [escArmed, setEscArmed] = useState(false)

@@ -44,16 +44,23 @@ describe('useChatEvents', () => {
     const { lastFrame } = render(<Harness />)
     handler?.(reasoning('first pass'))
     await sleep(60)
+    expect(lastFrame() ?? '').not.toContain('first pass')
+    updateMessages?.(messages => messages.map(message =>
+      message.kind === 'collapsible' && message.id === messages[0]?.id
+        ? { ...message, collapsed: false }
+        : message,
+    ))
+    await sleep(10)
     expect(lastFrame() ?? '').toContain('first pass')
+    handler?.(reasoning('second pass'))
+    await sleep(60)
+    expect(lastFrame() ?? '').toContain('second pass')
     updateMessages?.(messages => messages.map(message =>
       message.kind === 'collapsible' && message.id === messages[0]?.id
         ? { ...message, collapsed: true }
         : message,
     ))
     await sleep(10)
-    expect(lastFrame() ?? '').not.toContain('first pass')
-    handler?.(reasoning('second pass'))
-    await sleep(60)
     expect(lastFrame() ?? '').not.toContain('second pass')
   })
 })

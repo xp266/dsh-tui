@@ -2,6 +2,7 @@ import type { Token, Tokens } from 'marked'
 import { mergeRuns, wrapSegments } from '../../../core/segments.ts'
 import type { Segment } from '../../../core/segments.ts'
 import { charWidth, segmentGraphemes, textWidth } from '../../../core/text.ts'
+import { glyphs } from '../../../terminal/glyphs.ts'
 import { highlightCodeBlock } from './highlight.ts'
 import { renderInline } from './inline.ts'
 import type { MdPalette } from './palette.ts'
@@ -13,8 +14,6 @@ export interface BlockContext {
   streamId: string
 }
 
-const BULLETS = ['•', '◦', '▪']
-
 function plainOf(segments: Segment[]): string {
   return segments.map(segment => segment.text).join('')
 }
@@ -25,7 +24,7 @@ function renderHeading(token: Tokens.Heading, ctx: BlockContext): Segment[][] {
   const rows = wrapSegments(segments, ctx.width)
   if (token.depth > 2 || rows.length === 0) return rows
   const ruleLen = Math.min(ctx.width, Math.max(textWidth(plainOf(rows[0]!)), 3))
-  const glyph = token.depth === 1 ? '═' : '─'
+  const glyph = glyphs.headingRule(token.depth === 1)
   return [...rows, [{ text: glyph.repeat(ruleLen), style }]]
 }
 
@@ -42,7 +41,7 @@ function renderParagraphish(tokens: Token[], ctx: BlockContext): Segment[][] {
 }
 
 function renderHr(ctx: BlockContext): Segment[][] {
-  return [[{ text: '─'.repeat(Math.max(ctx.width, 8)), style: ctx.palette.hr }]]
+  return [[{ text: glyphs.horizontal.repeat(Math.max(ctx.width, 8)), style: ctx.palette.hr }]]
 }
 
 const TABLE_SAFETY_COLS = 2
@@ -105,13 +104,13 @@ function renderTable(token: Tokens.Table, ctx: BlockContext): Segment[][] {
   }
   const borderStyle = ctx.palette.hr
   const borderRow = (left: string, mid: string, right: string): Segment[] =>
-    [{ text: left + widths.map(w => '─'.repeat(w + 2)).join(mid) + right, style: borderStyle }]
+    [{ text: left + widths.map(w => glyphs.horizontal.repeat(w + 2)).join(mid) + right, style: borderStyle }]
   const renderRowBlock = (blocks: Segment[][][]): Segment[][] => {
     let height = 1
     for (let c = 0; c < cols; c++) height = Math.max(height, blocks[c]!.length)
     const out: Segment[][] = []
     for (let h = 0; h < height; h++) {
-      const line: Segment[] = [{ text: '│', style: borderStyle }]
+      const line: Segment[] = [{ text: glyphs.tableVertical, style: borderStyle }]
       for (let c = 0; c < cols; c++) {
         const rowSegs = blocks[c]![h] ?? []
         const used = textWidth(plainOf(rowSegs))
@@ -119,7 +118,7 @@ function renderTable(token: Tokens.Table, ctx: BlockContext): Segment[][] {
         line.push(...rowSegs)
         line.push(
           { text: ' '.repeat(Math.max(0, effective[c]! - used + 1)), style: ctx.palette.plain },
-          { text: '│', style: borderStyle },
+          { text: glyphs.tableVertical, style: borderStyle },
         )
       }
       out.push(mergeRuns(line))
@@ -127,11 +126,11 @@ function renderTable(token: Tokens.Table, ctx: BlockContext): Segment[][] {
     return out
   }
   return [
-    borderRow('┌', '┬', '┐'),
+    borderRow(...glyphs.tableBorders.top),
     ...renderRowBlock(blocksByRow[0]!),
-    borderRow('├', '┼', '┤'),
+    borderRow(...glyphs.tableBorders.middle),
     ...blocksByRow.slice(1).flatMap(blocks => renderRowBlock(blocks)),
-    borderRow('└', '┴', '┘'),
+    borderRow(...glyphs.tableBorders.bottom),
   ]
 }
 
@@ -157,10 +156,10 @@ function splitItemTokens(item: Tokens.ListItem): ItemParts {
 
 function markerSegments(item: Tokens.ListItem, ordered: boolean, label: string, depth: number, palette: MdPalette): Segment[] {
   if (item.task === true) {
-    return [{ text: item.checked ? '☑' : '☐', style: item.checked ? palette.taskDone : palette.taskTodo }]
+    return [{ text: item.checked ? glyphs.taskChecked : glyphs.taskUnchecked, style: item.checked ? palette.taskDone : palette.taskTodo }]
   }
   if (ordered) return [{ text: label, style: palette.listMarker }]
-  return [{ text: BULLETS[Math.min(depth, BULLETS.length - 1)]!, style: palette.listMarker }]
+  return [{ text: glyphs.bullets[Math.min(depth, glyphs.bullets.length - 1)]!, style: palette.listMarker }]
 }
 
 function indentRows(rows: Segment[][], indent: string, palette: MdPalette): Segment[][] {
@@ -208,7 +207,7 @@ export function renderBlockquote(token: Tokens.Blockquote, ctx: BlockContext): S
   for (const child of token.tokens ?? []) {
     inner.push(...renderBlockRows(child, innerCtx))
   }
-  const bar: Segment = { text: '▌', style: ctx.palette.quoteBar }
+  const bar: Segment = { text: glyphs.quoteBar, style: ctx.palette.quoteBar }
   return inner.map(row => mergeRuns([bar, { text: ' ', style: ctx.palette.plain }, ...row]))
 }
 

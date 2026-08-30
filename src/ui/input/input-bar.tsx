@@ -1,9 +1,10 @@
 import { Box, Text, useStdout } from 'ink'
 import type { Ref } from 'react'
 import { useCaret } from '../hooks/use-caret.ts'
-import { caretNonceColor } from '../../core/caret-nonce.ts'
+import { caretNonceBold, caretNonceColor, caretNonceText } from '../../core/caret-nonce.ts'
 import { useImperativeHandle, useEffect } from 'react'
 import { COLORS, permissionModeInfo } from '../../theme.ts'
+import { glyphs } from '../../terminal/glyphs.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
 import { CHROME_FRAME_ROWS, CHROME_MARGIN_X, CHROME_PAD_X, CHROME_TEXT_X, INPUT_WIDTH_OFFSET, inputFrameTop, inputStatusRow } from '../../core/metrics.ts'
 import { colToCharIndex, lineBreaks, textWidth, truncate, wrapLines } from '../../core/text.ts'
@@ -113,29 +114,29 @@ export function InputBar({
       api.hintPick(absoluteIndex)
     },
   }))
-  const statusSegments: Array<{ text: string; color: string }> = []
+  const statusSegments: Array<{ text: string; color: string; bold?: boolean }> = []
   if (statusReady) {
     const leftMax = presetName === undefined
       ? contentWidth
       : Math.max(1, contentWidth - textWidth(presetName) - 2)
-    const parts: Array<{ text: string; color: string }> = [
+    const parts: Array<{ text: string; color: string; bold?: boolean }> = [
       { text: permission.name, color: permission.textColor },
-      { text: ' · ', color: COLORS.statusSeparator },
+      { text: ` ${glyphs.separator} `, color: COLORS.statusSeparator },
       { text: modelName, color: COLORS.modelText },
       ...(effortName === undefined ? [] : [
-        { text: ' · ', color: COLORS.statusSeparator },
+        { text: ` ${glyphs.separator} `, color: COLORS.statusSeparator },
         { text: effortName, color: COLORS.effortText },
       ]),
     ]
     if (interactive) {
-      parts.push({ text: ' ', color: caretNonceColor(cursor) })
+      parts.push({ text: caretNonceText(cursor), color: caretNonceColor(cursor), bold: caretNonceBold(cursor) })
     }
     let used = 0
     for (const part of parts) {
       const remaining = leftMax - used
       if (remaining <= 0) break
       const text = truncate(part.text, remaining)
-      statusSegments.push({ text, color: part.color })
+      statusSegments.push({ text, color: part.color, ...(part.bold === undefined ? {} : { bold: part.bold }) })
       used += textWidth(text)
     }
   }
@@ -145,7 +146,9 @@ export function InputBar({
     <Region y={blockTop}>
       <Box position="absolute" top={0} left={0} width={columns} height={rows}>
         <Box position="absolute" top={blockTop} left={CHROME_MARGIN_X} width={blockWidth}>
-          <Text color={permission.color}>{'▄'.repeat(blockWidth)}</Text>
+          {glyphs.halfBlockCaps
+            ? <Text color={permission.color}>{glyphs.blockCapTop.repeat(blockWidth)}</Text>
+            : <Text backgroundColor={permission.color}>{' '.repeat(blockWidth)}</Text>}
         </Box>
         {Array.from({ length: realRows }, (_, row) => {
           const line = lines[visibleStart + row] ?? ''
@@ -193,7 +196,7 @@ export function InputBar({
               {(() => {
                 let col = 4
                 return statusSegments.map((segment, index) => {
-                  const node = <SelectableText key={index} y={statusLocalY} col={col} text={segment.text} color={segment.color} />
+                  const node = <SelectableText key={index} y={statusLocalY} col={col} text={segment.text} color={segment.color} bold={segment.bold} />
                   col += textWidth(segment.text)
                   return node
                 })
@@ -209,7 +212,9 @@ export function InputBar({
           )}
         </Box>
         <Box position="absolute" top={inputStatusRow(rows) + 1} left={CHROME_MARGIN_X} width={blockWidth}>
-          <Text color={permission.color}>{'▀'.repeat(blockWidth)}</Text>
+          {glyphs.halfBlockCaps
+            ? <Text color={permission.color}>{glyphs.blockCapBottom.repeat(blockWidth)}</Text>
+            : <Text backgroundColor={permission.color}>{' '.repeat(blockWidth)}</Text>}
         </Box>
       </Box>
     </Region>
