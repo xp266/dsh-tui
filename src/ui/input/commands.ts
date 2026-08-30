@@ -48,9 +48,31 @@ export function mergeCommandEntries(
   return entries
 }
 
+function isSubsequence(query: string, text: string): boolean {
+  let at = 0
+  for (let index = 0; index < text.length && at < query.length; index++) {
+    if (text[index] === query[at]) at += 1
+  }
+  return at === query.length
+}
+
+function matchTier(entry: CommandHintItem, query: string): 0 | 1 | 2 | undefined {
+  const name = entry.command.slice(1).toLowerCase()
+  if (name.startsWith(query)) return 0
+  if (isSubsequence(query, name)) return 1
+  if (entry.description.toLowerCase().includes(query)) return 2
+  return undefined
+}
+
 export function filterHintEntries(entries: readonly CommandHintItem[], value: string): CommandHintItem[] {
   if (!value.startsWith('/') || /\s/.test(value)) return []
-  return entries.filter(entry => entry.command.startsWith(value))
+  const query = value.slice(1).toLowerCase()
+  const tiers: CommandHintItem[][] = [[], [], []]
+  for (const entry of entries) {
+    const tier = matchTier(entry, query)
+    if (tier !== undefined) tiers[tier].push(entry)
+  }
+  return [...tiers[0], ...tiers[1], ...tiers[2]]
 }
 
 /** Static literal arguments for registry commands whose hints mix literals with free-form prose. */
