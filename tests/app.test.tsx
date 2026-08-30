@@ -100,7 +100,7 @@ describe('App layout', () => {
     await new Promise(resolve => setTimeout(resolve, 200))
     const frame = lastFrame() ?? ''
     expect(frame).toContain('hello tui')
-    expect(frame).toContain('Thinking')
+    expect(frame).toContain('Thought: 0ms')
     expect(frame).not.toContain('thinking hard')
     expect(frame).toContain('answer')
   })

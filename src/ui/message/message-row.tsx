@@ -5,6 +5,7 @@ import { glyphs } from '../../terminal/glyphs.ts'
 import { headerSymbol, HEADER_LABEL_COL } from './layout.ts'
 import type { RowInfo } from './layout.ts'
 import { SelectableText } from '../selection.tsx'
+import { wavePalette, waveSegments } from './wave.ts'
 
 function TickGlyph({ y, col, color, tick }: { y: number; col: number; color?: string; tick: number }): ReturnType<typeof SelectableText> {
   return (
@@ -39,6 +40,8 @@ export const MessageRow = memo(
       const marginLeft = col >= 2 ? 2 : col
       const paddingLeft = col >= 2 ? col - 2 : 0
       const baseColor = info.role === 'error' ? COLORS.errorText : info.muted ? COLORS.toolBodyText : undefined
+      const waveColor = info.segments?.[0]?.style.color ?? baseColor
+      const waveBase = info.segments?.[0]?.style.bold === true ? { bold: true } : {}
       return (
         <Box
           marginLeft={marginLeft}
@@ -47,7 +50,15 @@ export const MessageRow = memo(
           backgroundColor={info.lineBg ?? (info.background ? backgroundFor(info.role) : undefined)}
         >
           {info.spinner && <TickGlyph y={row} col={col - 2} color={info.accent ?? baseColor} tick={spinnerTick} />}
-          {info.segments !== undefined && info.segments.length > 0 ? (
+          {info.wave && waveColor !== undefined ? (
+            <SelectableText
+              y={row}
+              col={col}
+              segments={waveSegments(info.text, spinnerTick, wavePalette(waveColor), waveColor, waveBase)}
+              messageLayer
+              flow
+            />
+          ) : info.segments !== undefined && info.segments.length > 0 ? (
             <SelectableText y={row} col={col} segments={info.segments} color={baseColor} messageLayer flow />
           ) : (
             <SelectableText
@@ -86,7 +97,7 @@ export const MessageRow = memo(
   (prev, next) => {
     if (prev.row !== next.row) return false
     if (prev.themeTick !== next.themeTick) return false
-    if ((prev.info.spinner ?? false) && prev.spinnerTick !== next.spinnerTick) return false
+    if (((prev.info.spinner ?? false) || (prev.info.wave ?? false)) && prev.spinnerTick !== next.spinnerTick) return false
     const a = prev.info
     const b = next.info
     return (
@@ -104,6 +115,7 @@ export const MessageRow = memo(
       a.thinking === b.thinking &&
       a.segKey === b.segKey &&
       a.spinner === b.spinner &&
+      a.wave === b.wave &&
       a.accent === b.accent &&
       a.lineBg === b.lineBg
     )

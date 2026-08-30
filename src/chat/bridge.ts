@@ -685,6 +685,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
 
   void refreshEffortNames()
   void modelsList.get().catch(() => {})
+  void sessionList.get().catch(() => {})
 
   return {
     modelName: () => currentSelection()?.model ?? 'deepseek-v4-flash',

@@ -8,6 +8,7 @@ export interface BubbleMessage {
   variant?: BubbleVariant
   hang?: number
   streaming?: boolean
+  pending?: boolean
   origin?: 'command'
 }
 
@@ -21,6 +22,7 @@ export interface CollapsibleMessage {
   bodyCol?: number
   thinking?: boolean
   streaming?: boolean
+  startedAt?: number
 }
 
 export type DiffLineKind = 'ctx' | 'del' | 'add'

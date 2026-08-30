@@ -35,6 +35,7 @@ export interface RowInfo {
   segments?: Segment[]
   segKey?: string
   spinner?: boolean
+  wave?: boolean
   accent?: string
   lineBg?: string
 }
@@ -57,6 +58,7 @@ type PlanRow =
       muted: boolean
       selectable: boolean
       role: RowInfo['role']
+      wave?: boolean
     }
   | {
       type: 'lit'
@@ -67,6 +69,7 @@ type PlanRow =
       muted: boolean
       selectable: boolean
       role: RowInfo['role']
+      wave?: boolean
     }
 
 interface MessageRender extends BodyRendered {
@@ -164,6 +167,10 @@ function planFor(message: Message, body: BodyRendered): PlanRow[] {
         selectable: true,
         role: message.role,
       })
+      const first = texts[0]
+      if (!floating && message.variant !== undefined && (message.streaming === true || message.pending === true) && first?.type === 'body') {
+        texts[0] = { ...first, wave: true }
+      }
       return floating ? [...texts, blankRow()] : [padRow(message.role), ...texts, padRow(message.role), blankRow()]
     }
     case 'collapsible': {
@@ -190,6 +197,7 @@ function planFor(message: Message, body: BodyRendered): PlanRow[] {
         muted: true,
         selectable: true,
         role: 'assistant',
+        ...(message.streaming === true || message.running === true ? { wave: true } : {}),
       }
       const streamingShell = message.hunks.length === 0 && message.streaming === true
       if (streamingShell && body.lines.length === 0) {
@@ -214,6 +222,7 @@ function planFor(message: Message, body: BodyRendered): PlanRow[] {
         muted: false,
         selectable: false,
         role: 'assistant',
+        ...(message.running ? { wave: true } : {}),
       }
       if (message.running) {
         return [padRow('assistant'), header, padRow('assistant'), blankRow()]
@@ -236,6 +245,7 @@ function planFor(message: Message, body: BodyRendered): PlanRow[] {
         muted: true,
         selectable: true,
         role: 'assistant',
+        ...(message.streaming === true || message.running === true ? { wave: true } : {}),
       }
       if (message.streaming === true && body.lines.length === 0) {
         return [padRow('assistant'), header, padRow('assistant'), blankRow()]
@@ -253,7 +263,7 @@ function planFor(message: Message, body: BodyRendered): PlanRow[] {
 }
 
 type RenderFingerprint =
-  | { kind: 'bubble'; content: string; variant: string | undefined; role: string | undefined; origin: string | undefined; hang: number | undefined }
+  | { kind: 'bubble'; content: string; variant: string | undefined; role: string | undefined; origin: string | undefined; hang: number | undefined; pending: boolean | undefined; streaming: boolean | undefined }
   | { kind: 'collapsible'; body: string; label: string; collapsed: boolean; running: boolean; thinking: boolean | undefined; streaming: boolean | undefined }
   | { kind: 'tool-diff'; tool: string; path: string; error: string | undefined; hunks: ToolDiffMessage['hunks']; running: boolean | undefined; streaming: boolean | undefined; streamText: string | undefined }
   | { kind: 'plan'; body: string; running: boolean | undefined; streaming: boolean | undefined; error: string | undefined }
@@ -278,6 +288,8 @@ function fingerprintOf(message: Message): RenderFingerprint {
         role: message.role,
         origin: message.origin,
         hang: message.hang,
+        pending: message.pending,
+        streaming: message.streaming,
       }
     case 'collapsible':
       return {
@@ -327,6 +339,8 @@ function fingerprintMatches(entry: RenderFingerprint, message: Message): boolean
         && entry.role === message.role
         && entry.origin === message.origin
         && entry.hang === message.hang
+        && entry.pending === message.pending
+        && entry.streaming === message.streaming
     case 'collapsible':
       return message.kind === 'collapsible'
         && entry.body === message.body
@@ -482,6 +496,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number)
         background: plan.bg,
         muted: plan.muted,
         role: plan.role,
+        ...(plan.wave === true ? { wave: true } : {}),
         ...(plan.segments === undefined ? {} : { segments: plan.segments, segKey: segmentsKeyCached(plan.segments) }),
       }
     case 'body': {
@@ -496,6 +511,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number)
         background: plan.bg || lineBg !== undefined,
         muted: plan.muted,
         role: plan.role,
+        ...(plan.wave === true ? { wave: true } : {}),
         ...(lineBg === undefined ? {} : { lineBg }),
         ...(segments === undefined ? {} : { segments, segKey: segmentsKeyCached(segments) }),
       }

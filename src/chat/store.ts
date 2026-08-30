@@ -45,6 +45,19 @@ function errorSummary(cause: { name?: string; code?: string } | undefined): stri
   return `error: ${cause?.name ?? cause?.code ?? 'unknown'}`
 }
 
+export function formatThinkingDuration(durationMs: number): string {
+  const total = Math.max(0, Math.floor(durationMs))
+  if (total < 1000) return `${total}ms`
+  const hours = Math.floor(total / 3_600_000)
+  const minutes = Math.floor(total / 60_000) % 60
+  const seconds = Math.floor(total / 1000) % 60
+  const tenth = Math.floor((total % 1000) / 100)
+  const tail = `${seconds}.${tenth}s`
+  if (hours > 0) return `${hours}h ${minutes}m ${tail}`
+  if (minutes > 0) return `${minutes}m ${tail}`
+  return tail
+}
+
 export interface AgentActivity {
   running: boolean
   phase: AgentPhase
@@ -133,10 +146,10 @@ export function reduceChatEvent(
     }
     case 'assistant/chunk': {
       const chunk = event.data.chunk
-      if (chunk.type === 'reasoning-delta') return appendChunk(messages, turn, chunk.text, event.data.step, 'thinking')
-      if (chunk.type === 'text-delta') return appendChunk(messages, turn, chunk.text, event.data.step, 'assistant')
+      if (chunk.type === 'reasoning-delta') return appendChunk(messages, turn, chunk.text, event.data.step, 'thinking', event.time)
+      if (chunk.type === 'text-delta') return appendChunk(messages, turn, chunk.text, event.data.step, 'assistant', event.time)
       if (chunk.type === 'tool-call-delta') {
-        return appendToolDelta(messages, turn, chunk.id, chunk.name, chunk.argumentsDelta)
+        return appendToolDelta(messages, turn, event.data.step, chunk.id, chunk.name, chunk.argumentsDelta, event.time)
       }
       return { messages, turn, changed: false }
     }
@@ -156,6 +169,7 @@ export function reduceChatEvent(
           role: 'assistant',
           content: ASK_USER_TOOL_NAME,
           variant: 'ask-user',
+          pending: true,
         })
         turn.toolIds.set(event.data.callId, id)
         try {
@@ -178,6 +192,7 @@ export function reduceChatEvent(
           content: items.length > 0 ? formatTodoBubble(items) : TODO_TOOL_NAME,
           variant: 'todo',
           hang: TODO_HANG_COLS,
+          pending: true,
         })
         turn.toolIds.set(event.data.callId, id)
         markRunning(turn, true)
@@ -260,11 +275,9 @@ export function reduceChatEvent(
       if (target?.kind === 'bubble' && target.variant === 'todo') {
         turn.toolIds.delete(callId)
         const items = parseTodoResult(textFromBlocks(event.data.message.content).trim())
-        if (items.length > 0) {
-          updateById(messages, id, message => message.kind === 'bubble'
-            ? { ...message, content: formatTodoBubble(items) }
-            : message)
-        }
+        updateById(messages, id, message => message.kind === 'bubble'
+          ? { ...message, pending: false, ...(items.length > 0 ? { content: formatTodoBubble(items) } : {}) }
+          : message)
         return { messages, turn, changed: true }
       }
       if (target?.kind === 'tool-diff') {
@@ -395,10 +408,20 @@ export function reduceChatEvent(
 
       const thinkId = turn.thinkingIds.get(step)
       if (thinkId !== undefined) {
-        updateById(messages, thinkId, message => message.kind === 'collapsible'
-          ? { ...message, running: false, ...(reasoning === '' ? {} : { body: reasoning }) }
-          : message,
-        )
+        updateById(messages, thinkId, message => {
+          if (message.kind !== 'collapsible') return message
+          const updates = reasoning === '' ? {} : { body: reasoning }
+          if (!message.running) return { ...message, ...updates }
+          const duration = message.startedAt === undefined ? Number.NaN : event.time - message.startedAt
+          return {
+            ...message,
+            ...updates,
+            running: false,
+            ...(Number.isFinite(duration) && duration >= 0
+              ? { label: `Thought: ${formatThinkingDuration(duration)}` }
+              : {}),
+          }
+        })
       } else if (reasoning !== '') {
         const freshThink = nextId('think')
         turn.thinkingIds.set(step, freshThink)
@@ -451,6 +474,11 @@ export function reduceChatEvent(
         if (message.kind === 'compaction' || !message.streaming) continue
         changed = true
         message.streaming = false
+      }
+      for (const message of messages) {
+        if (message.kind !== 'bubble' || !message.pending) continue
+        changed = true
+        message.pending = false
       }
       const reason = event.data.reason
       if (reason.kind === 'error') {
@@ -529,12 +557,14 @@ function appendChunk(
   text: string,
   step: number,
   kind: 'thinking' | 'assistant',
+  time: number,
 ): { messages: Message[]; turn: TurnState; changed: boolean } {
   markRunning(turn, true)
   if (kind === 'thinking') {
     markPhase(turn, 'thinking')
   } else {
     markPhase(turn, 'working')
+    finalizeThinking(messages, turn, step, time)
   }
   const ids = kind === 'thinking' ? turn.thinkingIds : turn.assistantIds
   const id = ids.get(step)
@@ -553,7 +583,7 @@ function appendChunk(
     }
     const fresh = nextId('think')
     ids.set(step, fresh)
-    messages.push({ kind: 'collapsible', id: fresh, label: 'Thinking', body: text, running: true, collapsed: true, thinking: true })
+    messages.push({ kind: 'collapsible', id: fresh, label: 'Thinking', body: text, running: true, collapsed: true, thinking: true, startedAt: time })
     return { messages, turn, changed: true }
   }
   let changed = false
@@ -561,7 +591,13 @@ function appendChunk(
   const target = index >= 0 ? messages[index] : undefined
   if (target !== undefined && text !== '') {
     if (kind === 'thinking' && target.kind === 'collapsible') {
-      target.body += text
+      if (target.running) {
+        target.body += text
+      } else {
+        updateById(messages, id, message => message.kind === 'collapsible'
+          ? { ...message, running: true, label: 'Thinking', body: message.body + text }
+          : message)
+      }
       changed = true
     } else if (kind === 'assistant' && target.kind === 'bubble') {
       target.content += text
@@ -591,12 +627,15 @@ function commitToolPlaceholder(messages: Message[], turn: TurnState, callId: str
 function appendToolDelta(
   messages: Message[],
   turn: TurnState,
+  step: number,
   callId: string,
   name: string | undefined,
   delta: string,
+  time: number,
 ): { messages: Message[]; turn: TurnState; changed: boolean } {
   markRunning(turn, true)
   markPhase(turn, 'working')
+  finalizeThinking(messages, turn, step, time)
   if (name === undefined || name === '') return { messages, turn, changed: false }
   const known = turn.pendingTools.has(callId) || turn.toolIds.has(callId)
   if (name === PLAN_TOOL_NAME) {
@@ -673,6 +712,24 @@ function collapsibleById(messages: Message[], id: string): CollapsibleMessage | 
   return message?.kind === 'collapsible' ? message : undefined
 }
 
+function finalizeThinking(messages: Message[], turn: TurnState, step: number, endedAt: number): boolean {
+  const id = turn.thinkingIds.get(step)
+  if (id === undefined) return false
+  const target = collapsibleById(messages, id)
+  if (target === undefined || !target.running) return false
+  const duration = target.startedAt === undefined ? Number.NaN : endedAt - target.startedAt
+  updateById(messages, id, message => message.kind === 'collapsible'
+    ? {
+        ...message,
+        running: false,
+        ...(Number.isFinite(duration) && duration >= 0
+          ? { label: `Thought: ${formatThinkingDuration(duration)}` }
+          : {}),
+      }
+    : message)
+  return true
+}
+
 function messageById(messages: Message[], id: string): Message | undefined {
   return messages.find(m => m.id === id)
 }
@@ -699,7 +756,7 @@ function settleAskUserBubble(
   }
   turn.toolIds.delete(callId)
   turn.askArgs.delete(callId)
-  updateById(messages, id, message => message.kind === 'bubble' ? { ...message, content } : message)
+  updateById(messages, id, message => message.kind === 'bubble' ? { ...message, content, pending: false } : message)
   return { messages, turn, changed: true }
 }
 

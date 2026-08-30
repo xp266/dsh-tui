@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CallId, createAssistantMessage, createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { initialTurnState, reduceChatEvent } from '../src/chat/store.ts'
+import { formatThinkingDuration, initialTurnState, reduceChatEvent } from '../src/chat/store.ts'
 import type { ChatToolPresenter } from '../src/chat/bridge.ts'
 import type { Message } from '../src/model/message.ts'
 import { rowInfoAt, rowIndexFor } from '../src/ui/message/layout.ts'
@@ -17,19 +17,19 @@ function userEvent(text: string): SessionEvent {
   }
 }
 
-function reasoning(text: string, step = 1): SessionEvent {
-  return { type: 'assistant/chunk', seq: 1, time: 0, data: { turn: 1, step, chunk: { type: 'reasoning-delta', index: 0, text } } }
+function reasoning(text: string, step = 1, time = 0): SessionEvent {
+  return { type: 'assistant/chunk', seq: 1, time, data: { turn: 1, step, chunk: { type: 'reasoning-delta', index: 0, text } } }
 }
 
-function textDelta(text: string, step = 1): SessionEvent {
-  return { type: 'assistant/chunk', seq: 1, time: 0, data: { turn: 1, step, chunk: { type: 'text-delta', index: 0, text } } }
+function textDelta(text: string, step = 1, time = 0): SessionEvent {
+  return { type: 'assistant/chunk', seq: 1, time, data: { turn: 1, step, chunk: { type: 'text-delta', index: 0, text } } }
 }
 
-function toolCallDelta(callId: string, name: string): SessionEvent {
+function toolCallDelta(callId: string, name: string, time = 0): SessionEvent {
   return {
     type: 'assistant/chunk',
     seq: 1,
-    time: 0,
+    time,
     data: { turn: 1, step: 1, chunk: { type: 'tool-call-delta', index: 0, id: CallId(callId), name, argumentsDelta: '{}' } },
   }
 }
@@ -59,11 +59,11 @@ function turnEnd(): SessionEvent {
   return { type: 'turn/end', seq: 1, time: 0, data: { turn: 1, reason: { kind: 'completed' } } }
 }
 
-function assistantMessage(step = 1): SessionEvent {
+function assistantMessage(step = 1, time = 0): SessionEvent {
   return {
     type: 'assistant/message',
     seq: 1,
-    time: 0,
+    time,
     data: {
       turn: 1,
       step,
@@ -142,7 +142,7 @@ describe('chat event reducer', () => {
     const { messages } = apply([], [userEvent('q'), reasoning('r'), toolCall('c1'), toolResult('c1', 'o'), textDelta('A'), textDelta('B'), turnEnd()])
     expect(messages).toHaveLength(4)
     expect(messages[0]).toMatchObject({ role: 'user', content: 'q' })
-    expect(messages[1]).toMatchObject({ label: 'Thinking', running: false, collapsed: true })
+    expect(messages[1]).toMatchObject({ label: 'Thought: 0ms', running: false, collapsed: true })
     expect(messages[2]).toMatchObject({ label: 'bash', running: false, collapsed: true, body: 'o' })
     expect(messages[3]).toMatchObject({ role: 'assistant', content: 'AB' })
   })
@@ -325,7 +325,61 @@ describe('chat event reducer', () => {
 
   it('stops the Thinking spinner when its step assembles', () => {
     const state = apply([], [reasoning('r1'), assistantMessage(1)])
-    expect(state.messages[0]).toMatchObject({ kind: 'collapsible', label: 'Thinking', running: false })
+    expect(state.messages[0]).toMatchObject({ kind: 'collapsible', label: 'Thought: 0ms', running: false })
+  })
+
+  it('labels a completed Thinking block with its wall-clock duration', () => {
+    const state = apply([], [reasoning('r1', 1, 1_000), assistantMessage(1, 45_296)])
+    expect(state.messages[0]).toMatchObject({ kind: 'collapsible', label: 'Thought: 44.2s', running: false })
+  })
+
+  it('ends the Thinking block at the first text delta of the same step', () => {
+    const state = apply([], [reasoning('r1', 1, 1_000), textDelta('A', 1, 3_500)])
+    expect(state.messages[0]).toMatchObject({ kind: 'collapsible', label: 'Thought: 2.5s', running: false })
+    expect(state.messages[1]).toMatchObject({ kind: 'bubble', content: 'A' })
+  })
+
+  it('ends the Thinking block when a tool call starts streaming', () => {
+    const state = apply([], [reasoning('r1', 1, 1_000), toolCallDelta('c7', 'bash', 2_600)])
+    expect(state.messages[0]).toMatchObject({ kind: 'collapsible', label: 'Thought: 1.6s', running: false })
+  })
+
+  it('resumes and keeps the original start when reasoning continues after text', () => {
+    let state = apply([], [reasoning('r1', 1, 1_000), textDelta('A', 1, 2_000)])
+    expect(state.messages[0]).toMatchObject({ label: 'Thought: 1.0s', running: false })
+    state = reduceChatEvent(state.messages, reasoning('r2', 1, 3_000), state.turn)
+    expect(state.messages[0]).toMatchObject({ label: 'Thinking', running: true })
+    state = reduceChatEvent(state.messages, textDelta('B', 1, 5_000), state.turn)
+    expect(state.messages[0]).toMatchObject({ label: 'Thought: 4.0s', running: false })
+  })
+
+  it('keeps the Thinking label when the step assembles without chunk timestamps', () => {
+    const started = apply([], [reasoning('r1')])
+    const next = reduceChatEvent(
+      started.messages,
+      { type: 'assistant/message', seq: 1, data: { turn: 1, step: 1, message: createAssistantMessage({ content: [{ type: 'text', text: '' }], source: { provider: 'p', model: 'm' } }) } } as unknown as SessionEvent,
+      started.turn,
+    )
+    expect(next.messages[0]).toMatchObject({ kind: 'collapsible', label: 'Thinking', running: false })
+  })
+
+  it('does not rewrite a settled Thought label when the step assembles later', () => {
+    const state = apply([], [reasoning('r1', 1, 1_000), textDelta('A', 1, 3_500), assistantMessage(1, 60_000)])
+    expect(state.messages[0]).toMatchObject({ label: 'Thought: 2.5s', running: false })
+  })
+
+  it('formats thinking durations compactly', () => {
+    expect(formatThinkingDuration(0)).toBe('0ms')
+    expect(formatThinkingDuration(6)).toBe('6ms')
+    expect(formatThinkingDuration(10)).toBe('10ms')
+    expect(formatThinkingDuration(999)).toBe('999ms')
+    expect(formatThinkingDuration(1_000)).toBe('1.0s')
+    expect(formatThinkingDuration(1_500)).toBe('1.5s')
+    expect(formatThinkingDuration(2_098)).toBe('2.0s')
+    expect(formatThinkingDuration(2_186)).toBe('2.1s')
+    expect(formatThinkingDuration(45_296)).toBe('45.2s')
+    expect(formatThinkingDuration(122_200)).toBe('2m 2.2s')
+    expect(formatThinkingDuration(3_723_789)).toBe('1h 2m 3.7s')
   })
 
   it('stops each Thinking row at its own step', () => {
@@ -503,7 +557,7 @@ describe('ask_user_question bubble', () => {
   it('shows a title-only bubble while the question is pending', () => {
     const state = apply([], [askCall()])
     expect(state.messages).toHaveLength(1)
-    expect(state.messages[0]).toMatchObject({ kind: 'bubble', role: 'assistant', variant: 'ask-user', content: 'ask_user_question' })
+    expect(state.messages[0]).toMatchObject({ kind: 'bubble', role: 'assistant', variant: 'ask-user', content: 'ask_user_question', pending: true })
   })
 
   it('renders questions and answers in the bubble once answered', () => {
@@ -512,6 +566,7 @@ describe('ask_user_question bubble', () => {
       kind: 'bubble',
       role: 'assistant',
       variant: 'ask-user',
+      pending: false,
       content: [
         'ask_user_question',
         '',
@@ -568,6 +623,7 @@ describe('todo_write bubble', () => {
       role: 'assistant',
       variant: 'todo',
       hang: 4,
+      pending: true,
       content: [
         'todo_write',
         '',

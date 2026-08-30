@@ -24,6 +24,7 @@ import { COMMANDS, KNOWN_COMMAND_ARGS, filterHintEntries, matchCommand, mergeCom
 import type { CommandAvailability, CommandId } from './input/commands.ts'
 import { CHROME_MARGIN_X, MESSAGE_INPUT_GAP_ROWS, hintBlockTop } from '../core/metrics.ts'
 import { useComposer } from './input/use-composer.ts'
+import { seedAsyncListCache } from './hooks/use-async-list.ts'
 import { Region } from './region.tsx'
 import { MessageList } from './message/message-list.tsx'
 import { CloseGuardContext } from './dialog/dialog.tsx'
@@ -86,6 +87,9 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
       },
       onNewSession: startNewSession,
     })
+    void bridge.listSessions()
+      .then(items => seedAsyncListCache('sessions', items))
+      .catch(() => {})
     return () => {
       offWindows()
       offPanels()
@@ -112,7 +116,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   useEffect(() => {
     if (!busy) return
     setUiTick(0)
-    const timer = setInterval(() => setUiTick(tick => (tick + 1) % glyphs.spinnerFrames.length), 100)
+    const timer = setInterval(() => setUiTick(tick => tick + 1), 100)
     return () => clearInterval(timer)
   }, [busy])
   const [escArmed, setEscArmed] = useState(false)

@@ -30,6 +30,10 @@ export function clearAsyncListCache(): void {
   listCache.clear()
 }
 
+export function seedAsyncListCache<T>(key: string, items: readonly T[]): void {
+  writeListCache(key, [...items])
+}
+
 export function useAsyncList<T>(load: () => Promise<T[]>, cacheKey?: string): AsyncListState<T> {
   const keyRef = useRef(cacheKey)
   keyRef.current = cacheKey
