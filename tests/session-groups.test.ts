@@ -17,17 +17,16 @@ function session(id: string, modifiedAt?: number, updatedAt = 0): SessionSummary
 }
 
 describe('session grouping', () => {
-  it('buckets by natural day and the seven-day window', () => {
+  it('buckets by the seven-day window', () => {
     const sections = groupSessions([
       session('today-edge', dayStart()),
       session('week-latest', dayStart() - 1),
       session('week-edge', dayStart(7)),
       session('older', dayStart(7) - 1),
     ], NOW)
-    expect(sections.map(section => section.kind)).toEqual(['recent', 'today', 'week', 'older'])
-    expect(sections[1]!.items.map(item => item.id)).toEqual(['today-edge'])
-    expect(sections[2]!.items.map(item => item.id)).toEqual(['week-latest', 'week-edge'])
-    expect(sections[3]!.items.map(item => item.id)).toEqual(['older'])
+    expect(sections.map(section => section.kind)).toEqual(['recent', 'week', 'older'])
+    expect(sections[1]!.items.map(item => item.id)).toEqual(['today-edge', 'week-latest', 'week-edge'])
+    expect(sections[2]!.items.map(item => item.id)).toEqual(['older'])
   })
 
   it('caps Recent at five entries while keeping them in their groups', () => {
@@ -36,7 +35,7 @@ describe('session grouping', () => {
     expect(sections).toHaveLength(2)
     expect(sections[0]!.kind).toBe('recent')
     expect(sections[0]!.items.map(item => item.id)).toEqual(['s0', 's1', 's2', 's3', 's4'])
-    expect(sections[1]!.kind).toBe('today')
+    expect(sections[1]!.kind).toBe('week')
     expect(sections[1]!.items).toHaveLength(6)
   })
 
@@ -45,7 +44,7 @@ describe('session grouping', () => {
       session('fresh', undefined, NOW - 1000),
       session('stale', undefined, dayStart(30)),
     ], NOW)
-    expect(sections.map(section => section.kind)).toEqual(['recent', 'today', 'older'])
+    expect(sections.map(section => section.kind)).toEqual(['recent', 'week', 'older'])
     expect(sections[1]!.items.map(item => item.id)).toEqual(['fresh'])
     expect(sections[2]!.items.map(item => item.id)).toEqual(['stale'])
   })

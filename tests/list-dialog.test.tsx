@@ -52,7 +52,7 @@ describe('list dialog', () => {
     await untilFocused(lastFrame, 'Alpha')
     const frame = lastFrame() ?? ''
     expect(frame).toContain('Recent')
-    expect(frame).toContain('Today')
+    expect(frame).toContain('This Week')
     expect(frame).toContain('Ungrouped')
     for (let i = 0; i < 4; i++) {
       act(() => {
@@ -354,8 +354,8 @@ describe('list dialog', () => {
       </Box>,
     )
     await untilFocused(lastFrame, 'Task-0')
-    const headers = ['Recent', 'Today', 'This Week', 'Other']
-    const gaps: Record<string, number> = { Recent: 7, Today: 8, 'This Week': 6 }
+    const headers = ['Recent', 'This Week', 'Other']
+    const gaps: Record<string, number> = { Recent: 7, 'This Week': 12 }
     const assertHeadersAttached = () => {
       const lines = (lastFrame() ?? '').split('\n').map(line => line.trim())
       const found = new Map<string, number>()

@@ -33,7 +33,6 @@ const ARM_TIMEOUT_MS = 3000
 
 const SECTION_LABELS: Record<SessionSectionKind, string> = {
   recent: 'Recent',
-  today: 'Today',
   week: 'This Week',
   older: 'Other',
 }

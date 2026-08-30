@@ -1,7 +1,7 @@
 import type { SessionSummary } from './session-list.ts'
 import { sessionTime } from './session-list.ts'
 
-export type SessionSectionKind = 'recent' | 'today' | 'week' | 'older'
+export type SessionSectionKind = 'recent' | 'week' | 'older'
 
 export interface SessionSection {
   kind: SessionSectionKind
@@ -21,16 +21,13 @@ export function groupSessions(items: readonly SessionSummary[], now: number = Da
   const sorted = [...items].sort((a, b) => sessionTime(b) - sessionTime(a))
   if (sorted.length === 0) return []
   const sections: SessionSection[] = [{ kind: 'recent', items: sorted.slice(0, RECENT_LIMIT) }]
-  const todayStart = startOfDay(now)
-  const weekStart = todayStart - WEEK_MS
-  const buckets: Record<Exclude<SessionSectionKind, 'recent'>, SessionSummary[]> = { today: [], week: [], older: [] }
+  const weekStart = startOfDay(now) - WEEK_MS
+  const buckets: Record<Exclude<SessionSectionKind, 'recent'>, SessionSummary[]> = { week: [], older: [] }
   for (const session of sorted) {
-    const time = sessionTime(session)
-    if (time >= todayStart) buckets.today.push(session)
-    else if (time >= weekStart) buckets.week.push(session)
+    if (sessionTime(session) >= weekStart) buckets.week.push(session)
     else buckets.older.push(session)
   }
-  for (const kind of ['today', 'week', 'older'] as const) {
+  for (const kind of ['week', 'older'] as const) {
     if (buckets[kind].length > 0) sections.push({ kind, items: buckets[kind] })
   }
   return sections
