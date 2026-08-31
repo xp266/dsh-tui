@@ -18,6 +18,16 @@ describe('dsh-tui plugin', () => {
     expect(plugin.name).toBe('dsh-tui')
   })
 
+  it('fills config defaults from the schema', () => {
+    expect(plugin.Config({ theme: 'dark' } as plugin.Config)).toMatchObject({
+      theme: 'dark',
+      maxFps: 240,
+      bootListTimeout: 10000,
+      alternateScreen: true,
+    })
+    expect(plugin.Config({} as plugin.Config)).toMatchObject({ theme: 'auto' })
+  })
+
   it('renders ink on load without throwing', async () => {
     const renderMock = vi.mocked(render)
     expect(() => applyPlugin()).not.toThrow()

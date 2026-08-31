@@ -1,10 +1,12 @@
 import type { Message, ToolDiffMessage } from '../../model/message.ts'
+import type { CustomMessage } from '../../contract/index.ts'
 import { colToCharIndex, textWidth, truncate, wrapIndented, wrapLines } from '../../core/text.ts'
 import { selectedRange } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
 import { sliceByColumns } from '../selection-registry.ts'
 import { renderMarkdown } from './md/index.ts'
 import { renderToolDiffBody, toolDiffHeader } from './tool-diff.ts'
+import { messageViewOf } from './message-views.ts'
 import { segmentsKey } from '../../core/segments.ts'
 import type { Segment } from '../../core/segments.ts'
 import { COLORS } from '../../theme.ts'
@@ -44,6 +46,8 @@ interface BodyRendered {
   lines: string[]
   rows: Segment[][] | null
   bgs: (string | undefined)[] | null
+  customLabel?: string
+  customMuted?: boolean
 }
 
 type PlanRow =
@@ -152,6 +156,32 @@ function renderBody(message: Message, width: number): BodyRendered {
       }
       return { lines, rows, bgs: null }
     }
+    case 'custom': {
+      const view = messageViewOf(message.view)
+      if (view === undefined) {
+        return { lines: wrapLines(describeCustomData(message.data), inner), rows: null, bgs: null }
+      }
+      const rendered = view.render({ message, width: inner })
+      const lines = rendered.wrap === false
+        ? [...rendered.lines]
+        : rendered.lines.flatMap(line => wrapLines(line, inner))
+      return {
+        lines,
+        rows: null,
+        bgs: null,
+        customLabel: rendered.label ?? message.view,
+        customMuted: rendered.muted ?? true,
+      }
+    }
+  }
+}
+
+function describeCustomData(data: unknown): string {
+  if (typeof data === 'string') return data
+  try {
+    return JSON.stringify(data, null, 2) ?? ''
+  } catch {
+    return String(data)
   }
 }
 
@@ -259,6 +289,26 @@ function planFor(message: Message, body: BodyRendered): PlanRow[] {
         blankRow(),
       ]
     }
+    case 'custom': {
+      const header: PlanRow = {
+        type: 'header',
+        label: body.customLabel ?? message.view,
+        collapsed: false,
+        clickable: false,
+      }
+      return [
+        header,
+        blankRow(),
+        ...bodyRows(body.lines.length, {
+          colStart: HEADER_LABEL_COL,
+          bg: false,
+          muted: body.customMuted ?? true,
+          selectable: true,
+          role: 'assistant',
+        }),
+        blankRow(),
+      ]
+    }
   }
 }
 
@@ -268,6 +318,7 @@ type RenderFingerprint =
   | { kind: 'tool-diff'; tool: string; path: string; error: string | undefined; hunks: ToolDiffMessage['hunks']; running: boolean | undefined; streaming: boolean | undefined; streamText: string | undefined }
   | { kind: 'plan'; body: string; running: boolean | undefined; streaming: boolean | undefined; error: string | undefined }
   | { kind: 'compaction'; summary: string; running: boolean; error: string | undefined }
+  | { kind: 'custom'; view: string; data: unknown; running: boolean | undefined; streaming: boolean | undefined }
 
 interface RenderMemoEntry {
   epoch: number
@@ -327,6 +378,14 @@ function fingerprintOf(message: Message): RenderFingerprint {
         running: message.running,
         error: message.error,
       }
+    case 'custom':
+      return {
+        kind: 'custom',
+        view: message.view,
+        data: message.data,
+        running: message.running,
+        streaming: message.streaming,
+      }
   }
 }
 
@@ -369,6 +428,12 @@ function fingerprintMatches(entry: RenderFingerprint, message: Message): boolean
         && entry.summary === message.summary
         && entry.running === message.running
         && entry.error === message.error
+    case 'custom':
+      return message.kind === 'custom'
+        && entry.view === message.view
+        && entry.data === message.data
+        && entry.running === message.running
+        && entry.streaming === message.streaming
   }
 }
 
@@ -484,7 +549,10 @@ function rowInfo(message: Message, index: number, offset: number, width: number)
         clickable: plan.clickable,
         label: fitLabel(plan.label, width),
         collapsed: plan.collapsed,
-        spinner: Boolean(message.kind === 'collapsible' && (message.running || message.streaming)) || undefined,
+        spinner: Boolean(
+          (message.kind === 'collapsible' || message.kind === 'custom')
+          && (message.running || message.streaming),
+        ) || undefined,
       }
     case 'lit':
       return {

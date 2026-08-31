@@ -36,6 +36,7 @@ import { builtInPresetName, isBlankSession, presetDisplayName } from './presets.
 import type { PresetSummary } from './presets.ts'
 import type { EffortSummary } from './efforts.ts'
 import { InteractionStore, registerInteractionChannels } from './interactions.ts'
+import { createToolViewPresenter, toolViewOf } from './tool-views.ts'
 import { applyTheme } from '../apply-theme.ts'
 import { THEME_SETTINGS_NAMESPACE } from '../theme-settings.ts'
 import { themeMode } from '../theme.ts'
@@ -571,7 +572,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       return undefined
     }
   }
-  const toolPresenter: ChatToolPresenter = {
+  const toolPresenter = createToolViewPresenter({
     call(name, callId, argumentsRaw) {
       let args: unknown
       try {
@@ -641,7 +642,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       return undefined
     },
     argsJson,
-  }
+  }, { resolve: toolViewOf, cwd: () => currentCwd })
 
   async function selectModel(provider: string, name: string): Promise<void> {
     const resolved = await llm.resolveCallConfig({ provider, model: name })

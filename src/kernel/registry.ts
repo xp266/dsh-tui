@@ -4,6 +4,14 @@ export interface KeyedOptions {
   order?: number
 }
 
+interface Layer<T> {
+  key: string
+  order: number
+  value: T
+  prev: Layer<T> | undefined
+  dead: boolean
+}
+
 export interface KeyedEntry<T> {
   key: string
   order: number
@@ -19,8 +27,14 @@ export interface KeyedRegistry<T> {
   subscribe(listener: Listener): () => void
 }
 
+/**
+ * Keyed contribution registry with layered override semantics: registering
+ * an existing key displaces the previous layer, and disposing a layer
+ * restores the nearest live layer below it, so an overriding plugin that
+ * unmounts hands the slot back to whatever it replaced.
+ */
 export function keyedRegistry<T>(compareKeys: (a: string, b: string) => number = (a, b) => a.localeCompare(b)): KeyedRegistry<T> {
-  const map = new Map<string, KeyedEntry<T>>()
+  const map = new Map<string, Layer<T>>()
   const listeners = new Set<Listener>()
 
   function notify(): void {
@@ -29,18 +43,25 @@ export function keyedRegistry<T>(compareKeys: (a: string, b: string) => number =
 
   return {
     register(key, value, options) {
-      map.set(key, { key, order: options?.order ?? 100, value })
+      const prev = map.get(key)
+      const layer: Layer<T> = { key, order: options?.order ?? 100, value, prev, dead: false }
+      map.set(key, layer)
       notify()
       return () => {
-        const current = map.get(key)
-        if (current !== undefined && current.value === value) {
-          map.delete(key)
-          notify()
-        }
+        if (layer.dead) return
+        layer.dead = true
+        if (map.get(key) !== layer) return
+        let restore = layer.prev
+        while (restore !== undefined && restore.dead) restore = restore.prev
+        if (restore === undefined) map.delete(key)
+        else map.set(key, restore)
+        notify()
       }
     },
     entries() {
-      return [...map.values()].sort((a, b) => a.order - b.order || compareKeys(a.key, b.key))
+      return [...map.values()]
+        .map(layer => ({ key: layer.key, order: layer.order, value: layer.value }))
+        .sort((a, b) => a.order - b.order || compareKeys(a.key, b.key))
     },
     values() {
       return this.entries().map(entry => entry.value)

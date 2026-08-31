@@ -1,17 +1,8 @@
 import { useSyncExternalStore } from 'react'
-import type { ReactNode } from 'react'
 import { keyedRegistry } from '../kernel/registry.ts'
+import type { OverlayContribution, StatusLineContribution } from '../contract/index.ts'
 
-export interface StatusLineContribution {
-  id: string
-  order?: number
-  render(props: { columns: number }): string
-}
-
-export interface OverlayContribution {
-  id: string
-  render(props: { onClose(): void }): ReactNode
-}
+export type { OverlayContribution, StatusLineContribution } from '../contract/index.ts'
 
 export const statusLines = keyedRegistry<StatusLineContribution>()
 export const overlays = keyedRegistry<OverlayContribution>()

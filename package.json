@@ -12,7 +12,6 @@
     "build": "tsdown",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --no-file-parallelism",
-    "perf": "vitest run --config vitest.perf.config.ts",
     "prepare": "tsdown"
   },
   "main": "lib/index.mjs",
@@ -21,6 +20,10 @@
     ".": {
       "types": "./lib/index.d.mts",
       "default": "./lib/index.mjs"
+    },
+    "./contract": {
+      "types": "./lib/contract/index.d.mts",
+      "default": "./lib/contract/index.mjs"
     },
     "./package.json": "./package.json"
   },

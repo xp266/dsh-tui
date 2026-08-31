@@ -3,4 +3,6 @@ lib/
 *.tsbuildinfo
 .opencode/
 .DS_Store
-docs/
+docs/*
+!docs/plugin-author-guide.md
+!docs/plugin-author-guide.zh.md

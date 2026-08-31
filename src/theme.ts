@@ -1,8 +1,25 @@
 import type { PERMISSION_PRESETS } from './chat/bridge.ts'
+import { keyedRegistry } from './kernel/registry.ts'
+import type { ThemePaletteContribution } from './contract/index.ts'
 
 type PermissionModeId = typeof PERMISSION_PRESETS[number]
 
 export type ThemeMode = 'dark' | 'light'
+
+const paletteContributions = keyedRegistry<ThemePaletteContribution>()
+
+export function registerPalette(contribution: ThemePaletteContribution): () => void {
+  const dispose = paletteContributions.register(contribution.id, contribution, { order: contribution.order })
+  materialize(currentMode)
+  return () => {
+    dispose()
+    materialize(currentMode)
+  }
+}
+
+export function subscribePalettes(listener: () => void): () => void {
+  return paletteContributions.subscribe(listener)
+}
 
 const darkPalette = {
   userBubbleBackground: '#262626',
@@ -216,8 +233,17 @@ function rederivePermissionModes(): void {
   })
 }
 
+function effectivePalette(mode: ThemeMode): Theme {
+  const merged: Record<string, string> = { ...palettes[mode] }
+  for (const contribution of paletteContributions.values()) {
+    if (contribution.mode !== undefined && contribution.mode !== 'both' && contribution.mode !== mode) continue
+    Object.assign(merged, contribution.colors)
+  }
+  return merged as Theme
+}
+
 function materialize(mode: ThemeMode): void {
-  Object.assign(COLORS, palettes[mode])
+  Object.assign(COLORS, effectivePalette(mode))
   rederivePermissionModes()
 }
 

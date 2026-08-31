@@ -22,6 +22,7 @@ import {
   parseTodoArgs,
   parseTodoResult,
 } from './todo-view.ts'
+import { applyChatNodes } from './chat-nodes.ts'
 
 export type AgentPhase = 'awaiting-request' | 'thinking' | 'working'
 
@@ -74,6 +75,7 @@ export interface TurnState {
   pendingArgs: Map<string, string>
   commandNames: Map<string, string>
   compactions: Map<string, string>
+  chatNodes: Map<string, string>
   compacting: boolean
   running: boolean
   phase: AgentPhase
@@ -90,6 +92,7 @@ export function initialTurnState(): TurnState {
     pendingArgs: new Map(),
     commandNames: new Map(),
     compactions: new Map(),
+    chatNodes: new Map(),
     compacting: false,
     running: false,
     phase: 'awaiting-request',
@@ -138,6 +141,7 @@ export function reduceChatEvent(
   presenter?: ChatToolPresenter,
   options: ReduceOptions = {},
 ): { messages: Message[]; turn: TurnState; changed: boolean } {
+  if (applyChatNodes(messages, event, turn)) return { messages, turn, changed: true }
   switch (event.type) {
     case 'user/message': {
       if (event.data.source.kind !== 'user') return { messages, turn, changed: false }
@@ -457,7 +461,7 @@ export function reduceChatEvent(
           message.body = message.body === '' ? '(no result)' : `${message.body}\n(no result)`
           continue
         }
-        if ((message.kind === 'tool-diff' || message.kind === 'plan') && message.running) {
+        if ((message.kind === 'tool-diff' || message.kind === 'plan' || message.kind === 'custom') && message.running) {
           changed = true
           message.running = false
         }

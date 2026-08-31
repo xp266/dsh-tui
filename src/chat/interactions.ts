@@ -1,5 +1,7 @@
-import type { ComponentType } from 'react'
 import { keyedRegistry } from '../kernel/registry.ts'
+import type { InteractionPanelComponentProps, InteractionPanelContribution } from '../contract/index.ts'
+
+export type { InteractionPanelComponentProps, InteractionPanelContribution } from '../contract/index.ts'
 
 export type ApprovalOutcome = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'
 
@@ -85,25 +87,6 @@ export interface InteractionPanelRequest {
   request: unknown
   resolve(value: unknown): void
   reject(cause: unknown): void
-}
-
-export interface InteractionPanelComponentProps {
-  request: unknown
-  resolve(value: unknown): void
-  reject(cause: unknown): void
-  active: boolean
-  columns: number
-  rows: number
-  innerWidth: number
-  blockWidth: number
-  background: string
-  handleRef?: { current: unknown }
-  onResize(height: number): void
-}
-
-export interface InteractionPanelContribution {
-  kind: string
-  component: ComponentType<InteractionPanelComponentProps>
 }
 
 export class InteractionPanelRegistry {

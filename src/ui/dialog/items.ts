@@ -1,8 +1,11 @@
 import { widgetOf } from '../widgets/registry.ts'
+import type { DialogItemKinds } from '../../contract/index.ts'
 
 export interface DialogRow {
   items: DialogItem[]
 }
+
+type PluginDialogItem = DialogItemKinds[keyof DialogItemKinds]
 
 export type DialogItem =
   | { type: 'input'; label: string; value: string; onChange: (value: string) => void; onEnter?: () => void }
@@ -14,6 +17,7 @@ export type DialogItem =
   | { type: 'static'; label: string }
   | { type: 'actions'; confirmLabel: string; cancelLabel: string; onConfirm: () => void; onCancel: () => void }
   | { type: string; data?: unknown }
+  | PluginDialogItem
 
 export interface DialogFocus {
   row: number

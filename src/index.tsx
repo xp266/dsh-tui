@@ -2,6 +2,7 @@ import { setColorLevel } from './terminal/capabilities.ts'
 import { probeColorLevel } from './terminal/probe.ts'
 import { render } from 'ink'
 import type { Context } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
 import { App } from './ui/app.tsx'
 import { createChatBridge } from './chat/bridge.ts'
 import type { ChatBridge } from './chat/bridge.ts'
@@ -16,29 +17,40 @@ import { warmLanguages, onLanguagesWarm, clearHighlightCache } from './ui/messag
 import { clearMarkdownBlockCache } from './ui/message/md/engine.ts'
 import { clearLayoutCache } from './ui/message/layout.ts'
 import { warmRenderPipeline } from './ui/message/warmup.ts'
-import { createTuiExtensionPoint, exposeInteractionsFace } from './ui/extension-point.ts'
+import { createTuiExtensionPoint, exposeRuntimeFaces } from './ui/extension-point.ts'
+import { closeBootLog, emitBootLine, openBootLog } from './boot-log.ts'
 
 export const name = 'dsh-tui'
 
-const BOOT_LIST_TIMEOUT_MS = 10000
+export interface Config {
+  theme: 'auto' | 'dark' | 'light'
+  maxFps: number
+  bootListTimeout: number
+  alternateScreen: boolean
+}
 
-async function initTheme(scope: ThemeSettingsScope | undefined): Promise<void> {
+export const Config: z<Config> = z.object({
+  theme: z.union(['auto', 'dark', 'light']).default('auto'),
+  maxFps: z.number().default(240),
+  bootListTimeout: z.number().default(10000),
+  alternateScreen: z.boolean().default(true),
+})
+
+const DEFAULT_CONFIG: Config = { theme: 'auto', maxFps: 240, bootListTimeout: 10000, alternateScreen: true }
+
+async function initTheme(scope: ThemeSettingsScope | undefined, theme: Config['theme']): Promise<void> {
   const saved = scope?.get().mode
-  applyTheme(saved === 'dark' || saved === 'light' ? saved : await detectBackgroundMode())
+  applyTheme(saved === 'dark' || saved === 'light'
+    ? saved
+    : theme === 'auto'
+      ? await detectBackgroundMode()
+      : theme)
 }
 
 export const inject = ['agentLoop', 'agents', 'sessions', 'workspaceRegistry', 'llm', 'settings', 'credentials', 'agentDefaultModel']
 
-export function apply(ctx: Context) {
+export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
   ctx.effect(() => {
-    const disposeExtensionPoint = createTuiExtensionPoint(ctx)
-    warmLanguages()
-    onLanguagesWarm(() => {
-      clearHighlightCache()
-      clearMarkdownBlockCache()
-      clearLayoutCache()
-      warmRenderPipeline()
-    })
     const capture = createScreenCapture()
     let bridge: ChatBridge | undefined
     let app: ReturnType<typeof render> | undefined
@@ -48,17 +60,29 @@ export function apply(ctx: Context) {
     let lastColumns = 0
     let lastRows = 0
     let stopSizePoll: (() => void) | undefined
-    let exposeInteractions: (() => void) | undefined
+    let exposeFaces: (() => void) | undefined
     const extensionPoint = ctx.get('tui')
     const buildAppNode = () => <App bridge={bridge} screen={capture} themeTick={themeTick} />
+    const rerender = (): void => {
+      themeTick += 1
+      app?.rerender(buildAppNode())
+    }
+    const disposeExtensionPoint = createTuiExtensionPoint(ctx, { onContributionsChanged: rerender })
+    warmLanguages()
+    onLanguagesWarm(() => {
+      clearHighlightCache()
+      clearMarkdownBlockCache()
+      clearLayoutCache()
+      warmRenderPipeline()
+    })
     const start = (): void => {
       if (disposed || app !== undefined) return
       app = render(buildAppNode(), {
         stdout: capture.stream,
-        alternateScreen: true,
+        alternateScreen: config.alternateScreen,
         exitOnCtrlC: false,
         incrementalRendering: false,
-        maxFps: 240,
+        maxFps: config.maxFps,
       })
       lastColumns = capture.stream.columns
       lastRows = capture.stream.rows
@@ -82,32 +106,37 @@ export function apply(ctx: Context) {
         stopSizePoll()
         return
       }
-      hotTheme = startHotTheme(() => {
-        themeTick += 1
-        app?.rerender(buildAppNode())
-      })
+      hotTheme = startHotTheme(rerender)
     }
     const themeScope = registerThemeSettings(ctx)
+    openBootLog()
+    emitBootLine('terminal: probing color support')
     void (async () => {
       const probed = await probeColorLevel()
       if (probed !== undefined) setColorLevel(probed)
-      await initTheme(themeScope)
+      emitBootLine('theme: applying initial theme')
+      await initTheme(themeScope, config.theme)
+      emitBootLine('chat bridge: connecting harness services')
       bridge = await createChatBridge(ctx)
-      exposeInteractions = extensionPoint === undefined ? undefined : exposeInteractionsFace(extensionPoint, bridge.interactions.panels)
+      exposeFaces = extensionPoint === undefined ? undefined : exposeRuntimeFaces(extensionPoint, bridge)
+      emitBootLine('sessions: loading session list')
       await Promise.race([
         bridge.listSessions().catch(() => {}),
         new Promise<void>(resolve => {
-          setTimeout(resolve, BOOT_LIST_TIMEOUT_MS).unref()
+          setTimeout(resolve, config.bootListTimeout).unref()
         }),
       ])
+      emitBootLine('ready: starting interface')
+      closeBootLog()
     })()
       .catch(error => {
         console.error('chat bridge init failed', error)
+        closeBootLog()
       })
       .finally(() => start())
     return () => {
       disposed = true
-      exposeInteractions?.()
+      exposeFaces?.()
       disposeExtensionPoint()
       stopSizePoll?.()
       hotTheme?.stop()

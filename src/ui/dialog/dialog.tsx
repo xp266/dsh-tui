@@ -18,6 +18,7 @@ import { applyNavigation, useDialogInput } from './use-dialog-input.ts'
 import type { DialogLiveState } from './use-dialog-input.ts'
 import { widgetOf } from '../widgets/registry.ts'
 import type { ClickActions, ClickHit } from '../widgets/types.ts'
+import type { WindowHandle } from '../../contract/index.ts'
 
 export * from './items.ts'
 export * from './geometry.ts'
@@ -39,10 +40,7 @@ export interface DialogProps {
   ref?: Ref<DialogHandle>
 }
 
-export interface DialogHandle {
-  clickAt(y: number, x: number): void
-  wheelAt(y: number, dir: -1 | 1): boolean
-}
+export type DialogHandle = WindowHandle
 
 export const CloseGuardContext = createContext(false)
 

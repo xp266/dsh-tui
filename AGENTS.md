@@ -9,7 +9,7 @@
 | Path | Purpose |
 |---|---|
 | `/home/xp266/ts/dsh-tui` | This plugin project (development project) |
-| `/home/xp266/ts/dsh-tui/docs/` | deepseek-harness research docs (read-only, for reference) |
+| `/home/xp266/ts/dsh-tui/docs/` | Plugin development |
 | `/home/xp266/github/deepseek-harness` | harness source (read-only, for reference) |
 | `/home/xp266/github/deepseek-harness/packages/bundle/web-app/` | official web bundle (read-only, for reference) |
 
@@ -26,6 +26,7 @@ pnpm build         # tsdown -> lib/
 
 - No comments in code unless strictly necessary; no emojis or pictographs.
 - Never write a README.md file.
+- Keep `tests/` for concise, general-purpose tests only; throwaway or scratch tests go to a temporary directory (e.g. `/tmp`).
 - After completing a feature or fix, always run `pnpm build`.
 - Never commit proactively; only check and commit when the user explicitly asks.
 - Do not modify this document unless necessary.

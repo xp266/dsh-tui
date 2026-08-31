@@ -3,6 +3,7 @@ import { createMarkdownRenderer, renderMarkdown } from '../src/ui/message/md/ind
 import { createMdPalette } from '../src/ui/message/md/palette.ts'
 import { codeStyles, codeStylesThinking, highlightCodeBlock } from '../src/ui/message/md/highlight.ts'
 import { wrapSegments } from '../src/core/segments.ts'
+import { textWidth } from '../src/core/text.ts'
 import type { MarkStyle, Segment } from '../src/core/segments.ts'
 
 const light = createMdPalette(false)
@@ -107,6 +108,20 @@ describe('renderMarkdown blocks', () => {
   it('indents nested list children under their parent text', () => {
     expect(lines('- a\n  - b')).toEqual(['• a', '  ◦ b'])
     expect(lines('- a\n  - b\n    - c')).toEqual(['• a', '  ◦ b', '    ▪ c'])
+  })
+
+  it('hangs wrapped list continuations by the marker width', () => {
+    const bullet = lines('- create_goal/update_goal/get_goal: goal tools could create a trivial goal then complete it safely here', 60)
+    expect(bullet[0]!.startsWith('• create_goal')).toBe(true)
+    for (const row of bullet.slice(1)) {
+      expect(row.startsWith('  ')).toBe(true)
+      expect(textWidth(row)).toBeLessThanOrEqual(60)
+    }
+    const numbered = lines('12. a very long item body that certainly needs to wrap somewhere around the available width limit now', 50)
+    expect(numbered[0]!.startsWith('12. ')).toBe(true)
+    for (const row of numbered.slice(1)) {
+      expect(row.startsWith('    ')).toBe(true)
+    }
   })
 
   it('renders task list checkboxes instead of bullets', () => {

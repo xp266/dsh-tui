@@ -118,6 +118,15 @@ describe('chat event reducer', () => {
     expect(state.messages[0]).toMatchObject({ running: false, collapsed: true })
   })
 
+  it('opens a fresh Thinking block for the next turn instead of appending', () => {
+    const first = apply([], [reasoning('first'), assistantMessage(1), turnEnd()])
+    expect(first.messages.filter(message => message.kind === 'collapsible')).toHaveLength(1)
+    const second = apply(first.messages, [reasoning('second', 2), assistantMessage(2, 1)])
+    const thinking = second.messages.filter(message => message.kind === 'collapsible' && message.thinking === true)
+    expect(thinking).toHaveLength(2)
+    expect(thinking[1]).toMatchObject({ body: 'second' })
+  })
+
   it('streams assistant text into one bubble', () => {
     const { messages } = apply([], [textDelta('Hello '), textDelta('world')])
     expect(messages).toHaveLength(1)

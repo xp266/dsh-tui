@@ -20,8 +20,8 @@ import { useMouseSelection, hintRegion } from './hooks/use-mouse-selection.ts'
 import { useOverlayContribution } from './contributions.ts'
 import { InputBar, inputLayout, INPUT_WIDTH_OFFSET, HINT_MAX_ROWS } from './input/input-bar.tsx'
 import type { InputBarHandle } from './input/input-bar.tsx'
-import { COMMANDS, KNOWN_COMMAND_ARGS, filterHintEntries, matchCommand, mergeCommandEntries, matchAvailableCommand } from './input/commands.ts'
-import type { CommandAvailability, CommandId } from './input/commands.ts'
+import { COMMANDS, KNOWN_COMMAND_ARGS, commandArgHints, filterHintEntries, matchCommand, mergeCommandEntries, matchAvailableCommand, useCommandVersion } from './input/commands.ts'
+import type { CommandAvailability, CommandDef } from './input/commands.ts'
 import { CHROME_MARGIN_X, MESSAGE_INPUT_GAP_ROWS, hintBlockTop } from '../core/metrics.ts'
 import { useComposer } from './input/use-composer.ts'
 import { seedAsyncListCache } from './hooks/use-async-list.ts'
@@ -39,6 +39,7 @@ import { registerBuiltinPanels } from './panels-builtin.tsx'
 import { isTodoActive, todoProgress } from '../chat/todo-view.ts'
 import type { TodoItemLike } from '../chat/todo-view.ts'
 import { useOverlayStack } from './overlay.ts'
+import { handleKeyContributions } from './keymap.ts'
 import { StatusBar } from './chrome/status-bar.tsx'
 
 const FORCE_EXIT_DELAY_MS = 6000
@@ -139,6 +140,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const overlayContribution = useOverlayContribution(dialog)
   const [panelHeight, setPanelHeight] = useState(7)
   const composerInteractive = dialog === null && panel === null
+  const commandVersion = useCommandVersion()
   const windowCommands = useMemo(
     () => {
       const staticNames = new Set(COMMANDS.map(command => command.command))
@@ -150,7 +152,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   )
   const commandEntries = useMemo(
     () => mergeCommandEntries([...COMMANDS.filter(isCommandAvailable), ...windowCommands], registryCommands),
-    [isCommandAvailable, windowCommands, registryCommands],
+    [isCommandAvailable, windowCommands, registryCommands, commandVersion],
   )
   const registryNames = useMemo(
     () => new Set(registryCommands.map(entry => `/${entry.name}`)),
@@ -158,6 +160,8 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   )
   const permissionPresetsRef = useRef<string[] | undefined>(undefined)
   const listCommandArgs = useCallback(async (name: string): Promise<string[]> => {
+    const registered = commandArgHints(name)
+    if (registered !== undefined) return [...registered]
     const known = KNOWN_COMMAND_ARGS[name]
     if (known !== undefined) return [...known]
     if (name !== 'permission') return []
@@ -193,8 +197,12 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
       .then(() => setSessionTick(tick => tick + 1))
       .catch(() => {})
   }
-  const runCommand = (id: CommandId) => {
-    switch (id) {
+  const runCommand = (def: CommandDef) => {
+    if (def.run !== undefined) {
+      def.run()
+      return
+    }
+    switch (def.id) {
       case 'new':
         startNewSession()
         return
@@ -202,14 +210,14 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
         if (bridge && todoActive) overlays.push('todo')
         return
       default:
-        if (bridge) overlays.push(id)
+        if (bridge) overlays.push(def.id)
         return
     }
   }
   const handleSend = (text: string) => {
     const matched = matchAvailableCommand(text, isCommandAvailable, windowCommands)
     if (matched !== undefined) {
-      runCommand(matched.id)
+      runCommand(matched)
       return
     }
     if (matchCommand(text) !== undefined) return
@@ -297,6 +305,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   })
   selectionRef.current = selection
   useInput((input, key) => {
+    if (handleKeyContributions(input, key)) return
     if (dialog !== null && !selection) return
     if (key.escape) {
       if (hintOpen) return

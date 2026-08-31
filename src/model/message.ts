@@ -62,4 +62,8 @@ export interface PlanMessage {
   error?: string
 }
 
-export type Message = BubbleMessage | CollapsibleMessage | ToolDiffMessage | CompactionMessage | PlanMessage
+import type { CustomMessage } from '../contract/index.ts'
+
+export type { CustomMessage } from '../contract/index.ts'
+
+export type Message = BubbleMessage | CollapsibleMessage | ToolDiffMessage | CompactionMessage | PlanMessage | CustomMessage
