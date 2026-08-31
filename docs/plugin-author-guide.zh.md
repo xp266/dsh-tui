@@ -71,21 +71,34 @@ React 组件的唯一受支持来源。注意：以 `link:` 方式安装的插�
 | `tui.chrome.statusLine` | 状态栏文本行 |
 | `tui.chrome.overlays` | 全屏覆盖层 |
 | `tui.chrome.widgets` | 对话框条目控件类型 |
-| `tui.chrome.palette` | 主题色（深/浅/两者） |
-| `tui.chrome.keys` | 全局键位（先于内置外壳处理） |
-| `tui.tools` | 工具调用/结果展示 |
+| `tui.chrome.palette` | 主题色（深/浅/两者）+ 运行时 `color(key)` 查询 |
+| `tui.chrome.keys` | 全局键位（真消费，先于一切按键参与者） |
+| `tui.chrome.inputStatus` | 输入框状态行的附加分段 |
+| `tui.hint.matchers` | 命令提示的过滤/排序覆盖 |
+| `tui.hint.args` | 字面量参数补全提供器 |
+| `tui.tools` | 工具调用/结果展示，可选完全接管 |
 | `tui.content.nodes` | 由会话事件驱动的自定义气泡 |
 | `tui.content.views` | 自定义气泡渲染器 |
+| `tui.content.renderers` | 接管内置消息类型的主体渲染 |
 | `tui.markdown.blocks` | 块级 markdown 渲染器 |
 | `tui.markdown.inline` | 行内（span）markdown 渲染器 |
 | `tui.markdown.languages` | 代码围栏语法（Prism） |
 | `tui.composer.paste` | 粘贴拦截/改写 |
 | `tui.composer.keys` | 输入框键位拦截 |
 | `tui.composer.insert` | 向活动输入框编程式插入 |
-| `tui.fields` + `tui.fields.factory` | 特殊字段类型与实例 |
+| `tui.fields` + `tui.fields.factory` | 特殊字段类型与实例（支持 pin） |
+| `tui.pointer` | 指针手势处理器（观察或抢占内置） |
+| `tui.selection` | 选区 domain、文本变换链、剪贴板出口链 |
+| `tui.clipboard` | 剪贴板读/写后端 |
 | `tui.interactions` | 模态面板 + 主动弹出 |
 | `tui.startup` | 启动进度接收器 |
 | `tui.chat` | 发送（文本 + 图片组）、会话、事件监听 |
+
+### 分发与覆盖语义（所有 face 统一）
+
+- 每个 `register` 返回 disposer；注册随插件自身 fiber 退栈。同 key 重复注册在上层压入覆盖层，卸载后自动还原下一层。
+- 注册表按 order 分层：`get(key)` 取 order 最低的存活层，分发循环按 `values()` 升序执行、先认领者胜。内置行为位于高 order 层（窗口/面板/服务/控件 500+），因此默认 order（100）的插件贡献无论注册时序如何必然生效。
+- 处理器链：`chrome.keys` 最先运行且返回 `true` 即真实消费该按键（composer、面板、对话框、外壳都会观察仲裁标志）。指针事件的 drag/up 独占路由给认领按下事件的处理器。复制管线为 domain → 变换链 → 剪贴板出口链。剪贴板读取逐后端回退直到有结果。
 
 ## 窗口、控件与数据
 
@@ -386,6 +399,109 @@ const off = tui.chat.onEvent(event => {})
 
 - 方法：`send`/`interrupt`/`newSession`/`openSession`/`listSessions`/`onEvent`/`cwd`/`activeSessionId`。
 - `send` 支持图片组：每个内层数组在消息中呈现为一个 `[n images]` chip；`path` 从磁盘读取，`data` 直接上传。模型收到真实图片块。
+
+## 输入、指针与选区
+
+### tui.chrome.keys（真消费）
+
+此处注册的键位先于所有其他按键参与者——消息区滚动、输入框、交互面板、
+打开的对话框与外壳。返回 `true` 即真实消费该事件：
+
+```ts
+tui.chrome.keys.register({
+  id: 'quick-command',
+  handle: (input, key) => {
+    if (key.ctrl && input === 'k') { openLauncher(); return true }
+    return false
+  },
+})
+```
+
+Ctrl+C 存在选区时始终复制，即使事件被其他参与者消费。
+
+### tui.pointer
+
+指针处理器观察（或抢占）内置手势链：滚动条、hint 拖拽、对话框、面板、
+输入框与消息区位于 order 100..190；插件默认 order 300 观察未被认领的
+按下事件，order < 100 则抢占。
+
+```ts
+tui.pointer.register({
+  id: 'status-click',
+  order: 150,
+  onDown: ({ event, ui }) => {
+    if (event.y !== ui.rows - 1 || ui.dialogOpen) return false
+    openStatusMenu(event.x)
+    return true // 独占 drag/up 直到释放
+  },
+})
+```
+
+帧携带原始 `MouseEventData`、会话（`getSelection`/`setSelection`/`scroll`/
+`autoScroll`）与 UI 快照（对话框/面板状态、hint 区、几何、滚动）。
+
+### tui.selection
+
+复制是三段管线：domain 认领 `LineSelection` 并提取文本，transformer 改写，
+clipboard provider 写出（首个 `true` 停止链路）。内置 domain（message/
+chrome）与内置剪贴板出口（OSC52 + 系统回退）位于 order 500。
+
+```ts
+tui.selection.transformers.register({
+  id: 'strip-tables',
+  transform: text => text.replace(/[│┃].*$/gm, ''),
+})
+tui.selection.clipboard.register({
+  id: 'log-copy',
+  copy: text => { myLog(text); return true },
+})
+```
+
+### tui.clipboard
+
+```ts
+tui.clipboard.register({
+  id: 'remote-clip',
+  readText: () => myTransport.read(),
+  writeText: text => myTransport.write(text), // 返回 true 停止链路
+})
+```
+
+### tui.chrome.inputStatus
+
+在输入框状态行渲染附加分段（位于内置 mode/model/effort 与光标 nonce 之间）：
+
+```ts
+tui.chrome.inputStatus.register({
+  id: 'branch',
+  render: ({ busy }) => busy ? null : { text: ` (${gitBranch()})`, color: '#8a8a8a' },
+})
+```
+
+### tui.hint
+
+```ts
+tui.hint.matchers.register({
+  id: 'fuzzy', // 先于内置 前缀/子序列/描述 三层匹配
+  match: (entries, { query }) => fuzzyRank(entries, query),
+})
+tui.hint.args.register({
+  id: 'envs',
+  args: name => name === 'deploy' ? ['staging', 'production'] : null,
+})
+```
+
+### tui.content.renderers
+
+接管任意内置消息类型的主体渲染（包括 todo 气泡、plan 文本、diff 主体与
+assistant 气泡）。返回 `undefined` 回落到内置渲染；卸载即还原。
+
+```ts
+tui.content.renderers.register({
+  kind: 'tool-diff',
+  render: (message, width) => ({ lines: renderFancyDiff(message, width) }),
+})
+```
 
 ## 配置
 

@@ -77,21 +77,35 @@ static import resolves.
 | `tui.chrome.statusLine` | status bar lines |
 | `tui.chrome.overlays` | full-screen overlays |
 | `tui.chrome.widgets` | dialog item widget kinds |
-| `tui.chrome.palette` | theme colors (dark/light/both) |
-| `tui.chrome.keys` | global key bindings (before builtin shell handling) |
-| `tui.tools` | tool call/result presentations |
+| `tui.chrome.palette` | theme colors (dark/light/both) + runtime `color(key)` lookup |
+| `tui.chrome.keys` | global key bindings with true preemption |
+| `tui.chrome.inputStatus` | segments in the composer status line |
+| `tui.hint.matchers` | command hint filter/rank overrides |
+| `tui.hint.args` | literal argument-completion providers |
+| `tui.tools` | tool call/result presentations, optional full takeover |
 | `tui.content.nodes` | custom bubbles driven by session events |
 | `tui.content.views` | custom bubble renderers |
+| `tui.content.renderers` | takeover of builtin message-kind bodies |
 | `tui.markdown.blocks` | block-level markdown renderers |
 | `tui.markdown.inline` | inline (span) markdown renderers |
 | `tui.markdown.languages` | code fence grammars (Prism) |
 | `tui.composer.paste` | paste interception/transformation |
 | `tui.composer.keys` | composer key interception |
 | `tui.composer.insert` | programmatic insertion into the live composer |
-| `tui.fields` + `tui.fields.factory` | special field kinds and instances |
+| `tui.fields` + `tui.fields.factory` | special field kinds and instances (with pin) |
+| `tui.hint` | command hint matching and argument providers |
+| `tui.pointer` | pointer gesture handlers (observe or preempt builtins) |
+| `tui.selection` | selection domains, text transformers, clipboard providers |
+| `tui.clipboard` | clipboard read/write backends |
 | `tui.interactions` | modal panels + programmatic push |
 | `tui.startup` | boot progress sinks |
 | `tui.chat` | send (text + image groups), sessions, event tap |
+
+### Dispatch and override semantics (uniform across all faces)
+
+- Every `register` returns a disposer; registrations unwind with the plugin's own fiber. Re-registering the same key layers an override on top, and disposal restores the layer beneath.
+- Registries are order-based: `get(key)` resolves to the lowest-order live layer, and dispatch loops run `values()` in ascending order with first-claim-wins. Builtin behavior sits in high-order layers (windows/panels/services/widgets at 500+), so a plugin contribution with the default order (100) always wins regardless of registration timing.
+- Handler chains: `chrome.keys` runs first and its `true` return truly consumes the event (composer, panels, dialog, and the shell all observe the arbiter). Pointer events route drag/up exclusively to the handler that claimed the press. Selection copy runs domain → transformers → clipboard providers. Clipboard reads fall through backend by backend until one answers.
 
 ## Windows, widgets, and data
 
@@ -397,6 +411,125 @@ const off = tui.chat.onEvent(event => {})
 
 - Methods: `send`/`interrupt`/`newSession`/`openSession`/`listSessions`/`onEvent`/`cwd`/`activeSessionId`.
 - `send` accepts image groups: each inner array becomes one `[n images]` chip in the rendered message; a `path` image is read from disk, a `data` image is uploaded as-is. The model receives real image parts.
+
+## Input, pointer, and selection
+
+### tui.chrome.keys (true consumption)
+
+Key bindings registered here run before every other key participant —
+message-list scrolling, the composer, interaction panels, open dialogs, and
+the shell. Returning `true` genuinely consumes the event:
+
+```ts
+tui.chrome.keys.register({
+  id: 'quick-command',
+  handle: (input, key) => {
+    if (key.ctrl && input === 'k') { openLauncher(); return true }
+    return false
+  },
+})
+```
+
+Ctrl+C with an active selection always copies, even when another participant
+consumed the event.
+
+### tui.pointer
+
+Pointer handlers observe (or preempt) the builtin gesture chain: scrollbar,
+hint drag, dialog, panel, input, and the message area live at order
+100..190; a plugin's default order 300 sees presses the builtins did not
+claim, and order < 100 preempts them.
+
+```ts
+tui.pointer.register({
+  id: 'status-click',
+  order: 150,
+  onDown: ({ event, ui }) => {
+    if (event.y !== ui.rows - 1 || ui.dialogOpen) return false
+    openStatusMenu(event.x)
+    return true // owns drag/up until release
+  },
+  onWheel: ({ event, session }) => {
+    session.scroll(session.getSelection()?.anchorRow ?? 0) // example
+    return true
+  },
+})
+```
+
+The frame carries the raw `MouseEventData` plus a session
+(`getSelection`/`setSelection`/`scroll`/`autoScroll`) and a ui snapshot
+(dialog/panel state, hint region, geometry, scroll).
+
+### tui.selection
+
+Selection copy is a three-stage pipeline: a domain claims the `LineSelection`
+and extracts text, transformers rewrite it, and clipboard providers write it
+(first `true` stops the chain). Builtin domains (message/chrome) and the
+builtin clipboard provider (OSC52 + system fallback) sit at order 500.
+
+```ts
+tui.selection.domains.register({
+  id: 'my-view',
+  hit: sel => sel.inMessage === false && sel.anchorRow >= statusTop(),
+  extract: (sel, ctx) => ctx.chromeText(sel),
+})
+tui.selection.transformers.register({
+  id: 'strip-tables',
+  transform: text => text.replace(/[│┃].*$/gm, ''),
+})
+tui.selection.clipboard.register({
+  id: 'log-copy',
+  copy: text => { myLog(text); return true },
+})
+```
+
+### tui.clipboard
+
+```ts
+tui.clipboard.register({
+  id: 'remote-clip',
+  readText: () => myTransport.read(),
+  writeText: text => myTransport.write(text), // return true to stop the chain
+})
+```
+
+### tui.chrome.inputStatus
+
+Render extra segments into the composer status line (between the builtin
+mode/model/effort parts and the caret nonce):
+
+```ts
+tui.chrome.inputStatus.register({
+  id: 'branch',
+  render: ({ columns, rows, busy }) => busy ? null : { text: ` (${gitBranch()})`, color: '#8a8a8a' },
+})
+```
+
+### tui.hint
+
+```ts
+tui.hint.matchers.register({
+  id: 'fuzzy', // runs before the builtin prefix/subsequence/description tiers
+  match: (entries, { query }) => fuzzyRank(entries, query),
+})
+tui.hint.args.register({
+  id: 'envs',
+  args: name => name === 'deploy' ? ['staging', 'production'] : null,
+})
+```
+
+### tui.content.renderers
+
+Take over the body rendering of any builtin message kind (including todo
+bubbles, plan text, diff bodies, and assistant bubbles). Return `undefined`
+to fall through to the builtin rendering; disposal restores it.
+
+```ts
+tui.content.renderers.register({
+  kind: 'tool-diff',
+  render: (message, width) => ({ lines: renderFancyDiff(message, width) }),
+})
+```
 
 ## Configuration
 
