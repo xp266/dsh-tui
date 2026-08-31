@@ -266,6 +266,14 @@ export function createScreenCapture(): ScreenCapture {
   }
 
   class CaptureStream extends EventEmitter {
+    constructor() {
+      super()
+      // Re-emit the real terminal's resize events onto the capture stream so
+      // subscribers that registered locally (below) observe them too.
+      ;(real as unknown as EventEmitter).on('resize', () => {
+        this.emit('resize')
+      })
+    }
     write(chunk: string | Buffer): boolean {
       feed(typeof chunk === 'string' ? chunk : chunk.toString('utf8'))
       return real.write(chunk)
@@ -289,18 +297,22 @@ export function createScreenCapture(): ScreenCapture {
       return real.writable
     }
     override on(event: string, listener: (...args: unknown[]) => void): this {
+      if (event === 'resize') return super.on(event, listener)
       ;(real as unknown as EventEmitter).on(event, listener)
       return this
     }
     override off(event: string, listener: (...args: unknown[]) => void): this {
+      if (event === 'resize') return super.off(event, listener)
       ;(real as unknown as EventEmitter).off(event, listener)
       return this
     }
     override once(event: string, listener: (...args: unknown[]) => void): this {
+      if (event === 'resize') return super.once(event, listener)
       ;(real as unknown as EventEmitter).once(event, listener)
       return this
     }
     override removeListener(event: string, listener: (...args: unknown[]) => void): this {
+      if (event === 'resize') return super.removeListener(event, listener)
       ;(real as unknown as EventEmitter).removeListener(event, listener)
       return this
     }

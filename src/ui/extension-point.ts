@@ -8,6 +8,8 @@ import { registerKeyBinding } from './keymap.ts'
 import { registerInputStatus } from './chrome/input-status.ts'
 import { registerHintArgsProvider, registerHintMatcher } from './chrome/hint-service.ts'
 import { registerPalette, subscribePalettes } from '../theme.ts'
+import { paletteColor } from '../theme.ts'
+import { registerClipboardBackend } from '../terminal/clipboard-backends.ts'
 import { registerToolView, subscribeToolViews } from '../chat/tool-views.ts'
 import { registerChatNode, subscribeChatNodes } from '../chat/chat-nodes.ts'
 import { registerMessageView, subscribeMessageViews } from './message/message-views.ts'
@@ -70,7 +72,7 @@ export function createTuiExtensionPoint(ctx: Context, hooks: TuiExtensionPointHo
       statusLine: { register: registerStatusLine },
       overlays: { register: registerOverlay },
       widgets: { register: registerWidget },
-      palette: { register: registerPalette },
+      palette: { register: registerPalette, color: paletteColor },
       keys: { register: registerKeyBinding },
       inputStatus: { register: registerInputStatus },
     },
@@ -102,6 +104,7 @@ export function createTuiExtensionPoint(ctx: Context, hooks: TuiExtensionPointHo
       matchers: { register: registerHintMatcher },
       args: { register: registerHintArgsProvider },
     },
+    clipboard: { register: registerClipboardBackend },
     pointer: { register: registerPointerHandler },
     selection: {
       domains: { register: registerSelectionDomain },

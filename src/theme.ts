@@ -253,6 +253,16 @@ function materialize(mode: ThemeMode): void {
   rederivePermissionModes()
 }
 
+/**
+ * Read a palette color by key, including keys contributed by plugins that
+ * are not part of the built-in Theme type. Falls back to the raw key when
+ * nothing defines it, so custom semantic names remain visible.
+ */
+export function paletteColor(key: string): string {
+  const value = (COLORS as unknown as Record<string, string>)[key]
+  return value ?? key
+}
+
 export function setThemeMode(mode: ThemeMode): void {
   currentMode = mode
   materialize(mode)

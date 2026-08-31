@@ -131,6 +131,20 @@ export interface ThemePaletteContribution {
 
 export interface TuiPaletteFace {
   register(contribution: ThemePaletteContribution): () => void
+  /** Read a palette color by key, including plugin-contributed keys. */
+  color(key: string): string | undefined
+}
+
+export interface ClipboardBackendContribution {
+  id: string
+  order?: number
+  readText?(): string | undefined | Promise<string | undefined>
+  readImage?(): { data: Uint8Array; mediaType: string } | undefined | Promise<{ data: Uint8Array; mediaType: string } | undefined>
+  writeText?(text: string): boolean
+}
+
+export interface TuiClipboardFace {
+  register(contribution: ClipboardBackendContribution): () => void
 }
 
 export interface TuiKey {
@@ -634,6 +648,7 @@ export interface TuiExtensionPoint {
   hint: TuiHintFace
   pointer: TuiPointerFace
   selection: TuiSelectionFace
+  clipboard: TuiClipboardFace
   interactions?: TuiInteractionsFace
   chat?: TuiChatFace
 }

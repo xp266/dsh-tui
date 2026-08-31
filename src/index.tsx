@@ -97,7 +97,12 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
       }
       capture.stream.on('resize', onResize)
       const sizePoll = setInterval(() => {
-        if (capture.stream.columns !== lastColumns || capture.stream.rows !== lastRows) onResize()
+        if (capture.stream.columns !== lastColumns || capture.stream.rows !== lastRows) {
+          onResize()
+          // Terminals that never emit a resize event still get React-side
+          // size updates through this synthetic dispatch.
+          capture.stream.emit('resize')
+        }
       }, 1000)
       sizePoll.unref()
       stopSizePoll = (): void => {

@@ -8,32 +8,6 @@ export function writeOsc52(text: string): void {
   process.stdout.write(`\x1b]52;c;${encoded}\x07`)
 }
 
-/** OSC52 plus a best-effort system clipboard write for terminals without OSC52 support. */
-export function writeClipboardText(text: string): void {
-  writeOsc52(text)
-  const commands: Array<{ command: string; args: string[] }> = []
-  if (platform() === 'darwin') {
-    commands.push({ command: 'pbcopy', args: [] })
-  } else if (platform() === 'linux') {
-    if (isWsl()) commands.push({ command: 'clip.exe', args: [] })
-    else {
-      commands.push({ command: 'wl-copy', args: [] })
-      commands.push({ command: 'xclip', args: ['-selection', 'clipboard'] })
-    }
-  } else if (platform() === 'win32') {
-    commands.push({ command: 'clip', args: [] })
-  }
-  for (const entry of commands) {
-    try {
-      const child = spawn(entry.command, entry.args, { stdio: ['pipe', 'ignore', 'ignore'] })
-      child.on('error', () => {})
-      child.stdin.end(text)
-    } catch {
-      // best-effort only; OSC52 already handled the capable terminals
-    }
-  }
-}
-
 export function isWsl(): boolean {
   if (platform() !== 'linux') return false
   return release().toLowerCase().includes('microsoft')
@@ -84,7 +58,7 @@ async function firstText(attempts: Array<{ command: string; args: string[] }>): 
 }
 
 
-export async function readClipboardImage(): Promise<ClipboardImage | undefined> {
+async function readClipboardImageBuiltin(): Promise<ClipboardImage | undefined> {
   const os = platform()
   if (os === 'darwin') {
     const file = join(tmpdir(), 'dsh-tui-clipboard.png')
@@ -125,7 +99,7 @@ export async function readClipboardImage(): Promise<ClipboardImage | undefined> 
   ])
 }
 
-export async function readClipboardText(): Promise<string | undefined> {
+async function readClipboardTextBuiltin(): Promise<string | undefined> {
   const os = platform()
   if (os === 'darwin') return firstText([{ command: 'pbpaste', args: [] }])
   if (os === 'win32' || isWsl()) {
@@ -151,4 +125,50 @@ export async function readClipboardImageUris(): Promise<string[]> {
     .map(line => line.trim())
     .filter(line => line.startsWith('file://'))
     .map(line => decodeURIComponent(line.slice('file://'.length)))
+}
+
+import { clipboardReadImage, clipboardReadText, clipboardWriteText } from './clipboard-backends.ts'
+
+/** Backend-chain-aware clipboard read; plugin backends run first. */
+export async function readClipboardText(): Promise<string | undefined> {
+  return clipboardReadText(readClipboardTextBuiltin)
+}
+
+/** Backend-chain-aware image read; plugin backends run first. */
+export async function readClipboardImage(): Promise<ClipboardImage | undefined> {
+  return clipboardReadImage(readClipboardImageBuiltin)
+}
+
+/** Backend-chain-aware write; the first backend claiming the write stops the chain. */
+export function writeClipboardText(text: string): void {
+  clipboardWriteText(text, writeOsc52WithFallback)
+}
+
+function writeOsc52WithFallback(text: string): void {
+  writeOsc52(text)
+  spawnSystemWriters(text)
+}
+
+function spawnSystemWriters(text: string): void {
+  const commands: Array<{ command: string; args: string[] }> = []
+  if (platform() === 'darwin') {
+    commands.push({ command: 'pbcopy', args: [] })
+  } else if (platform() === 'linux') {
+    if (isWsl()) commands.push({ command: 'clip.exe', args: [] })
+    else {
+      commands.push({ command: 'wl-copy', args: [] })
+      commands.push({ command: 'xclip', args: ['-selection', 'clipboard'] })
+    }
+  } else if (platform() === 'win32') {
+    commands.push({ command: 'clip', args: [] })
+  }
+  for (const entry of commands) {
+    try {
+      const child = spawn(entry.command, entry.args, { stdio: ['pipe', 'ignore', 'ignore'] })
+      child.on('error', () => {})
+      child.stdin.end(text)
+    } catch {
+      // best-effort only; OSC52 already handled the capable terminals
+    }
+  }
 }
