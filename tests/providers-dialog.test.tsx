@@ -85,7 +85,6 @@ async function pressKeyUntil(
     act(() => {
       stdin.write(key)
     })
-    await new Promise(resolve => setTimeout(resolve, 25))
     try {
       await until(label, check, 350)
       return
@@ -186,10 +185,7 @@ describe('ProvidersDialog provider list', () => {
     await typeIntoFocusedInput(stdin, lastFrame, 'k')
     await pressKeyUntil('\r', stdin, 'models fetched', () => api.fetchProviderModels.mock.calls.length > 0)
     await until('select models window', frameIncludes(lastFrame, 'Model One'))
-    act(() => {
-      stdin.write(' ')
-    })
-    await until('model checked', frameIncludes(lastFrame, '\u2713'))
+    await pressKeyUntil(' ', stdin, 'model checked', frameIncludes(lastFrame, '\u2713'))
     await pressKeyUntil('\r', stdin, 'provider saved', () => api.saveProviderModels.mock.calls.length > 0)
     const entry = DIRECTORY.find(candidate => candidate.provider === 'amazon-bedrock')
     expect(api.saveProviderModels).toHaveBeenCalledWith(entry, DISCOVERED)
