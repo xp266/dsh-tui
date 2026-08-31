@@ -66,4 +66,6 @@ import type { CustomMessage } from '../contract/index.ts'
 
 export type { CustomMessage } from '../contract/index.ts'
 
+export type MessageKind = 'bubble' | 'collapsible' | 'tool-diff' | 'compaction' | 'plan' | 'custom'
+
 export type Message = BubbleMessage | CollapsibleMessage | ToolDiffMessage | CompactionMessage | PlanMessage | CustomMessage

@@ -16,6 +16,7 @@ import { glyphs } from '../../terminal/glyphs.ts'
 import { PLAN_TOOL_NAME } from '../../chat/store.ts'
 import { BUBBLE_WIDTH_OFFSET, HEADER_LABEL_COL } from '../../core/metrics.ts'
 import { messageBackgroundWidth } from '../layout-service.ts'
+import { messageRendererOf } from './renderers.ts'
 
 export { HEADER_LABEL_COL }
 
@@ -101,6 +102,19 @@ function bodyRows(count: number, options: { colStart: number; bg: boolean; muted
 }
 
 function renderBody(message: Message, width: number): BodyRendered {
+  const override = messageRendererOf(message.kind)
+  if (override !== undefined) {
+    const rendered = override.render(message, width - BUBBLE_WIDTH_OFFSET + BUBBLE_WIDTH_OFFSET)
+    if (rendered !== undefined) {
+      return {
+        lines: rendered.lines,
+        rows: rendered.rows ?? null,
+        bgs: rendered.bgs ?? null,
+        ...(rendered.customLabel === undefined ? {} : { customLabel: rendered.customLabel }),
+        ...(rendered.customMuted === undefined ? {} : { customMuted: rendered.customMuted }),
+      }
+    }
+  }
   const inner = width - BUBBLE_WIDTH_OFFSET
   switch (message.kind) {
     case 'bubble': {

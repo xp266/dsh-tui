@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { keyedRegistry } from '../../kernel/registry.ts'
+import { matchHintEntries } from '../chrome/hint-service.ts'
 import type { CommandDef } from '../../contract/index.ts'
 
 export type { CommandDef } from '../../contract/index.ts'
@@ -101,13 +102,7 @@ function matchTier(entry: CommandHintItem, query: string): 0 | 1 | 2 | undefined
 
 export function filterHintEntries(entries: readonly CommandHintItem[], value: string): CommandHintItem[] {
   if (!value.startsWith('/') || /\s/.test(value)) return []
-  const query = value.slice(1).toLowerCase()
-  const tiers: CommandHintItem[][] = [[], [], []]
-  for (const entry of entries) {
-    const tier = matchTier(entry, query)
-    if (tier !== undefined) tiers[tier].push(entry)
-  }
-  return [...tiers[0], ...tiers[1], ...tiers[2]]
+  return matchHintEntries(entries, value)
 }
 
 /** Static literal arguments for registry commands whose hints mix literals with free-form prose. */

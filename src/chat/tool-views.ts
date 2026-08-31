@@ -50,7 +50,8 @@ export function createToolViewPresenter(
         args = argumentsRaw
       }
       rememberToolCall(callId, name, args)
-      const contributed = options.resolve(name)?.call
+      const contribution = options.resolve(name)
+      const contributed = contribution?.call
       if (contributed !== undefined) {
         const presented = contributed({ tool: name, callId, args, argumentsRaw, cwd: options.cwd() })
         if (presented !== undefined) {
@@ -61,16 +62,19 @@ export function createToolViewPresenter(
             ...(presented.diff === undefined ? {} : { diff: presented.diff }),
           }
         }
+        if (contribution?.takeover === true) return { label: name, body: '' }
       }
       return inner.call(name, callId, argumentsRaw)
     },
     result(callId, result) {
       const call = calls.get(callId)
       if (call !== undefined) {
-        const contributed = options.resolve(call.name)?.result
+        const contribution = options.resolve(call.name)
+        const contributed = contribution?.result
         if (contributed !== undefined) {
           const presented = contributed({ tool: call.name, callId, args: call.args, result, cwd: options.cwd() })
           if (presented !== undefined) return presented
+          if (contribution?.takeover === true) return { kind: 'replace', text: '' }
         }
       }
       return inner.result(callId, result)

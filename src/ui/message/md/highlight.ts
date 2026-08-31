@@ -3,6 +3,7 @@ import { performance } from 'node:perf_hooks'
 import Prism from 'prismjs'
 import { COLORS } from '../../../theme.ts'
 import type { MarkStyle, Segment } from '../../../core/segments.ts'
+import { pluginGrammarOf } from './extensions.ts'
 
 type CodeRole =
   | 'comment'
@@ -456,6 +457,8 @@ export function clearHighlightCache(): void {
 }
 
 function resolveGrammar(lang: string): Prism.Grammar | undefined {
+  const plugin = pluginGrammarOf(lang.toLowerCase())
+  if (plugin !== undefined) return plugin
   const name = LANGUAGE_ALIASES[lang.toLowerCase()] ?? lang.toLowerCase()
   return Prism.languages[name] as Prism.Grammar | undefined
 }

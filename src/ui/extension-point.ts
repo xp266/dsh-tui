@@ -6,10 +6,13 @@ import { registerWidget } from './widgets/registry.ts'
 import { registerCommand } from './input/commands.ts'
 import { registerKeyBinding } from './keymap.ts'
 import { registerInputStatus } from './chrome/input-status.ts'
+import { registerHintArgsProvider, registerHintMatcher } from './chrome/hint-service.ts'
 import { registerPalette, subscribePalettes } from '../theme.ts'
 import { registerToolView, subscribeToolViews } from '../chat/tool-views.ts'
 import { registerChatNode, subscribeChatNodes } from '../chat/chat-nodes.ts'
 import { registerMessageView, subscribeMessageViews } from './message/message-views.ts'
+import { registerMessageRenderer } from './message/renderers.ts'
+import { subscribeMessageRenderers } from './message/renderers.ts'
 import { registerBootSink } from '../boot-log.ts'
 import { registerFieldKind, specialFieldFactory } from '../core/fields.ts'
 import { bumpSurface } from '../kernel/surface.ts'
@@ -76,6 +79,7 @@ export function createTuiExtensionPoint(ctx: Context, hooks: TuiExtensionPointHo
     content: {
       nodes: { register: registerChatNode },
       views: { register: registerMessageView },
+      renderers: { register: registerMessageRenderer },
     },
     startup: { registerSink: registerBootSink },
     fields: {
@@ -93,6 +97,10 @@ export function createTuiExtensionPoint(ctx: Context, hooks: TuiExtensionPointHo
       paste: { register: registerPasteHandler },
       keys: { register: registerComposerKeyBinding },
       insert: insertIntoComposer,
+    },
+    hint: {
+      matchers: { register: registerHintMatcher },
+      args: { register: registerHintArgsProvider },
     },
     pointer: { register: registerPointerHandler },
     selection: {
@@ -140,6 +148,7 @@ export function createTuiExtensionPoint(ctx: Context, hooks: TuiExtensionPointHo
   const offToolViews = subscribeToolViews(surfaceChanged)
   const offMessageViews = subscribeMessageViews(surfaceChanged)
   const offPalettes = subscribePalettes(surfaceChanged)
+  const offMessageRenderers = subscribeMessageRenderers(surfaceChanged)
   const offChatNodes = subscribeChatNodes(surfaceChanged)
   const contentChanged = (): void => {
     surfaceChanged()
@@ -151,6 +160,7 @@ export function createTuiExtensionPoint(ctx: Context, hooks: TuiExtensionPointHo
       offToolViews()
       offMessageViews()
       offPalettes()
+      offMessageRenderers()
       offChatNodes()
       disposeService()
     },

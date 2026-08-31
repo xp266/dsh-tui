@@ -6,6 +6,10 @@ const blocks = keyedRegistry<MarkdownBlockContribution>()
 const inline = keyedRegistry<MarkdownInlineContribution>()
 const languages = keyedRegistry<PrismGrammarContribution>()
 
+/** Grammars contributed by plugins resolve ahead of Prism.languages lookups. */
+const pluginGrammars = new Map<string, Prism.Grammar>()
+const asGrammar = (grammar: unknown): Prism.Grammar => grammar as Prism.Grammar
+
 export function registerMarkdownBlock(contribution: MarkdownBlockContribution): () => void {
   return blocks.register(contribution.type, contribution, { order: contribution.order })
 }
@@ -17,10 +21,18 @@ export function registerMarkdownInline(contribution: MarkdownInlineContribution)
 export function registerPrismGrammar(contribution: PrismGrammarContribution): () => void {
   const dispose = languages.register(contribution.id, contribution)
   const touched = applyPrismGrammar(contribution)
+  for (const name of touched) pluginGrammars.set(name, asGrammar(contribution.grammar))
   return () => {
     dispose()
+    for (const name of touched) {
+      if (pluginGrammars.get(name) === contribution.grammar) pluginGrammars.delete(name)
+    }
     revertPrismGrammar(touched)
   }
+}
+
+export function pluginGrammarOf(lang: string): Prism.Grammar | undefined {
+  return pluginGrammars.get(lang.toLowerCase())
 }
 
 export function subscribeMarkdownBlocks(listener: () => void): () => void {

@@ -7,6 +7,8 @@ import type { MarkStyle, Segment } from '../core/segments.ts'
 import type { MdPalette } from '../ui/message/md/palette.ts'
 import type { PendingImage } from '../core/paste.ts'
 import type { LineSelection } from '../model/selection.ts'
+import type { Message, MessageKind } from '../model/message.ts'
+export type { MessageKind } from '../model/message.ts'
 import type { MouseEventData } from '../terminal/mouse.ts'
 import type { ScrollSnapshot } from '../ui/hooks/use-scroll.ts'
 
@@ -204,6 +206,29 @@ export interface PointerHandlerContribution {
 /** Builtin gesture handlers live at order 100..190; see registerPointerHandler. */
 export const POINTER_PLUGIN_ORDER = 300
 
+export interface HintMatcherContribution {
+  id: string
+  order?: number
+  match(entries: readonly HintEntry[], context: { value: string; query: string }): HintEntry[] | null
+}
+
+export interface HintEntry {
+  command: string
+  description: string
+  hint?: string
+}
+
+export interface HintArgsContribution {
+  id: string
+  order?: number
+  args(name: string): string[] | null | Promise<string[] | null>
+}
+
+export interface TuiHintFace {
+  matchers: { register(contribution: HintMatcherContribution): () => void }
+  args: { register(contribution: HintArgsContribution): () => void }
+}
+
 export interface TuiPointerFace {
   register(contribution: PointerHandlerContribution): () => void
 }
@@ -340,6 +365,12 @@ export interface ToolResultPresentation {
 export interface ToolViewContribution {
   tool: string
   order?: number
+  /**
+   * When true, the builtin presenter never runs for this tool: a call or
+   * result handler returning undefined renders as a bare card instead of
+   * falling through to the builtin presentation.
+   */
+  takeover?: boolean
   call?(context: ToolViewCallContext): ToolCallPresentation | undefined
   result?(context: ToolViewResultContext): ToolResultPresentation | undefined
 }
@@ -385,9 +416,26 @@ export interface MessageViewContribution {
   render(context: MessageViewContext): MessageViewRender
 }
 
+export interface MessageRendererResult {
+  lines: string[]
+  rows?: Segment[][] | null
+  bgs?: (string | undefined)[] | null
+  customLabel?: string
+  customMuted?: boolean
+}
+
+export interface MessageRendererContribution {
+  /** Message kind to take over: 'bubble' | 'collapsible' | 'tool-diff' | 'compaction' | 'plan' | 'custom'. */
+  kind: string
+  order?: number
+  /** Return undefined to fall through to the builtin rendering. */
+  render(message: Message, width: number): MessageRendererResult | undefined
+}
+
 export interface TuiContentFace {
   nodes: { register(definition: ChatNodeDefinition): () => void }
   views: { register(contribution: MessageViewContribution): () => void }
+  renderers: { register(contribution: MessageRendererContribution): () => void }
 }export interface TuiStartupSink {
   id: string
   /** Invoked for each boot progress line while the shell is starting. */
@@ -583,6 +631,7 @@ export interface TuiExtensionPoint {
   fields: TuiFieldsFace & { factory: SpecialFieldFactory }
   composer: TuiComposerFace
   markdown: TuiMarkdownFace
+  hint: TuiHintFace
   pointer: TuiPointerFace
   selection: TuiSelectionFace
   interactions?: TuiInteractionsFace

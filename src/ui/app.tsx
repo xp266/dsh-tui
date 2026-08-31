@@ -24,6 +24,7 @@ import { useOverlayContribution } from './contributions.ts'
 import { InputBar, inputLayout, INPUT_WIDTH_OFFSET, HINT_MAX_ROWS } from './input/input-bar.tsx'
 import type { InputBarHandle } from './input/input-bar.tsx'
 import { COMMANDS, KNOWN_COMMAND_ARGS, commandArgHints, filterHintEntries, matchCommand, mergeCommandEntries, matchAvailableCommand, useCommandVersion } from './input/commands.ts'
+import { hintArgsFor } from './chrome/hint-service.ts'
 import type { CommandAvailability, CommandDef } from './input/commands.ts'
 import { CHROME_MARGIN_X, MESSAGE_INPUT_GAP_ROWS, hintBlockTop } from '../core/metrics.ts'
 import { useComposer } from './input/use-composer.ts'
@@ -164,13 +165,17 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   )
   const permissionPresetsRef = useRef<string[] | undefined>(undefined)
   const listCommandArgs = useCallback(async (name: string): Promise<string[]> => {
+    // Plugin providers run first; builtins (registry hints, known args,
+    // permission presets) act as the fallback chain.
+    const contributed = await hintArgsFor(name, () => [])
+    if (contributed.length > 0) return contributed
     const registered = commandArgHints(name)
     if (registered !== undefined) return [...registered]
     const known = KNOWN_COMMAND_ARGS[name]
     if (known !== undefined) return [...known]
     if (name !== 'permission') return []
     const cached = permissionPresetsRef.current
-    if (cached !== undefined) return cached
+    if (cached !== undefined) return [...cached]
     const list = await bridge?.listPermissionPresets?.() ?? []
     permissionPresetsRef.current = list
     return list

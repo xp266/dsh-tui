@@ -236,7 +236,16 @@ export function renderBlockRows(token: Token, ctx: BlockContext): Segment[][] {
       const raw = (token as Tokens.HTML).raw.replace(/\n$/, '')
       return wrapSegments([{ text: raw, style: ctx.palette.codeFallback }], ctx.width)
     }
-    default:
-      return []
+    default: {
+      // Unknown block tokens (from marked extensions) render their raw text
+      // instead of silently disappearing. Structural no-op tokens (link
+      // reference definitions, blank runs) stay invisible.
+      if (token.type === 'def' || token.type === 'space') return []
+      const raw = (token as { raw?: string }).raw ?? ''
+      if (raw.trim() === '') return []
+      return raw.replace(/\n$/, '')
+        .split('\n')
+        .map(line => [{ text: line, style: ctx.palette.plain }])
+    }
   }
 }
