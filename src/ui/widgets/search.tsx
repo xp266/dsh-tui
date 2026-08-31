@@ -3,7 +3,7 @@ import { COLORS } from '../../theme.ts'
 import { caretScrollStart, padToWidth, textWidth, truncate } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
 import { caretNonceBold, caretNonceColor, caretNonceText } from '../../core/caret-nonce.ts'
-import { registerWidget } from './registry.ts'
+import { BUILTIN_WIDGET_ORDER, registerWidget } from './registry.ts'
 import type { DialogItem } from '../dialog/items.ts'
 
 type SearchItem = Extract<DialogItem, { type: 'search' }>
@@ -56,4 +56,4 @@ registerWidget<SearchItem>('search', {
       </Box>
     )
   },
-})
+}, { order: BUILTIN_WIDGET_ORDER })

@@ -2,7 +2,7 @@ import { Box } from 'ink'
 import { padToWidth, textWidth, truncate } from '../../core/text.ts'
 import { COLORS } from '../../theme.ts'
 import { SelectableText } from '../selection.tsx'
-import { registerWidget } from './registry.ts'
+import { BUILTIN_WIDGET_ORDER, registerWidget } from './registry.ts'
 import type { PaintArgs } from './types.ts'
 import type { DialogItem } from '../dialog/items.ts'
 
@@ -54,4 +54,4 @@ registerWidget<ButtonItem>('button', {
   activate(item) {
     item.onPress()
   },
-})
+}, { order: BUILTIN_WIDGET_ORDER })

@@ -2,7 +2,7 @@ import { Box, Text } from 'ink'
 import { COLORS } from '../../theme.ts'
 import { textWidth } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
-import { registerWidget } from './registry.ts'
+import { BUILTIN_WIDGET_ORDER, registerWidget } from './registry.ts'
 import type { DialogItem } from '../dialog/items.ts'
 
 type HeaderItem = Extract<DialogItem, { type: 'header' }>
@@ -33,4 +33,4 @@ registerWidget<HeaderItem>('header', {
       </Box>
     )
   },
-})
+}, { order: BUILTIN_WIDGET_ORDER })

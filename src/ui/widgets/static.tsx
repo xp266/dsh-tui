@@ -2,7 +2,7 @@ import { Box } from 'ink'
 import { COLORS } from '../../theme.ts'
 import { textWidth, wrapLines } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
-import { registerWidget } from './registry.ts'
+import { BUILTIN_WIDGET_ORDER, registerWidget } from './registry.ts'
 import type { DialogItem } from '../dialog/items.ts'
 
 type StaticItem = Extract<DialogItem, { type: 'static' }>
@@ -34,4 +34,4 @@ registerWidget<StaticItem>('static', {
       </Box>
     )
   },
-})
+}, { order: BUILTIN_WIDGET_ORDER })

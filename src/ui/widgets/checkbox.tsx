@@ -3,7 +3,7 @@ import { COLORS } from '../../theme.ts'
 import { glyphs } from '../../terminal/glyphs.ts'
 import { padToWidth, textWidth, truncate } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
-import { registerWidget } from './registry.ts'
+import { BUILTIN_WIDGET_ORDER, registerWidget } from './registry.ts'
 import type { PaintArgs } from './types.ts'
 import type { DialogItem } from '../dialog/items.ts'
 
@@ -55,4 +55,4 @@ registerWidget<CheckboxItem>('checkbox', {
   activate(item) {
     item.onConfirm()
   },
-})
+}, { order: BUILTIN_WIDGET_ORDER })

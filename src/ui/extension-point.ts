@@ -10,10 +10,8 @@ import { registerToolView, subscribeToolViews } from '../chat/tool-views.ts'
 import { registerChatNode, subscribeChatNodes } from '../chat/chat-nodes.ts'
 import { registerMessageView, subscribeMessageViews } from './message/message-views.ts'
 import { registerBootSink } from '../boot-log.ts'
-import { clearLayoutCache } from './message/layout.ts'
 import { registerFieldKind, specialFieldFactory } from '../core/fields.ts'
-import { clearMarkdownBlockCache } from '../ui/message/md/engine.ts'
-import { clearHighlightCache } from '../ui/message/md/highlight.ts'
+import { bumpSurface } from '../kernel/surface.ts'
 import { registerMarkdownBlock, registerMarkdownInline, registerPrismGrammar } from '../ui/message/md/extensions.ts'
 import { registerPasteHandler } from '../ui/input/composer-paste.ts'
 import { registerComposerKeyBinding } from '../ui/input/composer-keys.ts'
@@ -126,9 +124,7 @@ export function createTuiExtensionPoint(ctx: Context, hooks: TuiExtensionPointHo
     },
   }
   const surfaceChanged = (): void => {
-    clearLayoutCache()
-    clearHighlightCache()
-    clearMarkdownBlockCache()
+    bumpSurface()
     hooks.onContributionsChanged?.()
   }
   const offToolViews = subscribeToolViews(surfaceChanged)

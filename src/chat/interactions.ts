@@ -93,7 +93,7 @@ export class InteractionPanelRegistry {
   private contributions = keyedRegistry<InteractionPanelContribution>()
 
   register(contribution: InteractionPanelContribution): () => void {
-    return this.contributions.register(contribution.kind, contribution)
+    return this.contributions.register(contribution.kind, contribution, { order: contribution.order })
   }
 
   of(kind: string): InteractionPanelContribution | undefined {

@@ -4,7 +4,7 @@ import { glyphs } from '../../terminal/glyphs.ts'
 import { selectBlock, CAROUSEL_BUTTON_WIDTH } from '../dialog/geometry.ts'
 import { textWidth } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
-import { registerWidget } from './registry.ts'
+import { BUILTIN_WIDGET_ORDER, registerWidget } from './registry.ts'
 import type { PaintArgs, ClickHit, ClickActions, WidgetKeyApi } from './types.ts'
 import type { DialogItem } from '../dialog/items.ts'
 
@@ -94,4 +94,4 @@ registerWidget<SelectItem>('select', {
     actions.flash(direction === -1 ? 'left' : 'right')
     return true
   },
-})
+}, { order: BUILTIN_WIDGET_ORDER })

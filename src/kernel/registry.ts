@@ -32,13 +32,33 @@ export interface KeyedRegistry<T> {
  * an existing key displaces the previous layer, and disposing a layer
  * restores the nearest live layer below it, so an overriding plugin that
  * unmounts hands the slot back to whatever it replaced.
+ *
+ * `get(key)` resolves to the live layer with the lowest order (the one that
+ * would win a dispatch loop), not merely the most recently registered one, so
+ * single-key lookups agree with the iteration order plugins observe.
  */
-export function keyedRegistry<T>(compareKeys: (a: string, b: string) => number = (a, b) => a.localeCompare(b)): KeyedRegistry<T> {
+export function keyedRegistry<T>(compareKeys: (a: string, b: string) => number = (a, b) => (a < b ? -1 : a > b ? 1 : 0)): KeyedRegistry<T> {
   const map = new Map<string, Layer<T>>()
   const listeners = new Set<Listener>()
 
   function notify(): void {
-    for (const listener of [...listeners]) listener()
+    for (const listener of [...listeners]) {
+      try {
+        listener()
+      } catch {
+        // One broken listener must not starve the others or corrupt registry state.
+      }
+    }
+  }
+
+  function winningLayer(key: string): Layer<T> | undefined {
+    let best: Layer<T> | undefined
+    let layer = map.get(key)
+    while (layer !== undefined) {
+      if (!layer.dead && (best === undefined || layer.order < best.order)) best = layer
+      layer = layer.prev
+    }
+    return best
   }
 
   return {
@@ -67,7 +87,7 @@ export function keyedRegistry<T>(compareKeys: (a: string, b: string) => number =
       return this.entries().map(entry => entry.value)
     },
     get(key) {
-      return map.get(key)?.value
+      return winningLayer(key)?.value
     },
     has(key) {
       return map.has(key)

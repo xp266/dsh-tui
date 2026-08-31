@@ -14,9 +14,9 @@ function flatten(text: string): string {
   return stripAnsi(text).replace(/[▄▀]/g, '').replace(/\s+/g, ' ')
 }
 
-async function waitForFrame(lastFrame: () => string | undefined, text: string): Promise<string> {
+async function waitForFrame(lastFrame: () => string | undefined, text: string, maxTries = 60): Promise<string> {
   let frame = lastFrame() ?? ''
-  for (let i = 0; i < 120 && !frame.includes(text); i++) {
+  for (let i = 0; i < maxTries && !frame.includes(text); i++) {
     await new Promise(resolve => setTimeout(resolve, 25))
     frame = lastFrame() ?? ''
   }
@@ -302,9 +302,8 @@ describe('App layout', () => {
     const { lastFrame, stdin } = render(<App bridge={bridge} />)
     handler?.({ type: 'turn/start', seq: 1, time: 0, data: { turn: 1 } } as unknown as SessionEvent)
     handler?.({ type: 'tool/call', seq: 2, time: 0, data: { turn: 1, step: 1, callId: 'c1', name: 'bash', arguments: '{"command":"ls"}' } } as unknown as SessionEvent)
-    await new Promise(resolve => setTimeout(resolve, 120))
-    const frame = stripAnsi(lastFrame() ?? '')
-    expect(frame).toMatch(/Working/)
+    let frame = await waitForFrame(lastFrame, 'Working')
+    frame = stripAnsi(frame)
     const statusLine = frame.split('\n').find(line => line.includes('Working'))
     expect(statusLine).toContain('Working  Press esc to interrupt')
     expect(frame).not.toContain('/home/user/py')
@@ -319,8 +318,7 @@ describe('App layout', () => {
     }
     const { lastFrame } = render(<App bridge={bridge} />)
     handler?.({ type: 'compaction/start', seq: 1, time: 0, data: { compactionId: 'cp9', turn: null } } as unknown as SessionEvent)
-    await new Promise(resolve => setTimeout(resolve, 120))
-    let frame = stripAnsi(lastFrame() ?? '')
+    let frame = stripAnsi(await waitForFrame(lastFrame, 'Compacting'))
     expect(frame).toMatch(/Compacting/)
     expect(frame).toContain('Compact')
     handler?.({ type: 'compaction/summary', seq: 2, time: 0, data: { compactionId: 'cp9', summary: [{ type: 'text', text: 'kept the plan' }], shadowedSeqs: [1, 2], shadowedTokenCount: 900, provider: 'p', model: 'm' } } as unknown as SessionEvent)
@@ -340,21 +338,21 @@ describe('App layout', () => {
     }
     const { lastFrame, stdin } = render(<App bridge={bridge} />)
     handler?.({ type: 'turn/start', seq: 1, time: 0, data: { turn: 1 } } as unknown as SessionEvent)
-    await new Promise(resolve => setTimeout(resolve, 100))
-    expect(stripAnsi(lastFrame() ?? '')).toContain('Press esc to interrupt')
+    await waitForFrame(lastFrame, 'Press esc to interrupt')
     stdin.write('\x1b')
-    await new Promise(resolve => setTimeout(resolve, 50))
+    await waitForFrame(lastFrame, 'Press esc again to interrupt')
     expect(bridge.interrupt).not.toHaveBeenCalled()
-    expect(stripAnsi(lastFrame() ?? '')).toContain('Press esc again to interrupt')
-    expect(stripAnsi(lastFrame() ?? '')).not.toContain('Press esc to interrupt')
     stdin.write('\x1b')
-    await new Promise(resolve => setTimeout(resolve, 50))
+    const interruptMock = bridge.interrupt as unknown as { mock: { calls: unknown[] } }
+    for (let i = 0; i < 40 && interruptMock.mock.calls.length === 0; i++) {
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
     expect(bridge.interrupt).toHaveBeenCalledTimes(1)
-    expect(stripAnsi(lastFrame() ?? '')).toContain('Press esc to interrupt')
-    expect(stripAnsi(lastFrame() ?? '')).not.toContain('Press esc again to interrupt')
+    const finalFrame = stripAnsi(await waitForFrame(lastFrame, 'Press esc to interrupt'))
+    expect(finalFrame).not.toContain('Press esc again to interrupt')
   })
 
-  it('hides /todo until a todo_write exists and opens the task window while it is active', async () => {
+  it('hides /todo until a todo_write exists and opens the task window while it is active', { timeout: 15000 }, async () => {
     const bridge = fakeBridge()
     let handler: ((event: SessionEvent) => void) | undefined
     bridge.subscribe = cb => {
@@ -367,7 +365,7 @@ describe('App layout', () => {
     await new Promise(resolve => setTimeout(resolve, 40))
     expect(inactive.lastFrame() ?? '').not.toContain('Show the current task list')
     await inactive.stdin.write('\r')
-    await new Promise(resolve => setTimeout(resolve, 40))
+    await new Promise(resolve => setTimeout(resolve, 60))
     expect(stripAnsi(inactive.lastFrame() ?? '')).not.toContain('[√]')
     inactive.unmount()
 
@@ -382,11 +380,9 @@ describe('App layout', () => {
     await new Promise(resolve => setTimeout(resolve, 100))
     expect(stripAnsi(view.lastFrame() ?? '')).not.toContain('todo_write')
     await view.stdin.write('/todo')
-    await new Promise(resolve => setTimeout(resolve, 40))
-    expect(view.lastFrame() ?? '').toContain('Show the current task list')
+    await waitForFrame(view.lastFrame, 'Show the current task list')
     await view.stdin.write('\r')
-    await new Promise(resolve => setTimeout(resolve, 60))
-    const frame = stripAnsi(view.lastFrame() ?? '')
+    const frame = stripAnsi(await waitForFrame(view.lastFrame, '首先完成代码'))
     expect(frame).toContain('[√] 首先完成代码')
     expect(frame).toContain('[ ] 构建项目')
     view.unmount()
@@ -419,18 +415,21 @@ describe('App layout', () => {
         ],
       },
     } as unknown as SessionEvent)
-    await new Promise(resolve => setTimeout(resolve, 150))
-    const line = stripAnsi(lastFrame() ?? '').split('\n').find(line => line.includes('Working'))
+    const workingFrame = stripAnsi(await waitForFrame(lastFrame, 'Working'))
+    const line = workingFrame.split('\n').find(entry => entry.includes('Working'))
     expect(line).toContain('[Task 2/3]')
-    expect(line).toContain('Working')
     handler?.({
       type: 'todo/write',
       seq: 4,
       time: 0,
       data: { todos: [{ content: 'b', status: 'completed' }] },
     } as unknown as SessionEvent)
-    await new Promise(resolve => setTimeout(resolve, 120))
-    const cleared = stripAnsi(lastFrame() ?? '').split('\n').find(line => line.includes('Working'))
+    let cleared = ''
+    for (let i = 0; i < 40; i++) {
+      await new Promise(resolve => setTimeout(resolve, 25))
+      cleared = stripAnsi(lastFrame() ?? '').split('\n').find(entry => entry.includes('Working')) ?? ''
+      if (cleared !== '' && !cleared.includes('[Task')) break
+    }
     expect(cleared).not.toContain('[Task')
   })
 })

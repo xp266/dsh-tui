@@ -100,8 +100,15 @@ describe('drag follow scroll', () => {
     await flush(80)
     const afterRelease = stripAnsi(view.lastFrame() ?? '')
 
-    const duringMin = minMarker(duringFrame)
-    expect(duringMin).toBeLessThan(beforeMin!)
+    // auto-scroll advances by WHEEL_SCROLL_LINES per 15ms tick; a single
+    // sampled frame can race the timer, so poll until the anchor moves up.
+    let duringMin: number | undefined = minMarker(duringFrame)
+    for (let i = 0; i < 40 && (duringMin === undefined || duringMin >= beforeMin!); i++) {
+      await flush(25)
+      duringMin = minMarker(stripAnsi(view.lastFrame() ?? ''))
+    }
+    expect(duringMin).toBeDefined()
+    expect(duringMin!).toBeLessThan(beforeMin!)
     await flush(400)
     const settled = stripAnsi(view.lastFrame() ?? '')
     expect(minMarker(settled)).toBe(duringMin)

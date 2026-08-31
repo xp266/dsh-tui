@@ -8,6 +8,13 @@ import { TodoDialog } from './dialog/todo-dialog.tsx'
 import { createServiceWindow } from './windows/service-window.tsx'
 import { registerWindow } from './windows.ts'
 
+/**
+ * Builtin windows register as high-order fallback layers: a plugin
+ * contribution for the same id (default order 100) always wins regardless of
+ * registration timing, and disposing the plugin restores the builtin.
+ */
+export const BUILTIN_WINDOW_ORDER = 500
+
 export interface BuiltinWindowDeps {
   onModelSelected(provider: string, model: string): void
   onAddProvider(): void
@@ -21,7 +28,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
     registerWindow({
       id: 'models',
       title: 'models',
-      order: 10,
+      order: BUILTIN_WINDOW_ORDER + 0,
       required: ['models'],
       component: props => <ModelsWindow {...props} onModelSelected={deps.onModelSelected} onAddProvider={deps.onAddProvider} />,
       command: { name: 'models', description: 'Open model selection' },
@@ -29,7 +36,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
     registerWindow({
       id: 'providers',
       title: 'providers',
-      order: 15,
+      order: BUILTIN_WINDOW_ORDER + 5,
       required: ['models'],
       component: props => <ProvidersWindow {...props} onModelSelected={deps.onModelSelected} />,
       command: { name: 'providers', description: 'Open provider selection' },
@@ -37,7 +44,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
     registerWindow({
       id: 'sessions',
       title: 'sessions',
-      order: 20,
+      order: BUILTIN_WINDOW_ORDER + 10,
       required: ['sessions'],
       component: props => (
         <SessionsWindow
@@ -52,7 +59,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
     registerWindow({
       id: 'preset',
       title: 'preset',
-      order: 30,
+      order: BUILTIN_WINDOW_ORDER + 20,
       required: ['presets'],
       component: createServiceWindow('presets', PresetsDialog),
       command: { name: 'preset', description: 'Select agent preset' },
@@ -60,7 +67,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
     registerWindow({
       id: 'effort',
       title: 'reasoning effort',
-      order: 40,
+      order: BUILTIN_WINDOW_ORDER + 30,
       required: ['efforts'],
       component: createServiceWindow('efforts', EffortDialog),
       command: { name: 'reasoning-effort', description: "Select the current model's reasoning effort" },
@@ -68,7 +75,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
     registerWindow({
       id: 'defaults',
       title: 'defaults',
-      order: 50,
+      order: BUILTIN_WINDOW_ORDER + 40,
       required: ['defaults'],
       component: createServiceWindow('defaults', DefaultsDialog),
       command: { name: 'defaults', description: 'Set default permission and agent preset' },
@@ -76,7 +83,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
     registerWindow({
       id: 'todo',
       title: 'todo',
-      order: 60,
+      order: BUILTIN_WINDOW_ORDER + 50,
       required: ['todos'],
       component: createServiceWindow('todos', TodoDialog),
     }),

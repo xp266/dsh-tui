@@ -2,7 +2,7 @@ import { Box, Text } from 'ink'
 import { actionPositions } from '../dialog/geometry.ts'
 import { textWidth } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
-import { registerWidget } from './registry.ts'
+import { BUILTIN_WIDGET_ORDER, registerWidget } from './registry.ts'
 import type { ClickHit, ClickActions } from './types.ts'
 import type { DialogItem } from '../dialog/items.ts'
 
@@ -81,4 +81,4 @@ registerWidget<ActionsItem>('actions', {
     actions.focus(0)
     return true
   },
-})
+}, { order: BUILTIN_WIDGET_ORDER })

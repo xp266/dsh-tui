@@ -20,9 +20,12 @@ function fallbackWidget(type: string): AnyWidgetDef {
   } as unknown as AnyWidgetDef
 }
 
-export function registerWidget<I extends { type: string }>(type: I['type'], def: WidgetDef<I>): () => void {
-  return widgets.register(type, def as unknown as AnyWidgetDef)
+export function registerWidget<I extends { type: string }>(type: I['type'], def: WidgetDef<I>, options?: { order?: number }): () => void {
+  return widgets.register(type, def as unknown as AnyWidgetDef, options)
 }
+
+/** Builtin widgets register as high-order fallback layers; plugin widgets override by default. */
+export const BUILTIN_WIDGET_ORDER = 500
 
 export function widgetOf(type: DialogItem['type']): AnyWidgetDef {
   return widgets.get(type) ?? fallbackWidget(type)

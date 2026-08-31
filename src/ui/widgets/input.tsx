@@ -3,7 +3,7 @@ import { COLORS } from '../../theme.ts'
 import { locToPoint, textWidth, wrapLines } from '../../core/text.ts'
 import { caretNonceBold, caretNonceColor, caretNonceText } from '../../core/caret-nonce.ts'
 import { SelectableText } from '../selection.tsx'
-import { registerWidget } from './registry.ts'
+import { BUILTIN_WIDGET_ORDER, registerWidget } from './registry.ts'
 import { INPUT_MAX_ROWS } from '../dialog/sizes.ts'
 import type { DialogItem } from '../dialog/items.ts'
 
@@ -73,4 +73,4 @@ registerWidget<InputItem>('input', {
     }
     return false
   },
-})
+}, { order: BUILTIN_WIDGET_ORDER })

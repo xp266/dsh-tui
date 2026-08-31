@@ -61,3 +61,51 @@ describe('keyedRegistry', () => {
     expect(r.get('missing')).toBeUndefined()
   })
 })
+
+describe('keyedRegistry layered dispatch', () => {
+  it('get resolves to the lowest-order live layer, matching entries order', () => {
+    const r = keyedRegistry<string>()
+    r.register('k', 'base', { order: 50 })
+    r.register('k', 'override', { order: 10 })
+    expect(r.get('k')).toBe('override')
+    expect(r.entries().map(entry => entry.value)).toEqual(['override'])
+  })
+
+  it('get picks by order even when the later registration has the higher order', () => {
+    const r = keyedRegistry<string>()
+    const offFirst = r.register('k', 'first', { order: 10 })
+    r.register('k', 'second', { order: 20 })
+    expect(r.get('k')).toBe('first')
+    offFirst()
+    expect(r.get('k')).toBe('second')
+  })
+
+  it('disposing an override hands the slot to the next-lowest order', () => {
+    const r = keyedRegistry<string>()
+    r.register('k', 'base', { order: 50 })
+    const offHigh = r.register('k', 'override', { order: 10 })
+    const offSecond = r.register('k', 'middle', { order: 30 })
+    offHigh()
+    expect(r.get('k')).toBe('middle')
+    offSecond()
+    expect(r.get('k')).toBe('base')
+  })
+
+  it('listener errors do not starve other listeners or corrupt state', () => {
+    const r = keyedRegistry<string>()
+    const bad = vi.fn(() => { throw new Error('listener broke') })
+    const good = vi.fn()
+    r.subscribe(bad)
+    r.subscribe(good)
+    expect(() => r.register('k', 'v')).not.toThrow()
+    expect(good).toHaveBeenCalled()
+    expect(r.get('k')).toBe('v')
+  })
+
+  it('tie-break sorting is locale independent', () => {
+    const r = keyedRegistry<string>()
+    r.register('Z', 'upper')
+    r.register('a', 'lower')
+    expect(r.values()).toEqual(['upper', 'lower'])
+  })
+})

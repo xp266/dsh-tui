@@ -7,6 +7,9 @@ import type { EffortsApi } from './dialog/effort-dialog.tsx'
 import type { DefaultsApi } from './dialog/defaults-dialog.tsx'
 import type { TodoItemLike } from '../chat/todo-view.ts'
 
+/** Builtin window services sit in a high-order layer; plugin services override by default. */
+export const BUILTIN_SERVICE_ORDER = 500
+
 export function registerWindowServices(bridge: ChatBridge): () => void {
   const models: ModelApi = {
     listModels: bridge.listModels,
@@ -52,11 +55,11 @@ export function registerWindowServices(bridge: ChatBridge): () => void {
     setThemeMode: bridge.setThemePreference,
   }
   const disposers = [
-    registerWindowService('models', models),
-    registerWindowService('sessions', sessions),
-    registerWindowService('presets', presets),
-    registerWindowService('efforts', efforts),
-    registerWindowService('defaults', defaults),
+    registerWindowService('models', models, { order: BUILTIN_SERVICE_ORDER }),
+    registerWindowService('sessions', sessions, { order: BUILTIN_SERVICE_ORDER }),
+    registerWindowService('presets', presets, { order: BUILTIN_SERVICE_ORDER }),
+    registerWindowService('efforts', efforts, { order: BUILTIN_SERVICE_ORDER }),
+    registerWindowService('defaults', defaults, { order: BUILTIN_SERVICE_ORDER }),
   ]
   return () => {
     for (const dispose of disposers) dispose()
@@ -64,5 +67,5 @@ export function registerWindowServices(bridge: ChatBridge): () => void {
 }
 
 export function registerTodosService(todos: readonly TodoItemLike[]): () => void {
-  return registerWindowService('todos', todos)
+  return registerWindowService('todos', todos, { order: BUILTIN_SERVICE_ORDER })
 }

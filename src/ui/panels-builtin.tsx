@@ -20,11 +20,18 @@ function adapt<P extends object>(Component: ComponentType<P>, map: (props: Inter
   return Wrapped
 }
 
+/**
+ * Builtin panels register as high-order fallback layers so a plugin
+ * contribution for the same kind always wins regardless of timing.
+ */
+export const BUILTIN_PANEL_ORDER = 500
+
 export function registerBuiltinPanels(services: PanelServices): () => void {
   const { bridge } = services
   const contributions: InteractionPanelContribution[] = [
     {
       kind: 'approval',
+      order: BUILTIN_PANEL_ORDER,
       component: adapt<ApprovalPanelProps>(ApprovalPanel, props => {
         const approval = (props.request as { approval?: { reason?: string; callId?: string } }).approval
         if (approval === undefined) return null
@@ -43,6 +50,7 @@ export function registerBuiltinPanels(services: PanelServices): () => void {
     },
     {
       kind: 'question',
+      order: BUILTIN_PANEL_ORDER + 10,
       component: adapt<QuestionPanelProps>(QuestionPanel, props => {
         const question = (props.request as { question?: QuestionPanelProps['question'] }).question
         if (question === undefined) return null

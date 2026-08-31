@@ -6,8 +6,14 @@ import type { Token } from 'marked'
 import type { MarkStyle, Segment } from '../core/segments.ts'
 import type { MdPalette } from '../ui/message/md/palette.ts'
 import type { PendingImage } from '../core/paste.ts'
+import type { LineSelection } from '../model/selection.ts'
+import type { MouseEventData } from '../terminal/mouse.ts'
+import type { ScrollSnapshot } from '../ui/hooks/use-scroll.ts'
 
 export type { PendingImage } from '../core/paste.ts'
+export type { LineSelection } from '../model/selection.ts'
+export type { MouseEventData, MouseEventType } from '../terminal/mouse.ts'
+export type { ScrollSnapshot } from '../ui/hooks/use-scroll.ts'
 
 export interface WindowHandle {
   clickAt(y: number, x: number): void
@@ -434,6 +440,7 @@ export interface InteractionPanelComponentProps {
 
 export interface InteractionPanelContribution {
   kind: string
+  order?: number
   component: ComponentType<InteractionPanelComponentProps>
 }
 

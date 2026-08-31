@@ -2,9 +2,7 @@ import { readFileSync } from 'node:fs'
 import { replacePalettes } from './theme.ts'
 import type { Theme, ThemeMode } from './theme.ts'
 import { env } from './env.ts'
-import { clearHighlightCache } from './ui/message/md/highlight.ts'
-import { clearMarkdownBlockCache } from './ui/message/md/engine.ts'
-import { clearLayoutCache } from './ui/message/layout.ts'
+import { bumpSurface } from './kernel/surface.ts'
 
 const REFRESH_MS = 300
 
@@ -37,9 +35,7 @@ export function startHotTheme(onChange: () => void): HotThemeHandle | undefined 
         palettes: Record<ThemeMode, Theme>
       }
       replacePalettes(fresh.palettes)
-      clearLayoutCache()
-      clearHighlightCache()
-      clearMarkdownBlockCache()
+      bumpSurface()
       onChange()
     } catch {
       // theme.ts is mid-edit or temporarily broken; retry on the next tick
