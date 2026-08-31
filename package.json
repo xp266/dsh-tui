@@ -25,6 +25,10 @@
       "types": "./lib/contract/index.d.mts",
       "default": "./lib/contract/index.mjs"
     },
+    "./vendor": {
+      "types": "./lib/vendor.d.mts",
+      "default": "./lib/vendor.mjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [

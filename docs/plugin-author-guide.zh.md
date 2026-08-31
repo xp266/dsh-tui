@@ -45,6 +45,22 @@ export function apply(ctx: Context): void {
 - markdown 与特殊字段的注册会额外失效渲染缓存并触发界面重渲染；窗口/工具/视图/色板注册走同一条重渲染通路。
 - `tui.interactions` / `tui.chat` 在聊天桥就绪前为 `undefined`。
 
+### 共享 react/ink 运行时（`dsh-tui/vendor`）
+
+贡献给窗口、控件、覆盖层或面板的组件运行在 dsh-tui 的 React 树内，必须使用
+dsh-tui 自己的 react 与 ink 实例。profile 的模块图只包含 dsh-tui 自己链接的
+依赖；插件若自带 `react` 依赖会分叉 React 实例（fallback 副本的主版本不同），
+hooks 直接崩溃。请从 vendor 入口导入，而不要把它们声明为依赖：
+
+```ts
+import { Box, Text, useInput, useStdout, React, useState, useEffect } from 'dsh-tui/vendor'
+```
+
+vendor 入口 re-export `lib/vendor.d.mts` 中列出的 react 与 ink API，是插件内
+React 组件的唯一受支持来源。注意：以 `link:` 方式安装的插件（本地开发目录）
+从 realpath 解析依赖，看不到 profile 的模块图——发布包请使用 `file:`、tarball
+或 npm 安装（`dsh plugin add` 对发布包即是如此），静态导入才能解析。
+
 ## 贡献点总览
 
 | 面 | 可贡献内容 |
@@ -132,6 +148,7 @@ tui.commands.register({
 
 - 不带 `run` 时，指令打开同 `id` 的窗口或覆盖层。
 - `args` 提供字面量参数补全；`hint` 显示在输入提示里。
+- 精确输入指令后按 Enter：无 `hint` 的指令直接执行；带参数的指令第一次 Enter 补全为 `command `（提示 UI），第二次 Enter 执行。
 
 ### tui.composer.paste.register
 

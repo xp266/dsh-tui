@@ -248,8 +248,12 @@ export function useComposer(
     const commands = visibleFor(v)
     const showHint = hintOpenRef.current && commands.length > 0
     if (key.return && !key.shift && showHint) {
-      apiRef.current.confirmHint()
-      return
+      const selected = commands[Math.min(commandIndexRef.current, commands.length - 1)]
+      const exactArgless = selected !== undefined && selected.hint === undefined && v === selected.command
+      if (!exactArgless) {
+        apiRef.current.confirmHint()
+        return
+      }
     }
     if (key.escape && showHint) {
       setHintOpen(false)

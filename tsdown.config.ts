@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsdown'
 
 export default defineConfig({
-  entry: ['src/index.tsx', 'src/contract/index.ts'],
+  entry: ['src/index.tsx', 'src/contract/index.ts', 'src/vendor.ts'],
   format: ['esm'],
   target: 'node22',
   dts: true,

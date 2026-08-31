@@ -27,10 +27,6 @@ async function sendCommand(stdin: { write(data: string): void }, command: string
     stdin.write('\r')
   })
   await settle()
-  act(() => {
-    stdin.write('\r')
-  })
-  await settle()
 }
 
 async function openModelsDialog(stdin: { write(data: string): void }): Promise<void> {

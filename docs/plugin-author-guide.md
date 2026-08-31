@@ -47,6 +47,26 @@ export function apply(ctx: Context): void {
 - Markdown and special-field registrations additionally invalidate the render caches and re-render the surface; window/tool/view/palette registrations re-render through the same path.
 - `tui.interactions` / `tui.chat` are `undefined` until the chat bridge is ready.
 
+### Shared react/ink runtime (`dsh-tui/vendor`)
+
+Components contributed to windows, widgets, overlays, or panels render inside
+dsh-tui's React tree, so they must run on dsh-tui's own react and ink
+instances. The profile module graph contains only what dsh-tui links; a plugin
+that adds its own `react` dependency forks React (the fallback copies carry a
+different major version) and hooks crash. Import both from the vendor entry
+instead of declaring them as dependencies:
+
+```ts
+import { Box, Text, useInput, useStdout, React, useState, useEffect } from 'dsh-tui/vendor'
+```
+
+The vendor entry re-exports the react and ink APIs listed in `lib/vendor.d.mts`
+and is the only supported source for React components in plugins. Note that
+plugins installed via `link:` (local dev directories) resolve from their
+realpath and cannot see the profile's module graph — use `file:`, tarball, or
+npm installs (what `dsh plugin add` produces for published packages) so the
+static import resolves.
+
 ## Contribution map
 
 | Face | What you can contribute |
@@ -134,6 +154,7 @@ tui.commands.register({
 
 - Without `run`, the command opens the window or overlay registered under the same `id`.
 - `args` supplies literal argument completions; `hint` shows in the input hints.
+- Typing a command exactly and pressing Enter runs it directly when the command has no `hint`; commands with arguments complete to `command ` on the first Enter (the hint UI) and run on the second.
 
 ### tui.composer.paste.register
 
