@@ -13,7 +13,10 @@ import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { textFromBlocks } from './blocks.ts'
+import { imageMediaTypeOf } from '../core/paste.ts'
+import type { PendingImage } from '../core/paste.ts'
 import {
   deleteProviderProfile,
   fetchCustomModels,
@@ -43,6 +46,93 @@ import { themeMode } from '../theme.ts'
 import type { ThemeMode } from '../theme.ts'
 
 export const DIFF_TOOL_NAMES: ReadonlySet<string> = new Set(['write', 'edit'])
+
+interface AttachmentsServiceLike {
+  saveImage(input: { data: Uint8Array; mediaType: string; name?: string }): Promise<ImageAttachmentRef>
+}
+
+function attachmentsService(ctx: Context): AttachmentsServiceLike | undefined {
+  return ctx.get('attachments') as AttachmentsServiceLike | undefined
+}
+
+export async function resolvePendingImages(images: readonly PendingImage[]): Promise<{ ok: ImageAttachmentInput[]; failed: string[] }> {
+  const ok: ImageAttachmentInput[] = []
+  const failed: string[] = []
+  for (const image of images) {
+    if (image.kind === 'data') {
+      ok.push({ name: image.name ?? 'clipboard', mediaType: image.mediaType, data: image.data })
+      continue
+    }
+    const mediaType = imageMediaTypeOf(image.path)
+    if (mediaType === undefined) {
+      failed.push(image.path)
+      continue
+    }
+    try {
+      const { readFile } = await import('node:fs/promises')
+      ok.push({ name: image.path, mediaType, data: new Uint8Array(await readFile(image.path)) })
+    } catch {
+      failed.push(image.path)
+    }
+  }
+  return { ok, failed }
+}
+
+export interface ImageAttachmentInput {
+  name: string
+  mediaType: string
+  data: Uint8Array
+}
+interface AgentLike {
+  followup(message: unknown): void
+}
+
+const EMPTY_TEXT = { type: 'text' as const, text: '' }
+
+async function sendContent(
+  agent: AgentLike,
+  text: string,
+  hasText: boolean,
+  groups: ReadonlyArray<readonly PendingImage[]>,
+  ctx: Context,
+): Promise<void> {
+  if (groups.length === 0) {
+    agent.followup(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
+    return
+  }
+  const attachments = attachmentsService(ctx)
+  if (attachments === undefined) {
+    const note = 'image attachments require the attachment service, which is not mounted'
+    agent.followup(createUserMessage({
+      content: [{ type: 'text', text: hasText ? `${text}\n\n${note}` : note }],
+      source: { kind: 'user' },
+    }))
+    return
+  }
+  const content: ContentBlock[] = hasText ? [{ type: 'text', text }] : []
+  for (const group of groups) {
+    const { ok, failed } = await resolvePendingImages(group)
+    if (failed.length > 0) {
+      content.push({ type: 'text', text: `[image failed: ${failed.join(', ')}]` })
+    }
+    for (const image of ok) {
+      try {
+        const ref = await attachments.saveImage({ data: image.data, mediaType: image.mediaType, name: image.name })
+        content.push({ type: 'image', attachment: ref })
+      } catch {
+        content.push({ type: 'text', text: `[image failed: ${image.name}]` })
+      }
+    }
+    content.push({ ...EMPTY_TEXT })
+  }
+  const hasImage = content.some(block => block.type === 'image')
+  if (!hasImage) {
+    const joined = content.map(block => block.type === 'text' ? block.text : '').join('').trim()
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: joined }], source: { kind: 'user' } }))
+    return
+  }
+  agent.followup(createUserMessage({ content, source: { kind: 'user' } }))
+}
 
 export const PERMISSION_PRESETS = ['workspace-write', 'danger-full-access', 'read-only'] as const
 
@@ -127,7 +217,7 @@ interface CommandsServiceLike {
 
 export interface ChatBridge {
   modelName(): string
-  send(text: string): void
+  send(text: string, images?: ReadonlyArray<readonly PendingImage[]>): void
   interrupt(): void
   subscribe(handler: (event: SessionEvent) => void): () => void
   listSessions(): Promise<SessionSummary[]>
@@ -722,8 +812,9 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
 
   return {
     modelName: () => currentSelection()?.model ?? 'deepseek-v4-flash',
-    send(text: string) {
-      activeAgent.followup(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
+    send(text: string, images?: ReadonlyArray<readonly PendingImage[]>) {
+      const hasText = text !== ''
+      sendContent(activeAgent, text, hasText, images ?? [], ctx)
     },
     interrupt() {
       activeAgent.cancel({ kind: 'user' })

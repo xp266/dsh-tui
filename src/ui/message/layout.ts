@@ -1,6 +1,8 @@
 import type { Message, ToolDiffMessage } from '../../model/message.ts'
 import type { CustomMessage } from '../../contract/index.ts'
 import { colToCharIndex, textWidth, truncate, wrapIndented, wrapLines } from '../../core/text.ts'
+import { hasFieldChar } from '../../core/fields.ts'
+import { expandFieldChars, fieldRowSegments } from '../../core/field-view.ts'
 import { selectedRange } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
 import { sliceByColumns } from '../selection-registry.ts'
@@ -114,6 +116,13 @@ function renderBody(message: Message, width: number): BodyRendered {
         return { lines: rendered.lines, rows: rendered.rows, bgs: null }
       }
       const lines = wrapLines(message.content, inner)
+      if (hasFieldChar(message.content)) {
+        return {
+          lines: lines.map(expandFieldChars),
+          rows: lines.map(line => fieldRowSegments(line, { background: COLORS.userBubbleBackground })),
+          bgs: null,
+        }
+      }
       return { lines, rows: null, bgs: null }
     }
     case 'collapsible': {
@@ -663,7 +672,7 @@ export function selectionText(messages: Message[], width: number, selection: Lin
     if (left < right) {
       const startIndex = colToCharIndex(line, left - info.colStart)
       const endIndex = colToCharIndex(line, right - info.colStart)
-      lines.push(line.slice(startIndex, endIndex))
+      lines.push(expandFieldChars(line.slice(startIndex, endIndex)))
       continue
     }
     lines.push('')

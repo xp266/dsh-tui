@@ -83,6 +83,7 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
         exitOnCtrlC: false,
         incrementalRendering: false,
         maxFps: config.maxFps,
+        kittyKeyboard: { mode: 'auto' },
       })
       lastColumns = capture.stream.columns
       lastRows = capture.stream.rows

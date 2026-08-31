@@ -8,6 +8,7 @@ import type { AgentActivity } from '../../chat/store.ts'
 import { normalizeTodos } from '../../chat/todo-view.ts'
 import type { TodoItemLike } from '../../chat/todo-view.ts'
 import type { Message } from '../../model/message.ts'
+import { releaseFields, releaseUnreferenced } from '../../core/fields.ts'
 
 const FRAME_MS = 33
 
@@ -97,6 +98,13 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
         state = { messages: next.messages, turn: next.turn }
       }
       chatStateRef.current = state
+      if (dirty) {
+        let keep = ''
+        for (const message of state.messages) {
+          if (message.kind === 'bubble') keep += message.content
+        }
+        releaseUnreferenced('message', keep)
+      }
       retryStatusRef.current = retry
       setStreamedChars(previous => previous === streamedCharsRef.current ? previous : streamedCharsRef.current)
       if (dirty) setMessages([...state.messages])
@@ -130,6 +138,7 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
       pendingEventsRef.current = []
       retryStatusRef.current = undefined
       streamedCharsRef.current = 0
+      releaseFields('message')
       setStreamedChars(0)
       setRetryStatus(undefined)
       setActivity(IDLE_ACTIVITY)

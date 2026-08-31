@@ -4,6 +4,9 @@ import { isMouseResidue } from '../../terminal/mouse.ts'
 import { colToCharIndex } from '../../core/text.ts'
 import { moveCaretLine } from '../../core/composer-layout.ts'
 import { editBackspace, editDelete, editInsert } from '../../core/edit.ts'
+import { buildPasteFields, expandComposerValue, insertClipboardImage, reconcileComposerFields } from './composer-fields.ts'
+import type { ComposerFieldMap, ComposerSubmission } from './composer-fields.ts'
+import { readClipboardImage, readClipboardImageUris, readClipboardText } from '../../terminal/clipboard.ts'
 import { COMMANDS, filterHintEntries, literalHintArgs } from './commands.ts'
 import type { CommandHintItem } from './commands.ts'
 
@@ -30,7 +33,7 @@ function opensHint(text: string): boolean {
 }
 
 export function useComposer(
-  onSend: (text: string) => void,
+  onSend: (submission: ComposerSubmission) => void,
   interactive: boolean,
   contentWidth: number,
   onCycleMode?: () => void,
@@ -48,6 +51,7 @@ export function useComposer(
   const widthRef = useRef(contentWidth)
   const entriesRef = useRef<readonly CommandHintItem[] | undefined>(entries)
   const listCommandArgsRef = useRef(listCommandArgs)
+  const fieldsRef = useRef<ComposerFieldMap>(new Map())
   widthRef.current = contentWidth
   entriesRef.current = entries
   listCommandArgsRef.current = listCommandArgs
@@ -56,6 +60,14 @@ export function useComposer(
   hintOpenRef.current = hintOpen
   commandIndexRef.current = commandIndex
   const visibleFor = (text: string) => filterHintEntries(entriesRef.current ?? COMMANDS, text)
+  const applyEdit = (next: { value: string; cursor: number } | null): void => {
+    if (next === null) return
+    valueRef.current = next.value
+    cursorRef.current = next.cursor
+    setValue(next.value)
+    setCursor(next.cursor)
+    reconcileComposerFields(next.value, fieldsRef.current)
+  }
   const apiRef = useRef<ComposerApi>({
     moveLineBy(delta) {
       const next = moveLine(valueRef.current, widthRef.current, cursorRef.current, delta)
@@ -109,31 +121,58 @@ export function useComposer(
       apiRef.current.confirmHint()
     },
   })
-  usePaste(text => {
-    if (!interactive) return
-    const normalized = text.replace(/\r\n?/g, '\n')
-    if (normalized === '') return
-    const next = editInsert({ value: valueRef.current, cursor: cursorRef.current }, normalized)
-    valueRef.current = next.value
-    cursorRef.current = next.cursor
-    setValue(next.value)
-    setCursor(next.cursor)
-    const open = opensHint(next.value)
+  const refreshHint = (): void => {
+    const open = opensHint(valueRef.current)
     setHintOpen(open)
     hintOpenRef.current = open
     if (open) {
       setCommandIndex(0)
       commandIndexRef.current = 0
     }
+  }
+  const insertPaste = (normalized: string): void => {
+    if (normalized === '') return
+    const { value: current, cursor: at } = { value: valueRef.current, cursor: cursorRef.current }
+    const inserted = buildPasteFields(normalized, fieldsRef.current)
+    applyEdit(editInsert({ value: current, cursor: at }, inserted))
+    refreshHint()
+  }
+  const upgradeFirstImageGroupFromClipboard = async (): Promise<void> => {
+    const entries = [...fieldsRef.current.entries()]
+    const imageFields = entries.filter(([, field]) => field.kind === 'image')
+    if (imageFields.length !== 1) return
+    const [, field] = imageFields[0]!
+    const pathCount = (field.images ?? []).filter(image => image.kind === 'path').length
+    if (pathCount !== 1) return
+    try {
+      const uris = await readClipboardImageUris()
+      if (uris.length > 1) field.images = uris.map(path => ({ kind: 'path' as const, path }))
+    } catch {}
+  }
+  const pasteFromClipboard = async (allowText: boolean): Promise<void> => {
+    try {
+      const image = await readClipboardImage()
+      if (image !== undefined) {
+        insertPaste(insertClipboardImage(image, fieldsRef.current))
+        return
+      }
+      if (!allowText) return
+      const text = await readClipboardText()
+      if (text !== undefined && text !== '') insertPaste(text.replace(/\r\n?/g, '\n'))
+    } catch {}
+  }
+  usePaste(text => {
+    if (!interactive) return
+    const normalized = text.replace(/\r\n?/g, '\n')
+    if (normalized === '') {
+      void pasteFromClipboard(true)
+      return
+    }
+    insertPaste(normalized)
+    void upgradeFirstImageGroupFromClipboard()
   }, { isActive: interactive })
   const insertText = (text: string): void => {
-    const v = valueRef.current
-    const c = cursorRef.current
-    const next = editInsert({ value: v, cursor: c }, text)
-    valueRef.current = next.value
-    cursorRef.current = next.cursor
-    setValue(next.value)
-    setCursor(next.cursor)
+    applyEdit(editInsert({ value: valueRef.current, cursor: cursorRef.current }, text))
   }
   const completeCommandArg = (): void => {
     const v = valueRef.current
@@ -227,8 +266,9 @@ export function useComposer(
       return
     }
     if (key.return && !key.shift) {
-      const text = v.trim()
-      if (text) onSend(text)
+      const submission = expandComposerValue(v, fieldsRef.current)
+      if (submission.text !== '' || submission.images.length > 0) onSend(submission)
+      fieldsRef.current = new Map()
       valueRef.current = ''
       cursorRef.current = 0
       setValue('')
@@ -243,13 +283,14 @@ export function useComposer(
       insertText('\n')
       return
     }
+    if (key.ctrl && input === 'v') {
+      void pasteFromClipboard(true)
+      return
+    }
     if (key.backspace) {
       const next = editBackspace({ value: v, cursor: c })
       if (next !== null) {
-        valueRef.current = next.value
-        cursorRef.current = next.cursor
-        setValue(next.value)
-        setCursor(next.cursor)
+        applyEdit(next)
         const open = opensHint(next.value)
         setHintOpen(open)
         hintOpenRef.current = open
@@ -261,10 +302,7 @@ export function useComposer(
     if (key.delete) {
       const next = editDelete({ value: v, cursor: c })
       if (next !== null) {
-        valueRef.current = next.value
-        cursorRef.current = next.cursor
-        setValue(next.value)
-        setCursor(next.cursor)
+        applyEdit(next)
         const open = opensHint(next.value)
         setHintOpen(open)
         hintOpenRef.current = open
@@ -307,12 +345,8 @@ export function useComposer(
     }
     if (input && !key.ctrl && !key.meta && !isMouseResidue(input)) {
       if (/[\u0000-\u001f\u007f]/.test(input)) return
-      const next = editInsert({ value: v, cursor: c }, input)
-      valueRef.current = next.value
-      cursorRef.current = next.cursor
-      setValue(next.value)
-      setCursor(next.cursor)
-      const open = opensHint(next.value)
+      applyEdit(editInsert({ value: v, cursor: c }, input))
+      const open = opensHint(valueRef.current)
       setHintOpen(open)
       hintOpenRef.current = open
       if (open) {

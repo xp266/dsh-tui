@@ -8,6 +8,8 @@ import { glyphs } from '../../terminal/glyphs.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
 import { CHROME_FRAME_ROWS, CHROME_MARGIN_X, CHROME_PAD_X, CHROME_TEXT_X, INPUT_WIDTH_OFFSET, inputFrameTop, inputStatusRow } from '../../core/metrics.ts'
 import { colToCharIndex, lineBreaks, textWidth, truncate, wrapLines } from '../../core/text.ts'
+import { hasFieldChar } from '../../core/fields.ts'
+import { expandFieldChars, fieldRowSegments } from '../../core/field-view.ts'
 import type { ComposerApi } from './use-composer.ts'
 import { SelectableText } from '../selection.tsx'
 import { Region } from '../region.tsx'
@@ -152,6 +154,8 @@ export function InputBar({
         </Box>
         {Array.from({ length: realRows }, (_, row) => {
           const line = lines[visibleStart + row] ?? ''
+          const expanded = expandFieldChars(line)
+          const segments = hasFieldChar(line) ? fieldRowSegments(line) : undefined
           return (
             <Box
               key={`input-${row}`}
@@ -166,7 +170,8 @@ export function InputBar({
               <SelectableText
                 y={row + 1}
                 col={CHROME_TEXT_X}
-                text={line || ' '}
+                text={expanded || ' '}
+                segments={segments}
               />
             </Box>
           )

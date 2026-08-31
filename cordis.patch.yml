@@ -24,6 +24,9 @@
         default: standard
     - id: cordis-host-runner
       name: '@deepseek-ai/dsh-cordis-host-runner'
+    # Durable image storage comes from the dsh base bundle's attachment-local
+    # row; the TUI resolves ctx.attachments at send time and degrades to a
+    # plain text message when the service is absent.
     - id: tui
       name: dsh-tui
 

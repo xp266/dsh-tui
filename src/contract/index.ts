@@ -290,6 +290,21 @@ export interface TuiStartupFace {
   registerSink(sink: TuiStartupSink): () => void
 }
 
+export interface SpecialFieldStyle {
+  color: string
+  background: string
+  bold?: boolean
+}
+
+export interface SpecialFieldContribution {
+  kind: string
+  style(): SpecialFieldStyle
+}
+
+export interface TuiFieldsFace {
+  register(contribution: SpecialFieldContribution): () => void
+}
+
 export interface InteractionPanelComponentProps {
   request: unknown
   resolve(value: unknown): void
@@ -347,6 +362,7 @@ export interface TuiExtensionPoint {
   tools: TuiToolsFace
   content: TuiContentFace
   startup: TuiStartupFace
+  fields: TuiFieldsFace
   interactions?: TuiInteractionsFace
   chat?: TuiChatFace
 }

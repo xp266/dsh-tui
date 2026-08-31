@@ -1,4 +1,5 @@
 import stringWidth from 'string-width'
+import { isFieldCode, fieldCodeWidth } from './fields.ts'
 
 const WIDTH_CACHE_LIMIT = 8192
 
@@ -15,7 +16,26 @@ const widthCache = new Map<string, number>()
 
 export function textWidth(text: string): number {
   if (isAsciiPrintable(text)) return text.length
-  return cachedWidth(widthCache, text, () => stringWidth(text))
+  const hit = widthCache.get(text)
+  if (hit !== undefined) return hit
+  let total = 0
+  let run = ''
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i)
+    if (isFieldCode(code)) {
+      if (run !== '') {
+        total += stringWidth(run)
+        run = ''
+      }
+      total += fieldCodeWidth(code)
+      continue
+    }
+    run += text[i]
+  }
+  if (run !== '') total += stringWidth(run)
+  if (widthCache.size >= WIDTH_CACHE_LIMIT) widthCache.clear()
+  widthCache.set(text, total)
+  return total
 }
 
 function isAsciiPrintable(text: string): boolean {
@@ -38,6 +58,7 @@ export function charWidth(cluster: string): number {
   if (cluster.length === 1) {
     const code = cluster.charCodeAt(0)
     if (code >= 0x20 && code <= 0x7e) return 1
+    if (isFieldCode(code)) return fieldCodeWidth(code)
   }
   return cachedWidth(charWidthCache, cluster, () => stringWidth(cluster))
 }

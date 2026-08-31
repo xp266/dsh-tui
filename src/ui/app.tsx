@@ -24,6 +24,7 @@ import { COMMANDS, KNOWN_COMMAND_ARGS, commandArgHints, filterHintEntries, match
 import type { CommandAvailability, CommandDef } from './input/commands.ts'
 import { CHROME_MARGIN_X, MESSAGE_INPUT_GAP_ROWS, hintBlockTop } from '../core/metrics.ts'
 import { useComposer } from './input/use-composer.ts'
+import type { ComposerSubmission } from './input/composer-fields.ts'
 import { seedAsyncListCache } from './hooks/use-async-list.ts'
 import { Region } from './region.tsx'
 import { MessageList } from './message/message-list.tsx'
@@ -107,7 +108,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const inputRef = useRef<InputBarHandle | null>(null)
   const panelHandleRef = useRef<PanelPointerHandle | null>(null)
   const exiting = useRef(false)
-  const sendRef = useRef<(text: string) => void>(() => {})
+  const sendRef = useRef<(submission: ComposerSubmission) => void>(() => {})
   const isCommandAvailable = useCallback<CommandAvailability>(
     command => command.id !== 'todo' || todoActive,
     [todoActive],
@@ -172,7 +173,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     return list
   }, [bridge])
   const { value, cursor, hintOpen, commandIndex, api } = useComposer(
-    text => sendRef.current(text),
+    submission => sendRef.current(submission),
     composerInteractive,
     contentWidth,
     () => bridge?.cyclePermission(),
@@ -214,7 +215,8 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
         return
     }
   }
-  const handleSend = (text: string) => {
+  const handleSend = (submission: ComposerSubmission) => {
+    const text = submission.text
     const matched = matchAvailableCommand(text, isCommandAvailable, windowCommands)
     if (matched !== undefined) {
       runCommand(matched)
@@ -226,7 +228,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
       applyScroll(Infinity)
       return
     }
-    bridge?.send(text)
+    bridge?.send(submission.text, submission.images)
     applyScroll(Infinity)
   }
   sendRef.current = handleSend

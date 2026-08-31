@@ -1,7 +1,7 @@
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { readFileSync, statSync } from 'node:fs'
 import type { Message, PlanMessage, ToolDiffMessage } from '../model/message.ts'
-import { reasoningFromBlocks, textFromBlocks } from './blocks.ts'
+import { reasoningFromBlocks, textFromBlocks, userDisplayText } from './blocks.ts'
 import type { ChatToolPresenter, ToolResultLike } from './bridge.ts'
 import { DIFF_TOOL_NAMES } from './bridge.ts'
 import type { CollapsibleMessage } from '../model/message.ts'
@@ -145,7 +145,7 @@ export function reduceChatEvent(
   switch (event.type) {
     case 'user/message': {
       if (event.data.source.kind !== 'user') return { messages, turn, changed: false }
-      messages.push({ kind: 'bubble', id: nextId('user'), role: 'user', content: textFromBlocks(event.data.content) })
+      messages.push({ kind: 'bubble', id: nextId('user'), role: 'user', content: userDisplayText(event.data.content) })
       return { messages, turn, changed: true }
     }
     case 'assistant/chunk': {

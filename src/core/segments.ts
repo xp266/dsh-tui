@@ -2,6 +2,7 @@ import { computeWrapStarts, segmentGraphemes } from './text.ts'
 
 export interface MarkStyle {
   color?: string
+  background?: string
   bold?: boolean
   italic?: boolean
   strike?: boolean
@@ -58,6 +59,7 @@ export function wrapSegments(segments: Segment[], width: number): Segment[][] {
 
 function sameStyle(a: MarkStyle, b: MarkStyle): boolean {
   return a.color === b.color
+    && a.background === b.background
     && a.bold === b.bold
     && a.italic === b.italic
     && a.strike === b.strike
@@ -103,8 +105,8 @@ export function mergeRuns(segments: Segment[]): Segment[] {
 export function segmentsKey(segments: Segment[]): string {
   let key = ''
   for (const seg of segments) {
-    const flags = `${seg.style.bold ? 'b' : ''}${seg.style.italic ? 'i' : ''}${seg.style.strike ? 's' : ''}${seg.style.underline ? 'u' : ''}`
-    key += `${seg.text.length}:${seg.text}\x1f${seg.style.color ?? ''}\x1e${flags}\x1d`
+    const flags = `${seg.style.bold ? 'b' : ''}${seg.style.italic ? 'i' : ''}${seg.style.strike ? 's' : ''}${seg.style.underline ? 'u' : ''}${seg.style.background ? 'g' : ''}`
+    key += `${seg.text.length}:${seg.text}\x1f${seg.style.color ?? ''}\x1e${seg.style.background ?? ''}\x1e${flags}\x1d`
   }
   return key
 }

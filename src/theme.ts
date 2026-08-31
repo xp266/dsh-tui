@@ -53,6 +53,9 @@ const darkPalette = {
   success: '#4caf50',
   warning: '#efa72e',
 
+  specialFieldText: '#1a1a1a',
+  specialFieldBackground: '#ffa600',
+
   toolLabel: '#00d0ff',
   toolBodyText: '#808080',
 
@@ -150,6 +153,9 @@ const lightPalette: Theme = {
   errorText: '#d44a3a',
   success: '#2e8b3d',
   warning: '#b97a00',
+
+  specialFieldText: '#3d2800',
+  specialFieldBackground: '#ffa600',
 
   toolLabel: '#0092b8',
   toolBodyText: '#6e6e6e',

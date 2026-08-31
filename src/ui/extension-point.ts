@@ -11,6 +11,7 @@ import { registerChatNode, subscribeChatNodes } from '../chat/chat-nodes.ts'
 import { registerMessageView, subscribeMessageViews } from './message/message-views.ts'
 import { registerBootSink } from '../boot-log.ts'
 import { clearLayoutCache } from './message/layout.ts'
+import { registerFieldKind } from '../core/fields.ts'
 import { createChatFace } from '../chat/chat-face.ts'
 import type { ChatBridge } from '../chat/bridge.ts'
 import type {
@@ -27,6 +28,7 @@ export type {
   TuiCommandsFace,
   TuiContentFace,
   TuiExtensionPoint,
+  TuiFieldsFace,
   TuiInteractionsFace,
   TuiKeymapFace,
   TuiPaletteFace,
@@ -68,6 +70,16 @@ export function createTuiExtensionPoint(ctx: Context, hooks: TuiExtensionPointHo
       views: { register: registerMessageView },
     },
     startup: { registerSink: registerBootSink },
+    fields: {
+      register(contribution) {
+        const off = registerFieldKind(contribution)
+        surfaceChanged()
+        return () => {
+          off()
+          surfaceChanged()
+        }
+      },
+    },
   }
   const surfaceChanged = (): void => {
     clearLayoutCache()
