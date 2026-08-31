@@ -1,4 +1,5 @@
 import { Box, Text, useInput } from 'ink'
+import { isKeyConsumed } from '../key-arbiter.ts'
 import { useEffect, useState } from 'react'
 import type { ReactNode, Ref } from 'react'
 import { useImperativeHandle } from 'react'
@@ -137,7 +138,7 @@ export function ApprovalPanel({ handleRef, reason, command, background, active, 
     },
   }))
   useInput((input, key) => {
-    if (!active) return
+    if (!active || isKeyConsumed()) return
     if (key.leftArrow || key.rightArrow || key.tab) {
       setFocusAllow(current => !current)
       return

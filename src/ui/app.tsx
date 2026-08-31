@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { RefObject } from 'react'
 import { COLORS, permissionModeInfo } from '../theme.ts'
 import { writeClipboardText } from '../terminal/clipboard.ts'
+import { copySelection } from './selection/service.ts'
 import type { ChatBridge } from '../chat/bridge.ts'
 import type { AgentActivity } from '../chat/store.ts'
 import { rowIndexFor, selectionText } from './message/layout.ts'
@@ -17,6 +18,8 @@ import { useTerminalSize } from './hooks/use-terminal-size.ts'
 import { useChatEvents } from './hooks/use-chat-events.ts'
 import { useScroll } from './hooks/use-scroll.ts'
 import { useMouseSelection, hintRegion } from './hooks/use-mouse-selection.ts'
+import { isKeyConsumed } from './key-arbiter.ts'
+import { KeymapGate } from './chrome/key-gate.tsx'
 import { useOverlayContribution } from './contributions.ts'
 import { InputBar, inputLayout, INPUT_WIDTH_OFFSET, HINT_MAX_ROWS } from './input/input-bar.tsx'
 import type { InputBarHandle } from './input/input-bar.tsx'
@@ -307,7 +310,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   })
   selectionRef.current = selection
   useInput((input, key) => {
-    if (handleKeyContributions(input, key)) return
+    if (isKeyConsumed() && !(key.ctrl && input === 'c' && selection !== null)) return
     if (dialog !== null && !selection) return
     if (key.escape) {
       if (hintOpen) return
@@ -327,9 +330,10 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     }
     if (key.ctrl && input === 'c') {
       if (selection) {
-        const text = selection.inMessage
-          ? selectionText(messages, columns, selection)
-          : chromeSelectionText(selection)
+        const text = copySelection(selection, {
+          messageText: sel => selectionText(messages, columns, sel),
+          chromeText: sel => chromeSelectionText(sel),
+        })
         if (text) writeClipboardText(text)
         clearSelection()
         return
@@ -344,6 +348,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   return (
     <SelectionContext.Provider value={messageAreaSelection}>
       <Box flexDirection="column" width={columns} height={rows}>
+        <KeymapGate />
         <MessageList
           messages={messages}
           height={messageHeight}

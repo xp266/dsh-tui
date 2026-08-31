@@ -1,4 +1,5 @@
 import { useInput, usePaste } from 'ink'
+import { isKeyConsumed } from '../key-arbiter.ts'
 import type { RefObject } from 'react'
 import { isMouseResidue } from '../../terminal/mouse.ts'
 import { editBackspace, editDelete, editInsert } from '../../core/edit.ts'
@@ -78,6 +79,7 @@ export function useDialogInput(options: DialogInputOptions): void {
     setCursor(next.cursor)
   })
   useInput((input, key) => {
+    if (isKeyConsumed()) return
     const state = live.current
     const liveCurrent = focusedItem(state.rows[state.focus.row], state.focus.col)
     const rawArrow = arrowFromRaw(input)

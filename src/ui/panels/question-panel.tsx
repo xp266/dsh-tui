@@ -1,4 +1,5 @@
 import { Box, Text, useInput } from 'ink'
+import { isKeyConsumed } from '../key-arbiter.ts'
 import { useEffect, useState } from 'react'
 import { useCaret } from '../hooks/use-caret.ts'
 import type { Ref } from 'react'
@@ -97,7 +98,7 @@ export function QuestionPanel({ handleRef, question: panel, background, active, 
     onResize(totalHeight)
   }, [totalHeight])
   useInput((input, key) => {
-    if (!active) return
+    if (!active || isKeyConsumed()) return
     if (isMouseResidue(input)) return
     if (state.editing) {
       if (key.return) {

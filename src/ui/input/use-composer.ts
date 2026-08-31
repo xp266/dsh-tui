@@ -1,4 +1,5 @@
 import { useInput, usePaste } from 'ink'
+import { isKeyConsumed } from '../key-arbiter.ts'
 import { useEffect, useRef, useState } from 'react'
 import { isMouseResidue } from '../../terminal/mouse.ts'
 import { colToCharIndex } from '../../core/text.ts'
@@ -237,8 +238,10 @@ export function useComposer(
     })()
   }
   useInput((input, key) => {
-    if (!interactive) return
-    if (handleComposerKeyBindings(input, key)) return
+    if (!interactive || isKeyConsumed()) return
+    if (handleComposerKeyBindings(input, key)) {
+      return
+    }
     if (input === '\n') {
       insertText('\n')
       return

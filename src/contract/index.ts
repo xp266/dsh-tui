@@ -165,6 +165,79 @@ export interface TuiKeymapFace {
   register(contribution: KeyBindingContribution): () => void
 }
 
+export interface PointerUiContext {
+  dialogOpen: boolean
+  panelActive: boolean
+  hintRegion: { top: number; bottom: number } | null
+  rows: number
+  columns: number
+  messageHeight: number
+  inputHeight: number
+  scrollTop: number
+  getScroll(): ScrollSnapshot
+}
+
+export interface PointerSession {
+  getSelection(): LineSelection | null
+  setSelection(next: LineSelection | null): void
+  scroll(next: number): void
+  /** Start (-1/1) or stop (0) drag-follow auto scrolling of the message area. */
+  autoScroll(direction: -1 | 1 | 0): void
+}
+
+export interface PointerEventFrame {
+  event: MouseEventData
+  session: PointerSession
+  ui: PointerUiContext
+}
+
+export interface PointerHandlerContribution {
+  id: string
+  order?: number
+  /** Return true to claim the gesture; drag and up are then routed here exclusively. */
+  onDown(frame: PointerEventFrame): boolean
+  onDrag?(frame: PointerEventFrame): void
+  onUp?(frame: PointerEventFrame): void
+  onWheel?(frame: PointerEventFrame): boolean
+}
+
+/** Builtin gesture handlers live at order 100..190; see registerPointerHandler. */
+export const POINTER_PLUGIN_ORDER = 300
+
+export interface TuiPointerFace {
+  register(contribution: PointerHandlerContribution): () => void
+}
+
+export interface SelectionExtractContext {
+  messageText(sel: LineSelection): string
+  chromeText(sel: LineSelection): string
+}
+
+export interface SelectionDomainContribution {
+  id: string
+  order?: number
+  hit(sel: LineSelection): boolean
+  extract(sel: LineSelection, context: SelectionExtractContext): string | null
+}
+
+export interface SelectionTransformerContribution {
+  id: string
+  order?: number
+  transform(text: string): string
+}
+
+export interface SelectionClipboardContribution {
+  id: string
+  order?: number
+  copy(text: string): boolean
+}
+
+export interface TuiSelectionFace {
+  domains: { register(contribution: SelectionDomainContribution): () => void }
+  transformers: { register(contribution: SelectionTransformerContribution): () => void }
+  clipboard: { register(contribution: SelectionClipboardContribution): () => void }
+}
+
 export interface TuiChromeFace {
   statusLine: { register(contribution: StatusLineContribution): () => void }
   overlays: { register(contribution: OverlayContribution): () => void }
@@ -485,6 +558,8 @@ export interface TuiExtensionPoint {
   fields: TuiFieldsFace & { factory: SpecialFieldFactory }
   composer: TuiComposerFace
   markdown: TuiMarkdownFace
+  pointer: TuiPointerFace
+  selection: TuiSelectionFace
   interactions?: TuiInteractionsFace
   chat?: TuiChatFace
 }

@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { pointerHandlerEntries, type PointerSession } from '../pointer/registry.ts'
+import type { PointerHandlerContribution } from '../../contract/index.ts'
+import { createBuiltinPointerHandler, type BuiltinPointerHandler } from '../pointer/builtins.ts'
 import type { RefObject } from 'react'
 import type { ScreenCapture } from '../../terminal/screen.ts'
 import { createMouseController } from '../../terminal/mouse.ts'
@@ -220,248 +223,102 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
       }
       return clampFocusRow(current.inMessage, eventY, scrollTopRef.current, messageHeightRef.current, rowsRef.current, dialogOpenRef.current)
     }
-    interface MouseRegion {
-      contains(y: number): boolean
-      onClick?(y: number, x: number): void
-      onWheel?(dir: -1 | 1, y: number): boolean
+    const uiContext = () => ({
+      dialogOpen: dialogOpenRef.current,
+      panelActive: panelActiveRef.current,
+      hintRegion: activeHintRegion(),
+      rows: rowsRef.current,
+      columns: widthRef.current,
+      messageHeight: messageHeightRef.current,
+      inputHeight: inputHeightRef.current,
+      scrollTop: scrollTopRef.current,
+      getScroll: getScrollRef.current,
+    })
+    const session: PointerSession = {
+      getSelection: () => selectionRef.current,
+      setSelection: next => setSelection(next),
+      scroll: next => onScrollRef.current(next),
+      autoScroll: direction => {
+        if (direction === 0) stopDragScroll()
+        else startDragScroll(direction)
+      },
     }
-    const hintGestureRef = { current: null as { x: number; y: number; dragged: boolean } | null }
-    const clickRegions: MouseRegion[] = [
-      {
-        contains: y => !dialogOpenRef.current && !panelActiveRef.current && inInputContent(y),
-        onClick: (y, x) => {
-          inputClickCandidateRef.current = { x, y }
-        },
+    const builtinDeps = {
+      inInputContent,
+      inMessageArea,
+      toContentRow,
+      activeHintRegion,
+      focusRowFor,
+      clampMessageFocus: (anchorInMessage: boolean, eventY: number) =>
+        anchorInMessage
+          ? eventY + scrollTopRef.current
+          : clampFocusRow(false, eventY, scrollTopRef.current, messageHeightRef.current, rowsRef.current, dialogOpenRef.current),
+      setPointerArea: (value: boolean) => {
+        pointerSessionRef.current = { inMessageArea: value }
       },
-      {
-        contains: y => panelActiveRef.current && !dialogOpenRef.current
-          && y >= messageHeightRef.current && y <= rowsRef.current - 2,
-        onClick: (y, x) => {
-          panelClickCandidateRef.current = { x, y }
-          if (screenRef.current?.rowHasText(y) ?? false) {
-            setSelection({ anchorRow: y, anchorCol: x, focusRow: y, focusCol: x, inMessage: false })
-          }
-        },
+      onScrollbarDown,
+      onScrollbarDrag,
+      stopDragScroll,
+      updateDragScroll,
+      setSelection,
+      getSelection: () => selectionRef.current,
+      rowHasText: (y: number) => screenRef.current?.rowHasText(y) ?? false,
+      rowInfoAt: (y: number) => {
+        const contentRow = toContentRow(y)
+        return rowInfoAt(messagesRef.current, widthRef.current, contentRow)
       },
-      {
-        contains: () => dialogOpenRef.current,
-        onClick: (y, x) => {
-          const anchorable = screenRef.current?.rowHasText(y) ?? false
-          dialogClickCandidateRef.current = { x, y }
-          if (anchorable) {
-            setSelection({ anchorRow: y, anchorCol: x, focusRow: y, focusCol: x, inMessage: false })
-          }
-        },
-      },
-      {
-        contains: () => true,
-        onClick: (y, x) => {
-          const contentRow = toContentRow(y)
-          const hit = rowInfoAt(messagesRef.current, widthRef.current, contentRow)
-          const anchorable = screenRef.current?.rowHasText(y) ?? false
-          if (hit?.clickable) {
-            clickCandidateRef.current = { messageId: hit.messageId, y, x, moved: false }
-            pointerSessionRef.current = { inMessageArea: inMessageArea(y) }
-            return
-          }
-          if (anchorable) {
-            const anchorInMessage = inMessageArea(y)
-            pointerSessionRef.current = { inMessageArea: anchorInMessage }
-            setSelection({ anchorRow: contentRow, anchorCol: x, focusRow: contentRow, focusCol: x, inMessage: anchorInMessage })
-          }
-        },
-      },
-    ]
-    const wheelRegions: MouseRegion[] = [
-      {
-        contains: () => dialogOpenRef.current,
-        onWheel: (dir, y) => onDialogWheelRef.current?.(y, dir) === true,
-      },
-      {
-        contains: y => panelActiveRef.current && !dialogOpenRef.current
-          && y >= messageHeightRef.current && y <= rowsRef.current - 2,
-        onWheel: dir => panelHandleRef.current?.current?.wheel(dir) === true,
-      },
-      {
-        contains: y => {
-          if (dialogOpenRef.current) return false
-          const region = activeHintRegion()
-          return region !== null && y >= region.top && y <= region.bottom
-        },
-        onWheel: dir => {
-          inputHandleRef.current?.current?.hintWheel(dir)
-          return true
-        },
-      },
-      {
-        contains: y => !dialogOpenRef.current && !panelActiveRef.current && inInputContent(y),
-        onWheel: dir => {
-          inputHandleRef.current?.current?.wheel(dir)
-          return true
-        },
-      },
-      {
-        contains: () => true,
-        onWheel: dir => {
-          const delta = dir === -1 ? -WHEEL_SCROLL_LINES : WHEEL_SCROLL_LINES
-          const live = getScrollRef.current()
-          const next = Math.max(0, Math.min(live.maxScroll, live.top + delta))
-          if (next !== live.top) onScrollRef.current(next)
-          return true
-        },
-      },
-    ]
-    const controller = createMouseController(event => {
-      switch (event.type) {
+      inputClickAt: (y: number, x: number) => inputHandleRef.current?.current?.clickAt(y, x),
+      panelClickAt: (y: number, x: number) => panelHandleRef.current?.current?.clickAt(y, x),
+      dialogWheel: (y: number, dir: -1 | 1) => onDialogWheelRef.current?.(y, dir) === true,
+      panelWheel: (dir: -1 | 1) => panelHandleRef.current?.current?.wheel(dir) === true,
+      hintWheel: (dir: -1 | 1) => inputHandleRef.current?.current?.hintWheel(dir),
+      inputWheel: (dir: -1 | 1) => inputHandleRef.current?.current?.wheel(dir),
+      hintPress: (x: number, y: number) => onHintPressRef.current?.(x, y),
+      hintDragStart: (x: number, y: number) => onHintDragStartRef.current?.(x, y),
+      hintDragMove: (x: number, y: number) => onHintDragMoveRef.current?.(x, y),
+      hintRelease: (x: number, y: number, dragged: boolean) => onHintReleaseRef.current?.(x, y, dragged),
+      onScroll: (next: number) => onScrollRef.current(next),
+      toggleMessage: (id: string) => onToggleMessageRef.current(id),
+      dialogClick: (y: number, x: number) => onDialogClickRef.current(y, x),
+    }
+    const builtinHandler: BuiltinPointerHandler = createBuiltinPointerHandler(builtinDeps)
+    let ownerId: string | null = null
+    const controller = createMouseController(rawEvent => {
+      const frame = { event: rawEvent, session, ui: uiContext() }
+      // The builtin composite participates in the same dispatch chain as
+      // plugin handlers, sorted by order (builtin at 100, plugin default 300).
+      const entries = [
+        { key: builtinHandler.id, order: 100, value: builtinHandler as PointerHandlerContribution },
+        ...pointerHandlerEntries(),
+      ].sort((a, b) => a.order - b.order)
+      const entryFor = (id: string | null) => entries.find(entry => entry.key === id)
+      switch (rawEvent.type) {
         case 'down': {
-          if (event.button !== 0) return
-          if (onScrollbarDown(event.x, event.y)) return
-          const hintRegionActive = (() => {
-            if (dialogOpenRef.current || panelActiveRef.current) return false
-            const region = activeHintRegion()
-            return region !== null && event.y >= region.top && event.y <= region.bottom
-          })()
-          if (hintRegionActive) {
-            hintGestureRef.current = { x: event.x, y: event.y, dragged: false }
-            onHintPressRef.current?.(event.x, event.y)
-            clickCandidateRef.current = null
-            dialogClickCandidateRef.current = null
-            panelClickCandidateRef.current = null
-            inputClickCandidateRef.current = null
-            stopDragScroll()
-            pointerSessionRef.current = { inMessageArea: false }
-            setSelection(null)
-            return
-          }
-          clickCandidateRef.current = null
-          dialogClickCandidateRef.current = null
-          panelClickCandidateRef.current = null
-          inputClickCandidateRef.current = null
-          stopDragScroll()
-          pointerSessionRef.current = { inMessageArea: false }
-          setSelection(null)
-          for (const region of clickRegions) {
-            if (!region.contains(event.y)) continue
-            region.onClick?.(event.y, event.x)
-            return
+          if (rawEvent.button !== 0) return
+          builtinHandler.beginDown()
+          ownerId = null
+          for (const entry of entries) {
+            if (entry.value.onDown(frame) === true) {
+              ownerId = entry.key
+              return
+            }
           }
           return
         }
         case 'drag': {
-          const gesture = hintGestureRef.current
-          if (gesture !== null) {
-            if (!gesture.dragged) {
-              gesture.dragged = true
-              onHintDragStartRef.current?.(event.x, event.y)
-            } else {
-              onHintDragMoveRef.current?.(event.x, event.y)
-            }
-            return
-          }
-          if (scrollbarSessionRef.current !== null) {
-            onScrollbarDrag(event.y)
-            return
-          }
-          const inputCandidate = inputClickCandidateRef.current
-          if (inputCandidate !== null) {
-            inputClickCandidateRef.current = null
-            setSelection({
-              anchorRow: inputCandidate.y,
-              anchorCol: inputCandidate.x,
-              focusRow: clampFocusRow(false, event.y, scrollTopRef.current, messageHeightRef.current, rowsRef.current, dialogOpenRef.current),
-              focusCol: event.x,
-              inMessage: false,
-            })
-            return
-          }
-          const panelCandidate = panelClickCandidateRef.current
-          if (panelCandidate !== null) {
-            panelClickCandidateRef.current = null
-            setSelection({
-              anchorRow: panelCandidate.y,
-              anchorCol: panelCandidate.x,
-              focusRow: clampFocusRow(false, event.y, scrollTopRef.current, messageHeightRef.current, rowsRef.current, dialogOpenRef.current),
-              focusCol: event.x,
-              inMessage: false,
-            })
-            return
-          }
-          const candidate = clickCandidateRef.current
-          if (candidate !== null) {
-            candidate.moved = true
-            clickCandidateRef.current = null
-            const anchorInMessage = inMessageArea(candidate.y)
-            pointerSessionRef.current = { inMessageArea: anchorInMessage }
-            setSelection({
-              anchorRow: toContentRow(candidate.y),
-              anchorCol: candidate.x,
-              focusRow: clampFocusRow(anchorInMessage, event.y, scrollTopRef.current, messageHeightRef.current, rowsRef.current, dialogOpenRef.current),
-              focusCol: event.x,
-              inMessage: anchorInMessage,
-            })
-            return
-          }
-          const dialogCandidate = dialogClickCandidateRef.current
-          if (dialogCandidate !== null) {
-            dialogClickCandidateRef.current = null
-            setSelection({
-              anchorRow: dialogCandidate.y,
-              anchorCol: dialogCandidate.x,
-              focusRow: clampFocusRow(false, event.y, scrollTopRef.current, messageHeightRef.current, rowsRef.current, dialogOpenRef.current),
-              focusCol: event.x,
-              inMessage: false,
-            })
-            return
-          }
-          setSelection(current => (current === null ? current : {
-            ...current,
-            focusRow: focusRowFor(current, event.y),
-            focusCol: event.x,
-          }))
-          updateDragScroll(event.y)
+          entryFor(ownerId)?.value.onDrag?.(frame)
           return
         }
         case 'up': {
-          const pendingGesture = hintGestureRef.current
-          if (pendingGesture !== null) {
-            hintGestureRef.current = null
-            onHintReleaseRef.current?.(event.x, event.y, pendingGesture.dragged)
-            return
-          }
           stopDragScroll()
-          scrollbarSessionRef.current = null
           pointerSessionRef.current = { inMessageArea: false }
-          const inputCandidate = inputClickCandidateRef.current
-          if (inputCandidate !== null) {
-            inputClickCandidateRef.current = null
-            inputHandleRef.current?.current?.clickAt(inputCandidate.y, inputCandidate.x)
-            return
-          }
-          const panelCandidate = panelClickCandidateRef.current
-          if (panelCandidate !== null) {
-            panelClickCandidateRef.current = null
-            panelHandleRef.current?.current?.clickAt(panelCandidate.y, panelCandidate.x)
-            setSelection(null)
-            return
-          }
-          const candidate = clickCandidateRef.current
-          if (candidate !== null && !candidate.moved) {
-            onToggleMessageRef.current(candidate.messageId)
-          }
-          clickCandidateRef.current = null
-          const dialogCandidate = dialogClickCandidateRef.current
-          if (dialogCandidate !== null) {
-            dialogClickCandidateRef.current = null
-            onDialogClickRef.current(dialogCandidate.y, dialogCandidate.x)
-            setSelection(null)
-          }
+          entryFor(ownerId)?.value.onUp?.(frame)
+          ownerId = null
           return
         }
         case 'scroll': {
-          const dir: -1 | 1 = event.scrollDirection === 'up' ? -1 : 1
-          for (const region of wheelRegions) {
-            if (!region.contains(event.y)) continue
-            if (region.onWheel?.(dir, event.y) === true) return
+          for (const entry of entries) {
+            if (entry.value.onWheel?.(frame) === true) return
           }
           return
         }

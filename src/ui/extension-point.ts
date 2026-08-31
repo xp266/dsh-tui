@@ -13,6 +13,8 @@ import { registerBootSink } from '../boot-log.ts'
 import { registerFieldKind, specialFieldFactory } from '../core/fields.ts'
 import { bumpSurface } from '../kernel/surface.ts'
 import { registerMarkdownBlock, registerMarkdownInline, registerPrismGrammar } from '../ui/message/md/extensions.ts'
+import { registerPointerHandler } from './pointer/registry.ts'
+import { registerSelectionDomain, registerSelectionTransformer, registerSelectionClipboard } from './selection/service.ts'
 import { registerPasteHandler } from '../ui/input/composer-paste.ts'
 import { registerComposerKeyBinding } from '../ui/input/composer-keys.ts'
 import { insertIntoComposer } from '../ui/input/composer-bus.ts'
@@ -89,6 +91,12 @@ export function createTuiExtensionPoint(ctx: Context, hooks: TuiExtensionPointHo
       paste: { register: registerPasteHandler },
       keys: { register: registerComposerKeyBinding },
       insert: insertIntoComposer,
+    },
+    pointer: { register: registerPointerHandler },
+    selection: {
+      domains: { register: registerSelectionDomain },
+      transformers: { register: registerSelectionTransformer },
+      clipboard: { register: registerSelectionClipboard },
     },
     markdown: {
       blocks: {

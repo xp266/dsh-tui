@@ -1,4 +1,5 @@
 import { Box, useInput } from 'ink'
+import { isKeyConsumed } from '../key-arbiter.ts'
 import type { Message } from '../../model/message.ts'
 import { rowIndexFor, scrollbarGeometry } from './layout.ts'
 import { MessageRow } from './message-row.tsx'
@@ -22,7 +23,7 @@ export function MessageList({ messages, height, width, scrollTop, onScroll, inte
   const total = index.total
   const halfPage = Math.max(1, Math.ceil(height / 2))
   useInput((input, key) => {
-    if (!interactive) return
+    if (!interactive || isKeyConsumed()) return
     const maxScroll = Math.max(0, total - height)
     const scroll = (delta: number): void => {
       onScroll(Math.max(0, Math.min(maxScroll, scrollTop + delta)))
