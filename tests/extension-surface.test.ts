@@ -168,7 +168,9 @@ describe('widget contributions', () => {
     const off = registerWidget('plugin-item', def)
     expect(widgetOf('plugin-item')).toBeDefined()
     off()
-    expect(() => widgetOf('plugin-item' as 'input')).toThrow()
+    const fallback = widgetOf('plugin-item' as 'input')
+    expect(fallback).toBeDefined()
+    expect(fallback.height({ type: 'input' } as never, 10)).toBe(1)
   })
 })
 
@@ -223,7 +225,7 @@ describe('key binding contributions', () => {
 describe('startup boot log', () => {
   it('fans boot lines out to sinks with history replay and close', () => {
     const ctx = createTestContext()
-    const dispose = createTuiExtensionPoint(ctx)
+    const { dispose } = createTuiExtensionPoint(ctx)
     const received: string[] = []
     openBootLog()
     emitBootLine('one')
@@ -242,7 +244,7 @@ describe('startup boot log', () => {
 describe('runtime interaction faces', () => {
   it('pushes a plugin request and settles it through the panel kind', async () => {
     const ctx = createTestContext()
-    const dispose = createTuiExtensionPoint(ctx)
+    const { dispose } = createTuiExtensionPoint(ctx)
     const store = new InteractionStore()
     exposeRuntimeFaces(ctx.tui, { interactions: store } as ChatBridge)
     const interactions = ctx.tui.interactions!
@@ -260,7 +262,7 @@ describe('runtime interaction faces', () => {
 describe('tui extension point service', () => {
   it('exposes every contribution face over the cordis service', () => {
     const ctx = createTestContext()
-    const dispose = createTuiExtensionPoint(ctx)
+    const { dispose } = createTuiExtensionPoint(ctx)
     expect(ctx.tui).toBeDefined()
     const offCommand = ctx.tui.commands.register({ id: 'ext-cmd', command: '/ext', description: 'external' })
     expect(matchCommand('/ext')?.description).toBe('external')

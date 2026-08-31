@@ -45,7 +45,9 @@ export function createToolViewPresenter(
       try {
         args = JSON.parse(argumentsRaw)
       } catch {
-        return undefined
+        // Remember the call even when arguments are not valid JSON so the
+        // result phase can still route through contributed views.
+        args = argumentsRaw
       }
       rememberToolCall(callId, name, args)
       const contributed = options.resolve(name)?.call

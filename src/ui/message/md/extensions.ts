@@ -16,9 +16,10 @@ export function registerMarkdownInline(contribution: MarkdownInlineContribution)
 
 export function registerPrismGrammar(contribution: PrismGrammarContribution): () => void {
   const dispose = languages.register(contribution.id, contribution)
-  applyPrismGrammar(contribution)
+  const touched = applyPrismGrammar(contribution)
   return () => {
     dispose()
+    revertPrismGrammar(touched)
   }
 }
 
@@ -40,8 +41,14 @@ function markdownInlineOf(token: { type: string }) {
 
 export const markdownExtensions = { markdownBlockOf, markdownInlineOf }
 
-function applyPrismGrammar(contribution: PrismGrammarContribution): void {
+function applyPrismGrammar(contribution: PrismGrammarContribution): string[] {
   const prism = Prism as unknown as { languages: Record<string, unknown> }
-  prism.languages[contribution.id] = contribution.grammar
-  for (const alias of contribution.aliases ?? []) prism.languages[alias] = contribution.grammar
+  const touched = [contribution.id, ...(contribution.aliases ?? [])]
+  for (const name of touched) prism.languages[name] = contribution.grammar
+  return touched
+}
+
+function revertPrismGrammar(names: string[]): void {
+  const prism = Prism as unknown as { languages: Record<string, unknown> }
+  for (const name of names) delete prism.languages[name]
 }

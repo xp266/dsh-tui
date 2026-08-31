@@ -320,12 +320,15 @@ export interface TuiFieldsFace {
 export interface SpecialFieldCreateInput {
   kind: string
   label: string
-  owner?: string
+  /** Which reclaim scan owns the slot: 'composer' chips die with composer text, 'message' chips with the message list. */
+  owner?: 'composer' | 'message'
 }
 
 export interface SpecialFieldFactory {
   create(input: SpecialFieldCreateInput): string | null
   release(char: string): void
+  /** Protect a chip from the automatic reclaim scans until the disposer runs. */
+  pin(char: string): (() => void) | undefined
   isFieldChar(char: string): boolean
   labelOf(char: string): string | undefined
 }

@@ -39,10 +39,15 @@ function normalizePathToken(token: string): string {
 
 /** File managers prefix dropped files with a `copy` action line. */
 function dropClipboardActionPrefix(lines: string[]): string[] {
-  if (lines.length === 0) return lines
+  if (lines.length < 2) return lines
   const first = lines[0]!.trim()
-  if (first === 'copy' || first === 'cut' || first === 'link') return lines.slice(1)
-  return lines
+  if (first !== 'copy' && first !== 'cut' && first !== 'link') return lines
+  // Only strip when the remainder actually looks like dropped file paths;
+  // plain prose that merely starts with such a word must survive.
+  const rest = lines.slice(1).map(line => line.trim()).filter(line => line !== '')
+  if (rest.length === 0) return lines
+  const pathLike = rest.every(line => line.startsWith('file://') || line.startsWith('/') || line.startsWith('~/') || /^[a-zA-Z]:[\\/]/.test(line))
+  return pathLike ? lines.slice(1) : lines
 }
 
 function isImagePath(line: string): boolean {

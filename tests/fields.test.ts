@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { allocateField, fieldCharsIn, fieldSlotOf, imageChipLabel, isFieldChar, releaseFields, releaseAllFields } from '../src/core/fields.ts'
+import { allocateField, fieldCharsIn, fieldSlotOf, imageChipLabel, isFieldChar, pinField, releaseField, releaseFields, releaseAllFields, releaseUnreferenced } from '../src/core/fields.ts'
 import { colToCharIndex, lineBreaks, locToPoint, textWidth, wrapLines } from '../src/core/text.ts'
 import { expandFieldChars } from '../src/core/field-view.ts'
 
@@ -61,5 +61,30 @@ describe('special fields registry', () => {
     expect(fieldCharsIn(`x${char}y`)).toEqual([char])
     expect(fieldCharsIn('xyz')).toEqual([])
     releaseAllFields()
+  })
+})
+
+describe('field pins', () => {
+  it('pins keep slots alive across reclaim scans', () => {
+    releaseAllFields()
+    const char = allocateField('image', '[9 images]', 'composer')!
+    const unpin = pinField(char)!
+    releaseUnreferenced('composer', 'text without the chip')
+    expect(fieldSlotOf(char)?.label).toBe('[9 images]')
+    unpin()
+    releaseUnreferenced('composer', 'text without the chip')
+    expect(fieldSlotOf(char)).toBeUndefined()
+    releaseAllFields()
+  })
+
+  it('releaseField respects pins', () => {
+    releaseAllFields()
+    const char = allocateField('paste', '[2 lines]', 'message')!
+    const unpin = pinField(char)!
+    releaseField(char)
+    expect(fieldSlotOf(char)).toBeDefined()
+    unpin()
+    releaseField(char)
+    expect(fieldSlotOf(char)).toBeUndefined()
   })
 })

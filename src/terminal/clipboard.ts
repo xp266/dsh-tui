@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { platform, release, tmpdir } from 'node:os'
 import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -6,6 +6,37 @@ import { join } from 'node:path'
 export function writeOsc52(text: string): void {
   const encoded = Buffer.from(text, 'utf8').toString('base64')
   process.stdout.write(`\x1b]52;c;${encoded}\x07`)
+}
+
+/** OSC52 plus a best-effort system clipboard write for terminals without OSC52 support. */
+export function writeClipboardText(text: string): void {
+  writeOsc52(text)
+  const commands: Array<{ command: string; args: string[] }> = []
+  if (platform() === 'darwin') {
+    commands.push({ command: 'pbcopy', args: [] })
+  } else if (platform() === 'linux') {
+    if (isWsl()) commands.push({ command: 'clip.exe', args: [] })
+    else {
+      commands.push({ command: 'wl-copy', args: [] })
+      commands.push({ command: 'xclip', args: ['-selection', 'clipboard'] })
+    }
+  } else if (platform() === 'win32') {
+    commands.push({ command: 'clip', args: [] })
+  }
+  for (const entry of commands) {
+    try {
+      const child = spawn(entry.command, entry.args, { stdio: ['pipe', 'ignore', 'ignore'] })
+      child.on('error', () => {})
+      child.stdin.end(text)
+    } catch {
+      // best-effort only; OSC52 already handled the capable terminals
+    }
+  }
+}
+
+export function isWsl(): boolean {
+  if (platform() !== 'linux') return false
+  return release().toLowerCase().includes('microsoft')
 }
 
 export interface ClipboardImage {
@@ -52,9 +83,6 @@ async function firstText(attempts: Array<{ command: string; args: string[] }>): 
   return undefined
 }
 
-function isWsl(): boolean {
-  return platform() === 'linux' && release().toLowerCase().includes('microsoft')
-}
 
 export async function readClipboardImage(): Promise<ClipboardImage | undefined> {
   const os = platform()

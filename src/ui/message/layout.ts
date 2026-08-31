@@ -112,7 +112,7 @@ function renderBody(message: Message, width: number): BodyRendered {
         return { lines, rows: null, bgs: null }
       }
       if (message.role === 'assistant') {
-        const rendered = renderMarkdown(message.content, inner)
+        const rendered = renderMarkdown(message.content, inner, false, `bubble:${message.id}`)
         return { lines: rendered.lines, rows: rendered.rows, bgs: null }
       }
       const lines = wrapLines(message.content, inner)
@@ -127,7 +127,7 @@ function renderBody(message: Message, width: number): BodyRendered {
     }
     case 'collapsible': {
       if (message.thinking === true && !message.collapsed) {
-        const rendered = renderMarkdown(message.body, inner, true)
+        const rendered = renderMarkdown(message.body, inner, true, `thinking:${message.id}`)
         return { lines: rendered.lines, rows: rendered.rows, bgs: null }
       }
       const lines = wrapLines(message.body, inner)
@@ -143,7 +143,7 @@ function renderBody(message: Message, width: number): BodyRendered {
     }
     case 'plan': {
       if (message.body === '' && message.error === undefined) return { lines: [], rows: null, bgs: null }
-      const rendered = message.body === '' ? { lines: [], rows: [] } : renderMarkdown(message.body, inner)
+      const rendered = message.body === '' ? { lines: [], rows: [] } : renderMarkdown(message.body, inner, false, `plan:${message.id}`)
       const lines = [...rendered.lines]
       const rows = [...rendered.rows]
       if (message.error !== undefined && message.error !== '') {
@@ -155,7 +155,7 @@ function renderBody(message: Message, width: number): BodyRendered {
     }
     case 'compaction': {
       if (message.summary === '' && message.error === undefined) return { lines: [], rows: null, bgs: null }
-      const rendered = message.summary === '' ? { lines: [], rows: [] } : renderMarkdown(message.summary, inner)
+      const rendered = message.summary === '' ? { lines: [], rows: [] } : renderMarkdown(message.summary, inner, false, `compaction:${message.id}`)
       const lines = [...rendered.lines]
       const rows = [...rendered.rows]
       if (message.error !== undefined && message.error !== '') {

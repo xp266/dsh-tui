@@ -428,7 +428,9 @@ function loadSpec(name: string): string {
 }
 
 export function warmLanguages(): void {
-  if (warmStarted || ensured) return
+  // Must not bail out when ensureGrammars() already ran synchronously: the
+  // async warm loop is what flips warmState.done and fires onLanguagesWarm.
+  if (warmStarted) return
   warmStarted = true
   const queue = [...LANGUAGE_COMPONENTS]
   setTimeout(() => loadNext(queue), 0)

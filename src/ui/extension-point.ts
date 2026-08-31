@@ -58,7 +58,7 @@ export interface TuiExtensionPointHooks {
  * lifetimes ride the contributing plugin's own fiber: callers receive
  * disposers and the registries only hold live entries.
  */
-export function createTuiExtensionPoint(ctx: Context, hooks: TuiExtensionPointHooks = {}): () => void {
+export function createTuiExtensionPoint(ctx: Context, hooks: TuiExtensionPointHooks = {}): { extension: TuiExtensionPoint; dispose(): void } {
   const extension: TuiExtensionPoint = {
     windows: { register: registerWindow },
     services: { register: registerWindowService },
@@ -134,15 +134,20 @@ export function createTuiExtensionPoint(ctx: Context, hooks: TuiExtensionPointHo
   const offToolViews = subscribeToolViews(surfaceChanged)
   const offMessageViews = subscribeMessageViews(surfaceChanged)
   const offPalettes = subscribePalettes(surfaceChanged)
+  const offChatNodes = subscribeChatNodes(surfaceChanged)
   const contentChanged = (): void => {
     surfaceChanged()
   }
   const disposeService = ctx.provide('tui', extension)
-  return () => {
-    offToolViews()
-    offMessageViews()
-    offPalettes()
-    disposeService()
+  return {
+    extension,
+    dispose() {
+      offToolViews()
+      offMessageViews()
+      offPalettes()
+      offChatNodes()
+      disposeService()
+    },
   }
 }
 

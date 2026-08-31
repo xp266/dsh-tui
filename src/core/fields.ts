@@ -29,6 +29,8 @@ export interface SpecialFieldCreateInput {
 export interface SpecialFieldFactory {
   create(input: SpecialFieldCreateInput): string | null
   release(char: string): void
+  /** Protect a chip from the automatic reclaim scans until the disposer runs. */
+  pin(char: string): (() => void) | undefined
   isFieldChar(char: string): boolean
   labelOf(char: string): string | undefined
 }
@@ -37,6 +39,7 @@ interface FieldSlot {
   kind: string
   label: string
   owner: FieldOwner
+  pins: number
 }
 
 const slots = new Map<number, FieldSlot>()
@@ -69,6 +72,7 @@ export function specialFieldFactory(): SpecialFieldFactory {
   return {
     create: input => allocateField(input.kind, input.label, input.owner ?? 'composer'),
     release: releaseField,
+    pin: pinField,
     isFieldChar,
     labelOf: char => fieldSlotOf(char)?.label,
   }
@@ -109,7 +113,7 @@ export function allocateField(kind: string, label: string, owner: FieldOwner): s
     const index = (cursor + i) % FIELD_CHAR_COUNT
     if (slots.has(index)) continue
     cursor = (index + 1) % FIELD_CHAR_COUNT
-    slots.set(index, { kind, label, owner })
+    slots.set(index, { kind, label, owner, pins: 0 })
     return String.fromCharCode(FIELD_CHAR_BASE + index)
   }
   return null
@@ -124,20 +128,40 @@ export function fieldSlotOf(char: string): FieldSlot | undefined {
 
 export function releaseField(char: string): void {
   if (char.length !== 1) return
-  slots.delete(char.charCodeAt(0) - FIELD_CHAR_BASE)
+  const index = char.charCodeAt(0) - FIELD_CHAR_BASE
+  const slot = slots.get(index)
+  if (slot === undefined || slot.pins > 0) return
+  slots.delete(index)
 }
 
-export function releaseFields(owner: FieldOwner): void {
-  for (const [index, slot] of slots) {
-    if (slot.owner === owner) slots.delete(index)
+/**
+ * Hold a field slot against the automatic reclaim scans (composer edits and
+ * message-list rebuilds drop every slot whose char is absent from the live
+ * text). Callers that create chips outside the composer value — custom
+ * windows, overlays, background tasks — must pin them and call the returned
+ * disposer when done.
+ */
+export function pinField(char: string): (() => void) | undefined {
+  if (char.length !== 1) return undefined
+  const slot = slots.get(char.charCodeAt(0) - FIELD_CHAR_BASE)
+  if (slot === undefined) return undefined
+  slot.pins += 1
+  return () => {
+    slot.pins -= 1
   }
 }
 
 export function releaseUnreferenced(owner: FieldOwner, keepText: string): void {
   for (const [index, slot] of slots) {
-    if (slot.owner !== owner) continue
+    if (slot.owner !== owner || slot.pins > 0) continue
     const char = String.fromCharCode(FIELD_CHAR_BASE + index)
     if (!keepText.includes(char)) slots.delete(index)
+  }
+}
+
+export function releaseFields(owner: FieldOwner): void {
+  for (const [index, slot] of slots) {
+    if (slot.owner === owner && slot.pins === 0) slots.delete(index)
   }
 }
 

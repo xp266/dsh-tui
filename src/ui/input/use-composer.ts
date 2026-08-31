@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { isMouseResidue } from '../../terminal/mouse.ts'
 import { colToCharIndex } from '../../core/text.ts'
 import { moveCaretLine } from '../../core/composer-layout.ts'
-import { editBackspace, editDelete, editInsert } from '../../core/edit.ts'
+import { editBackspace, editCursorLeft, editCursorRight, editDelete, editInsert } from '../../core/edit.ts'
 import { buildPasteFields, expandComposerValue, insertClipboardImage, insertFieldSpec, reconcileComposerFields } from './composer-fields.ts'
 import type { ComposerFieldMap, ComposerSubmission } from './composer-fields.ts'
 import { readClipboardImage, readClipboardImageUris, readClipboardText } from '../../terminal/clipboard.ts'
@@ -343,13 +343,15 @@ export function useComposer(
       }
     }
     if (key.leftArrow && c > 0) {
-      cursorRef.current = c - 1
-      setCursor(c - 1)
+      const moved = editCursorLeft({ value: v, cursor: c })
+      cursorRef.current = moved.cursor
+      setCursor(moved.cursor)
       return
     }
     if (key.rightArrow && c < v.length) {
-      cursorRef.current = c + 1
-      setCursor(c + 1)
+      const moved = editCursorRight({ value: v, cursor: c })
+      cursorRef.current = moved.cursor
+      setCursor(moved.cursor)
       return
     }
     if (key.upArrow) {

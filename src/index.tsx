@@ -61,13 +61,14 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
     let lastRows = 0
     let stopSizePoll: (() => void) | undefined
     let exposeFaces: (() => void) | undefined
-    const extensionPoint = ctx.get('tui')
     const buildAppNode = () => <App bridge={bridge} screen={capture} themeTick={themeTick} />
     const rerender = (): void => {
       themeTick += 1
       app?.rerender(buildAppNode())
     }
-    const disposeExtensionPoint = createTuiExtensionPoint(ctx, { onContributionsChanged: rerender })
+    // NOTE: the extension object must come from createTuiExtensionPoint itself;
+    // ctx.get('tui') here would run before provide() and stay undefined forever.
+    const { extension: extensionPoint, dispose: disposeExtensionPoint } = createTuiExtensionPoint(ctx, { onContributionsChanged: rerender })
     warmLanguages()
     onLanguagesWarm(() => {
       clearHighlightCache()
@@ -119,7 +120,7 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
       await initTheme(themeScope, config.theme)
       emitBootLine('chat bridge: connecting harness services')
       bridge = await createChatBridge(ctx)
-      exposeFaces = extensionPoint === undefined ? undefined : exposeRuntimeFaces(extensionPoint, bridge)
+      exposeFaces = exposeRuntimeFaces(extensionPoint, bridge)
       emitBootLine('sessions: loading session list')
       await Promise.race([
         bridge.listSessions().catch(() => {}),

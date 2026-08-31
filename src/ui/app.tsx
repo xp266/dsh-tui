@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { RefObject } from 'react'
 import { COLORS, permissionModeInfo } from '../theme.ts'
-import { writeOsc52 } from '../terminal/clipboard.ts'
+import { writeClipboardText } from '../terminal/clipboard.ts'
 import type { ChatBridge } from '../chat/bridge.ts'
 import type { AgentActivity } from '../chat/store.ts'
 import { rowIndexFor, selectionText } from './message/layout.ts'
@@ -330,7 +330,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
         const text = selection.inMessage
           ? selectionText(messages, columns, selection)
           : chromeSelectionText(selection)
-        if (text) writeOsc52(text)
+        if (text) writeClipboardText(text)
         clearSelection()
         return
       }
