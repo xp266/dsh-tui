@@ -16,6 +16,21 @@ export interface FieldStyle {
 export interface FieldKindDef {
   kind: string
   style(): FieldStyle
+  /** Text injected into the sent message for a field of this kind; defaults to the label. */
+  expand?(data: unknown): string
+}
+
+export interface SpecialFieldCreateInput {
+  kind: string
+  label: string
+  owner?: FieldOwner
+}
+
+export interface SpecialFieldFactory {
+  create(input: SpecialFieldCreateInput): string | null
+  release(char: string): void
+  isFieldChar(char: string): boolean
+  labelOf(char: string): string | undefined
 }
 
 interface FieldSlot {
@@ -44,6 +59,19 @@ export function fieldStyleOf(slot: FieldSlot): FieldStyle {
   const def = kindDefs.get(slot.kind)
   if (def !== undefined) return def.style()
   return specialFieldStyle()
+}
+
+export function fieldExpandOf(kind: string): ((data: unknown) => string) | undefined {
+  return kindDefs.get(kind)?.expand
+}
+
+export function specialFieldFactory(): SpecialFieldFactory {
+  return {
+    create: input => allocateField(input.kind, input.label, input.owner ?? 'composer'),
+    release: releaseField,
+    isFieldChar,
+    labelOf: char => fieldSlotOf(char)?.label,
+  }
 }
 
 export function isFieldCode(code: number): boolean {

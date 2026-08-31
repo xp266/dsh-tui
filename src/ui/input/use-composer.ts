@@ -1,12 +1,15 @@
 import { useInput, usePaste } from 'ink'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { isMouseResidue } from '../../terminal/mouse.ts'
 import { colToCharIndex } from '../../core/text.ts'
 import { moveCaretLine } from '../../core/composer-layout.ts'
 import { editBackspace, editDelete, editInsert } from '../../core/edit.ts'
-import { buildPasteFields, expandComposerValue, insertClipboardImage, reconcileComposerFields } from './composer-fields.ts'
+import { buildPasteFields, expandComposerValue, insertClipboardImage, insertFieldSpec, reconcileComposerFields } from './composer-fields.ts'
 import type { ComposerFieldMap, ComposerSubmission } from './composer-fields.ts'
 import { readClipboardImage, readClipboardImageUris, readClipboardText } from '../../terminal/clipboard.ts'
+import { claimPaste } from './composer-paste.ts'
+import { handleComposerKeyBindings } from './composer-keys.ts'
+import { setComposerInserter } from './composer-bus.ts'
 import { COMMANDS, filterHintEntries, literalHintArgs } from './commands.ts'
 import type { CommandHintItem } from './commands.ts'
 
@@ -51,10 +54,12 @@ export function useComposer(
   const widthRef = useRef(contentWidth)
   const entriesRef = useRef<readonly CommandHintItem[] | undefined>(entries)
   const listCommandArgsRef = useRef(listCommandArgs)
+  const interactiveRef = useRef(interactive)
   const fieldsRef = useRef<ComposerFieldMap>(new Map())
   widthRef.current = contentWidth
   entriesRef.current = entries
   listCommandArgsRef.current = listCommandArgs
+  interactiveRef.current = interactive
   valueRef.current = value
   cursorRef.current = cursor
   hintOpenRef.current = hintOpen
@@ -168,12 +173,33 @@ export function useComposer(
       void pasteFromClipboard(true)
       return
     }
-    insertPaste(normalized)
-    void upgradeFirstImageGroupFromClipboard()
+    void (async () => {
+      const claimed = claimPaste(normalized, cursorRef.current)
+      insertPaste(claimed === undefined ? normalized : claimed.insert)
+      if (claimed === undefined) void upgradeFirstImageGroupFromClipboard()
+    })()
   }, { isActive: interactive })
   const insertText = (text: string): void => {
     applyEdit(editInsert({ value: valueRef.current, cursor: cursorRef.current }, text))
   }
+  useEffect(() => {
+    setComposerInserter(spec => {
+      if (!interactiveRef.current) return false
+      if (spec.field !== undefined) {
+        const char = insertFieldSpec(spec.field, fieldsRef.current)
+        applyEdit(editInsert({ value: valueRef.current, cursor: cursorRef.current }, char))
+        refreshHint()
+        return true
+      }
+      if (spec.text !== undefined && spec.text !== '') {
+        applyEdit(editInsert({ value: valueRef.current, cursor: cursorRef.current }, spec.text))
+        refreshHint()
+        return true
+      }
+      return false
+    })
+    return () => setComposerInserter(undefined)
+  }, [])
   const completeCommandArg = (): void => {
     const v = valueRef.current
     const match = /^(\/\S+)(?:\s+(\S*))?(?:\s+(.*\S))?\s*$/.exec(v)
@@ -212,6 +238,7 @@ export function useComposer(
   }
   useInput((input, key) => {
     if (!interactive) return
+    if (handleComposerKeyBindings(input, key)) return
     if (input === '\n') {
       insertText('\n')
       return

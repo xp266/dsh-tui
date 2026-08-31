@@ -455,7 +455,7 @@ export function clearHighlightCache(): void {
 
 function resolveGrammar(lang: string): Prism.Grammar | undefined {
   const name = LANGUAGE_ALIASES[lang.toLowerCase()] ?? lang.toLowerCase()
-  return Prism.languages[name]
+  return Prism.languages[name] as Prism.Grammar | undefined
 }
 
 export function highlightCodeBlock(text: string, lang: string, thinking = false, streamId = ''): Segment[] | null {

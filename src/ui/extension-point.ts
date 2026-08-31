@@ -11,7 +11,13 @@ import { registerChatNode, subscribeChatNodes } from '../chat/chat-nodes.ts'
 import { registerMessageView, subscribeMessageViews } from './message/message-views.ts'
 import { registerBootSink } from '../boot-log.ts'
 import { clearLayoutCache } from './message/layout.ts'
-import { registerFieldKind } from '../core/fields.ts'
+import { registerFieldKind, specialFieldFactory } from '../core/fields.ts'
+import { clearMarkdownBlockCache } from '../ui/message/md/engine.ts'
+import { clearHighlightCache } from '../ui/message/md/highlight.ts'
+import { registerMarkdownBlock, registerMarkdownInline, registerPrismGrammar } from '../ui/message/md/extensions.ts'
+import { registerPasteHandler } from '../ui/input/composer-paste.ts'
+import { registerComposerKeyBinding } from '../ui/input/composer-keys.ts'
+import { insertIntoComposer } from '../ui/input/composer-bus.ts'
 import { createChatFace } from '../chat/chat-face.ts'
 import type { ChatBridge } from '../chat/bridge.ts'
 import type {
@@ -79,15 +85,58 @@ export function createTuiExtensionPoint(ctx: Context, hooks: TuiExtensionPointHo
           surfaceChanged()
         }
       },
+      factory: specialFieldFactory(),
+    },
+    composer: {
+      paste: { register: registerPasteHandler },
+      keys: { register: registerComposerKeyBinding },
+      insert: insertIntoComposer,
+    },
+    markdown: {
+      blocks: {
+        register(contribution) {
+          const off = registerMarkdownBlock(contribution)
+          contentChanged()
+          return () => {
+            off()
+            contentChanged()
+          }
+        },
+      },
+      inline: {
+        register(contribution) {
+          const off = registerMarkdownInline(contribution)
+          contentChanged()
+          return () => {
+            off()
+            contentChanged()
+          }
+        },
+      },
+      languages: {
+        register(contribution) {
+          const off = registerPrismGrammar(contribution)
+          contentChanged()
+          return () => {
+            off()
+            contentChanged()
+          }
+        },
+      },
     },
   }
   const surfaceChanged = (): void => {
     clearLayoutCache()
+    clearHighlightCache()
+    clearMarkdownBlockCache()
     hooks.onContributionsChanged?.()
   }
   const offToolViews = subscribeToolViews(surfaceChanged)
   const offMessageViews = subscribeMessageViews(surfaceChanged)
   const offPalettes = subscribePalettes(surfaceChanged)
+  const contentChanged = (): void => {
+    surfaceChanged()
+  }
   const disposeService = ctx.provide('tui', extension)
   return () => {
     offToolViews()

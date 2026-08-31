@@ -1,6 +1,7 @@
 import type { Token, Tokens } from 'marked'
 import { mergeRuns } from '../../../core/segments.ts'
 import type { MarkStyle, Segment } from '../../../core/segments.ts'
+import { markdownExtensions } from './extensions.ts'
 import type { MdPalette } from './palette.ts'
 
 function mergeStyle(base: MarkStyle | undefined, extra: MarkStyle): MarkStyle {
@@ -20,6 +21,11 @@ export function renderInline(tokens: Token[], palette: MdPalette, base?: MarkSty
     if (text !== '') out.push({ text, style })
   }
   for (const token of tokens) {
+    const contributed = markdownExtensions.markdownInlineOf(token)
+    if (contributed !== undefined) {
+      out.push(contributed.render(token, { palette, base }))
+      continue
+    }
     switch (token.type) {
       case 'strong': {
         const t = token as Tokens.Strong

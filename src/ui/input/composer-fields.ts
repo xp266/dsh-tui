@@ -1,6 +1,7 @@
 import {
   allocateField,
   charactersChipLabel,
+  fieldExpandOf,
   imageChipLabel,
   isFieldChar,
   linesChipLabel,
@@ -11,10 +12,11 @@ import type { PendingImage } from '../../core/paste.ts'
 import type { ClipboardImage } from '../../terminal/clipboard.ts'
 
 export interface ComposerField {
-  kind: 'image' | 'paste'
+  kind: string
   label: string
   images?: PendingImage[]
   text?: string
+  data?: unknown
 }
 
 export type ComposerFieldMap = Map<string, ComposerField>
@@ -62,6 +64,24 @@ export function insertClipboardImage(image: ClipboardImage, fields: ComposerFiel
   }], fields)
 }
 
+export function insertFieldSpec(
+  spec: { kind: string; label: string; data?: unknown },
+  fields: ComposerFieldMap,
+): string {
+  const char = allocateField(spec.kind, spec.label, 'composer')
+  if (char === null) return spec.label
+  let field: ComposerField
+  if (spec.kind === 'paste') {
+    field = { kind: 'paste', label: spec.label, text: typeof spec.data === 'string' ? spec.data : spec.label }
+  } else if (spec.kind === 'image' && Array.isArray(spec.data)) {
+    field = { kind: 'image', label: spec.label, images: spec.data as PendingImage[] }
+  } else {
+    field = { kind: spec.kind, label: spec.label, data: spec.data }
+  }
+  fields.set(char, field)
+  return char
+}
+
 export function reconcileComposerFields(value: string, fields: ComposerFieldMap): void {
   for (const char of fields.keys()) {
     if (!value.includes(char)) fields.delete(char)
@@ -84,7 +104,8 @@ export function expandComposerValue(value: string, fields: ComposerFieldMap): Co
       continue
     }
     if (field.kind === 'paste') text += field.text ?? ''
-    else if ((field.images ?? []).length > 0) images.push(field.images!)
+    else if (field.kind === 'image' && (field.images ?? []).length > 0) images.push(field.images!)
+    else text += fieldExpandOf(field.kind)?.(field.data) ?? field.label
   }
   return { text: text.trim(), images }
 }

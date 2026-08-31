@@ -2,6 +2,12 @@ import type { ComponentType, ReactNode, Ref } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import type { Token } from 'marked'
+import type { MarkStyle, Segment } from '../core/segments.ts'
+import type { MdPalette } from '../ui/message/md/palette.ts'
+import type { PendingImage } from '../core/paste.ts'
+
+export type { PendingImage } from '../core/paste.ts'
 
 export interface WindowHandle {
   clickAt(y: number, x: number): void
@@ -278,9 +284,7 @@ export interface MessageViewContribution {
 export interface TuiContentFace {
   nodes: { register(definition: ChatNodeDefinition): () => void }
   views: { register(contribution: MessageViewContribution): () => void }
-}
-
-export interface TuiStartupSink {
+}export interface TuiStartupSink {
   id: string
   /** Invoked for each boot progress line while the shell is starting. */
   write(line: string): void
@@ -299,10 +303,116 @@ export interface SpecialFieldStyle {
 export interface SpecialFieldContribution {
   kind: string
   style(): SpecialFieldStyle
+  /** Text injected into the sent message for a field of this kind; defaults to the label. */
+  expand?(data: unknown): string
 }
 
 export interface TuiFieldsFace {
   register(contribution: SpecialFieldContribution): () => void
+}
+
+/**
+ * Create a special field instance rendered as an inline chip with its own
+ * background. The returned sentinel char behaves like a single grapheme:
+ * cursor movement and deletion treat it atomically and line wrapping never
+ * splits it. `kind` resolves the style from registered field kinds.
+ */
+export interface SpecialFieldCreateInput {
+  kind: string
+  label: string
+  owner?: string
+}
+
+export interface SpecialFieldFactory {
+  create(input: SpecialFieldCreateInput): string | null
+  release(char: string): void
+  isFieldChar(char: string): boolean
+  labelOf(char: string): string | undefined
+}
+
+export interface PasteContext {
+  /** Raw pasted text with normalized newlines. */
+  text: string
+  /** Insert at this char index in the composer value. */
+  cursor: number
+}
+
+export interface PasteResult {
+  /** Text to insert (may contain field sentinel chars created via the field factory). */
+  insert: string
+}
+
+export interface PasteHandlerContribution {
+  id: string
+  order?: number
+  /** Return a result to claim the paste; return undefined to fall through. */
+  handle(context: PasteContext): PasteResult | undefined
+}
+
+export interface ComposerInsertSpec {
+  /** Plain text to insert at the cursor. */
+  text?: string
+  /** A special field chip to insert at the cursor; `data` is passed to the kind's expand on send. */
+  field?: { kind: string; label: string; data?: unknown }
+}
+
+export interface TuiComposerFace {
+  paste: { register(handler: PasteHandlerContribution): () => void }
+  /**
+   * Intercept a key before the builtin composer handling consumes it.
+   * Runs for every key routed to the composer (only while it is interactive);
+   * return true to consume the event.
+   */
+  keys: { register(binding: { id: string; order?: number; handle(input: string, key: TuiKey): boolean }): () => void }
+  /** Insert text or a special field into the live composer at the cursor. False when the composer is not mounted. */
+  insert(spec: ComposerInsertSpec): boolean
+}
+
+export interface MarkdownInlineContext {
+  palette: MdPalette
+  base?: MarkStyle
+}
+
+export interface MarkdownBlockContext {
+  palette: MdPalette
+  thinking: boolean
+  width: number
+  streamId: string
+}
+
+/**
+ * A custom markdown block renderer. Keyed by the marked token `type` it
+ * claims (`code`, `heading`, `table`, ...). Registering over an existing
+ * type replaces that layer; disposing restores it (layered registry
+ * semantics).
+ */
+export interface MarkdownBlockContribution {
+  /** marked token type this renderer claims. */
+  type: string
+  order?: number
+  render(token: Token, context: MarkdownBlockContext): Segment[][]
+}
+
+/** A custom inline (span-level) markdown token renderer, keyed by token `type`. */
+export interface MarkdownInlineContribution {
+  type: string
+  order?: number
+  render(token: Token, context: MarkdownInlineContext): Segment
+}
+
+export interface PrismGrammarContribution {
+  /** Code fence language id (lowercase). */
+  id: string
+  /** Prism grammar object (from a loaded prism component or hand-built). */
+  grammar: unknown
+  /** Extra aliases accepted for the same grammar. */
+  aliases?: readonly string[]
+}
+
+export interface TuiMarkdownFace {
+  blocks: { register(contribution: MarkdownBlockContribution): () => void }
+  inline: { register(contribution: MarkdownInlineContribution): () => void }
+  languages: { register(contribution: PrismGrammarContribution): () => void }
 }
 
 export interface InteractionPanelComponentProps {
@@ -347,7 +457,7 @@ export interface TuiChatFace {
   cwd(): string
   activeSessionId(): string
   onEvent(listener: (event: SessionEvent) => void): () => void
-  send(text: string): void
+  send(text: string, images?: ReadonlyArray<readonly PendingImage[]>): void
   interrupt(): void
   newSession(): Promise<void>
   openSession(id: string): Promise<void>
@@ -362,7 +472,9 @@ export interface TuiExtensionPoint {
   tools: TuiToolsFace
   content: TuiContentFace
   startup: TuiStartupFace
-  fields: TuiFieldsFace
+  fields: TuiFieldsFace & { factory: SpecialFieldFactory }
+  composer: TuiComposerFace
+  markdown: TuiMarkdownFace
   interactions?: TuiInteractionsFace
   chat?: TuiChatFace
 }

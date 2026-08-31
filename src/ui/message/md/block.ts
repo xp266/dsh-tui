@@ -5,6 +5,7 @@ import { charWidth, segmentGraphemes, textWidth } from '../../../core/text.ts'
 import { glyphs } from '../../../terminal/glyphs.ts'
 import { highlightCodeBlock } from './highlight.ts'
 import { renderInline } from './inline.ts'
+import { markdownExtensions } from './extensions.ts'
 import type { MdPalette } from './palette.ts'
 
 export interface BlockContext {
@@ -212,6 +213,8 @@ export function renderBlockquote(token: Tokens.Blockquote, ctx: BlockContext): S
 }
 
 export function renderBlockRows(token: Token, ctx: BlockContext): Segment[][] {
+  const contributed = markdownExtensions.markdownBlockOf(token)
+  if (contributed !== undefined) return contributed.render(token, ctx)
   switch (token.type) {
     case 'heading':
       return renderHeading(token as Tokens.Heading, ctx)
