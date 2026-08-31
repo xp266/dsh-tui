@@ -7,6 +7,7 @@ import { COLORS, permissionModeInfo } from '../../theme.ts'
 import { glyphs } from '../../terminal/glyphs.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
 import { CHROME_FRAME_ROWS, CHROME_MARGIN_X, CHROME_PAD_X, CHROME_TEXT_X, INPUT_WIDTH_OFFSET, inputFrameTop, inputStatusRow } from '../../core/metrics.ts'
+import { inputStatusParts } from '../chrome/input-status.ts'
 import { colToCharIndex, lineBreaks, textWidth, truncate, wrapLines } from '../../core/text.ts'
 import { hasFieldChar } from '../../core/fields.ts'
 import { expandFieldChars, fieldRowSegments } from '../../core/field-view.ts'
@@ -129,6 +130,15 @@ export function InputBar({
         { text: ` ${glyphs.separator} `, color: COLORS.statusSeparator },
         { text: effortName, color: COLORS.effortText },
       ]),
+      ...(() => {
+        const contributed = inputStatusParts({ columns, rows, busy: !interactive, running: !interactive, modelName, permissionMode, effortName, presetName })
+        if (contributed.length === 0) return []
+        const separator = { text: ` ${glyphs.separator} `, color: COLORS.statusSeparator }
+        return [separator, ...contributed.flatMap((part, index) => {
+          const entry = { text: part.text, color: part.color ?? COLORS.modelText, ...(part.bold === undefined ? {} : { bold: part.bold }) }
+          return index < contributed.length - 1 ? [entry, separator] : [entry]
+        })]
+      })(),
     ]
     if (interactive) {
       parts.push({ text: caretNonceText(cursor), color: caretNonceColor(cursor), bold: caretNonceBold(cursor) })

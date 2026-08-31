@@ -5,13 +5,11 @@ import { createBuiltinPointerHandler, type BuiltinPointerHandler } from '../poin
 import type { RefObject } from 'react'
 import type { ScreenCapture } from '../../terminal/screen.ts'
 import { createMouseController } from '../../terminal/mouse.ts'
-import { CHROME_FRAME_ROWS, HINT_INPUT_GAP_ROWS, MESSAGE_INPUT_GAP_ROWS } from '../../core/metrics.ts'
-import { hintBlockTop } from '../../core/metrics.ts'
+import { inputContentContains, hintSpan, scrollbarColumn } from '../layout-service.ts'
 import { clampFocusRow, toScreenSelection } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
 import type { ScrollSnapshot } from './use-scroll.ts'
 import { rowInfoAt, rowCount, scrollbarGeometry } from '../message/layout.ts'
-import { SCROLLBAR_COL_FROM_EDGE } from '../../core/metrics.ts'
 import type { InputBarHandle } from '../input/input-bar.tsx'
 import type { PanelPointerHandle } from '../panels/approval-panel.tsx'
 import type { CommandHintState } from '../input/commands.ts'
@@ -26,10 +24,7 @@ export interface HintRegion {
 }
 
 export function hintRegion(rows: number, hint: CommandHintState | null, dialogOpen: boolean, inputHeight: number): HintRegion | null {
-  if (hint === null || dialogOpen) return null
-  const top = hintBlockTop(rows, inputHeight, hint.commands.length)
-  const bottom = rows - inputHeight - MESSAGE_INPUT_GAP_ROWS - HINT_INPUT_GAP_ROWS
-  return { top, bottom }
+  return hintSpan(rows, inputHeight, hint?.commands.length ?? 0, dialogOpen)
 }
 
 export interface MouseSelectionOptions {
@@ -159,10 +154,8 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
       if (dir === 0) stopDragScroll()
       else startDragScroll(dir)
     }
-    const inInputContent = (y: number): boolean => {
-      const top = rowsRef.current - inputHeightRef.current
-      return y >= top && y <= top + inputHeightRef.current - CHROME_FRAME_ROWS
-    }
+    const inInputContent = (y: number): boolean =>
+      inputContentContains(y, rowsRef.current, inputHeightRef.current)
     const scrollbarInfo = (): { geom: { top: number; height: number }; maxScroll: number; travel: number } | null => {
       if (dialogOpenRef.current) return null
       const mh = messageHeightRef.current
@@ -174,7 +167,7 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
       return { geom, maxScroll: totalRows - mh, travel: Math.max(1, mh - geom.height) }
     }
     const onScrollbarDown = (x: number, y: number): boolean => {
-      if (x !== widthRef.current - SCROLLBAR_COL_FROM_EDGE || y >= messageHeightRef.current) return false
+      if (x !== scrollbarColumn(widthRef.current) || y >= messageHeightRef.current) return false
       const info = scrollbarInfo()
       if (info === null) return false
       stopDragScroll()

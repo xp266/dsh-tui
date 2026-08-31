@@ -1,4 +1,5 @@
 import { Box, Text, useInput } from 'ink'
+import { panelAnchorRow } from '../layout-service.ts'
 import { isKeyConsumed } from '../key-arbiter.ts'
 import { useEffect, useState } from 'react'
 import { useCaret } from '../hooks/use-caret.ts'
@@ -48,7 +49,7 @@ export function QuestionPanel({ handleRef, question: panel, background, active, 
   const { setCursorPosition } = useCaret()
   const layout = questionPanelLayout(state, innerWidth, Math.min(MAX_BODY_ROWS, Math.max(3, rows - 6)))
   const totalHeight = layout.height + 2
-  const bodyStart = rows - 2 - layout.height
+  const bodyStart = panelAnchorRow(rows, layout.height)
   useImperativeHandle(handleRef, () => ({
     clickAt(y) {
       if (!active || state.editing) return

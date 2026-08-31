@@ -4,7 +4,7 @@ import type { Message } from '../../model/message.ts'
 import { rowIndexFor, scrollbarGeometry } from './layout.ts'
 import { MessageRow } from './message-row.tsx'
 import { COLORS } from '../../theme.ts'
-import { SCROLLBAR_COL_FROM_EDGE } from '../../core/metrics.ts'
+import { scrollbarColumn } from '../layout-service.ts'
 import { Region } from '../region.tsx'
 
 interface MessageListProps {
@@ -50,7 +50,7 @@ export function MessageList({ messages, height, width, scrollTop, onScroll, inte
           <Box
             position="absolute"
             top={0}
-            left={width - SCROLLBAR_COL_FROM_EDGE}
+            left={scrollbarColumn(width)}
             width={1}
             height={height}
             backgroundColor={COLORS.scrollTrackBackground}
@@ -58,7 +58,7 @@ export function MessageList({ messages, height, width, scrollTop, onScroll, inte
           <Box
             position="absolute"
             top={scrollbar.top}
-            left={width - SCROLLBAR_COL_FROM_EDGE}
+            left={scrollbarColumn(width)}
             width={1}
             height={scrollbar.height}
             backgroundColor={COLORS.scrollThumbBackground}

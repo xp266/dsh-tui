@@ -1,4 +1,5 @@
 import { Box, Text, useInput } from 'ink'
+import { panelAnchorRow } from '../layout-service.ts'
 import { isKeyConsumed } from '../key-arbiter.ts'
 import { useEffect, useState } from 'react'
 import type { ReactNode, Ref } from 'react'
@@ -100,7 +101,7 @@ export function ApprovalPanel({ handleRef, reason, command, background, active, 
   body.push([{ text: BUTTON_ALLOW_TEXT + BUTTON_GAP_TEXT + 'Reject', style: {} }])
   const bodyCount = body.length
   const totalHeight = bodyCount + 2
-  const bodyStart = rows - 2 - bodyCount
+  const bodyStart = panelAnchorRow(rows, bodyCount)
   useEffect(() => {
     writeCursorShape('hide')
     return () => {

@@ -5,6 +5,7 @@ import { registerWindowService } from './window-services.ts'
 import { registerWidget } from './widgets/registry.ts'
 import { registerCommand } from './input/commands.ts'
 import { registerKeyBinding } from './keymap.ts'
+import { registerInputStatus } from './chrome/input-status.ts'
 import { registerPalette, subscribePalettes } from '../theme.ts'
 import { registerToolView, subscribeToolViews } from '../chat/tool-views.ts'
 import { registerChatNode, subscribeChatNodes } from '../chat/chat-nodes.ts'
@@ -68,6 +69,7 @@ export function createTuiExtensionPoint(ctx: Context, hooks: TuiExtensionPointHo
       widgets: { register: registerWidget },
       palette: { register: registerPalette },
       keys: { register: registerKeyBinding },
+      inputStatus: { register: registerInputStatus },
     },
     commands: { register: registerCommand },
     tools: { register: registerToolView },

@@ -14,7 +14,8 @@ import type { Segment } from '../../core/segments.ts'
 import { COLORS } from '../../theme.ts'
 import { glyphs } from '../../terminal/glyphs.ts'
 import { PLAN_TOOL_NAME } from '../../chat/store.ts'
-import { BUBBLE_WIDTH_OFFSET, CHROME_MARGIN_X, HEADER_LABEL_COL, SCROLLBAR_COL_FROM_EDGE, SCROLLBAR_GAP_COLS } from '../../core/metrics.ts'
+import { BUBBLE_WIDTH_OFFSET, HEADER_LABEL_COL } from '../../core/metrics.ts'
+import { messageBackgroundWidth } from '../layout-service.ts'
 
 export { HEADER_LABEL_COL }
 
@@ -537,7 +538,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number)
     selectable: false,
     clickable: false,
     background: false,
-    backgroundWidth: width - CHROME_MARGIN_X - SCROLLBAR_COL_FROM_EDGE - SCROLLBAR_GAP_COLS,
+    backgroundWidth: messageBackgroundWidth(width),
     muted: false,
     label: '',
     collapsed: false,

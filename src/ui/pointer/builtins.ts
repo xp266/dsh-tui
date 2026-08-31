@@ -1,4 +1,5 @@
 import type { LineSelection, PointerEventFrame } from '../../contract/index.ts'
+import { panelContains } from '../layout-service.ts'
 
 export interface PointerBuiltinDeps {
   inInputContent(y: number): boolean
@@ -91,7 +92,7 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
         owner = 'dialog'
         return true
       }
-      if (event.ui.panelActive && y >= event.ui.messageHeight && y <= event.ui.rows - 2) {
+      if (event.ui.panelActive && panelContains(y, { columns: event.ui.columns, rows: event.ui.rows, inputHeight: event.ui.inputHeight, messageHeight: event.ui.messageHeight, panelHeight: null })) {
         panelCandidate.current = { x, y }
         if (deps.rowHasText(y)) {
           deps.setSelection({ anchorRow: y, anchorCol: x, focusRow: y, focusCol: x, inMessage: false })
@@ -263,7 +264,7 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
       const { y } = event.event
       const dir: -1 | 1 = event.event.scrollDirection === 'up' ? -1 : 1
       if (event.ui.dialogOpen) return deps.dialogWheel(y, dir)
-      if (event.ui.panelActive && y >= event.ui.messageHeight && y <= event.ui.rows - 2) return deps.panelWheel(dir)
+      if (event.ui.panelActive && panelContains(y, { columns: event.ui.columns, rows: event.ui.rows, inputHeight: event.ui.inputHeight, messageHeight: event.ui.messageHeight, panelHeight: null })) return deps.panelWheel(dir)
       if (!event.ui.dialogOpen && !event.ui.panelActive) {
         const region = deps.activeHintRegion()
         if (region !== null && y >= region.top && y <= region.bottom) {

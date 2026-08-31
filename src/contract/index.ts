@@ -238,12 +238,37 @@ export interface TuiSelectionFace {
   clipboard: { register(contribution: SelectionClipboardContribution): () => void }
 }
 
+export interface InputStatusContext {
+  columns: number
+  rows: number
+  busy: boolean
+  running: boolean
+  modelName: string
+  permissionMode: string
+  effortName: string | undefined
+  presetName: string | undefined
+}
+
+export interface InputStatusPart {
+  text: string
+  color?: string
+  bold?: boolean
+}
+
+export interface InputStatusContribution {
+  id: string
+  order?: number
+  /** Return one part, an array of parts, or null to contribute nothing this render. */
+  render(context: InputStatusContext): InputStatusPart | InputStatusPart[] | null
+}
+
 export interface TuiChromeFace {
   statusLine: { register(contribution: StatusLineContribution): () => void }
   overlays: { register(contribution: OverlayContribution): () => void }
   widgets: TuiWidgetsFace
   palette: TuiPaletteFace
   keys: TuiKeymapFace
+  inputStatus: { register(contribution: InputStatusContribution): () => void }
 }
 
 export interface CommandDef {
