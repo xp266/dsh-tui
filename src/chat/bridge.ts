@@ -31,7 +31,9 @@ import {
   saveProviderModels,
 } from './models.ts'
 import type { ConfiguredModel, CustomProviderForm, DescribedModel, ModelEntryConfig, OfficialProvider, SettingsPathOp } from './models.ts'
-import { formatDiffDiffs, diffLineGroups, formatReadLines, readBodyCol, relativize, summarizeOthers, summarizeParams, truncateSummary } from './tool-view.ts'
+import { formatDiffDiffs, dedupeTitle, diffLineGroups, formatReadLines, pathFromTitle, pickPrimaryParam, readBodyCol, relativize, remainingArgsJson, summarizeParams, truncateSummary } from './tool-view.ts'
+import { TODO_TOOL_NAME, formatTodoBubble, parseTodoArgs } from './todo-view.ts'
+import { ASK_USER_TOOL_NAME, formatAskQuestions } from './question-view.ts'
 import type { DiffLike, ReadLineLike, ToolDiffView } from './tool-view.ts'
 import { computeSessionList } from './session-list.ts'
 import type { SessionSummary } from './session-list.ts'
@@ -44,8 +46,6 @@ import { applyTheme } from '../apply-theme.ts'
 import { THEME_SETTINGS_NAMESPACE } from '../theme-settings.ts'
 import { themeMode } from '../theme.ts'
 import type { ThemeMode } from '../theme.ts'
-
-export const DIFF_TOOL_NAMES: ReadonlySet<string> = new Set(['write', 'edit'])
 
 interface AttachmentsServiceLike {
   saveImage(input: { data: Uint8Array; mediaType: string; name?: string }): Promise<ImageAttachmentRef>
@@ -183,7 +183,10 @@ export interface ChatToolPresenter {
 interface CallViewLike {
   card: string
   title?: string
+  kind?: string
   rawInput?: unknown
+  description?: string
+  cwd?: string
   diffs?: readonly DiffLike[]
 }
 
@@ -195,6 +198,16 @@ interface ResultViewLike {
   content?: readonly ContentBlock[]
   diffs?: readonly DiffLike[]
   lines?: readonly ReadLineLike[]
+  shape?: 'paths' | 'matches'
+  paths?: readonly string[]
+  files?: readonly { path: string; matches: readonly { lineNumber: number; line: string }[] }[]
+  truncated?: boolean
+  total?: number
+  kind?: string
+  url?: string
+  statusCode?: number
+  sources?: readonly { url: string; title?: string; snippet?: string; publishedAt?: string }[]
+  answer?: string
 }
 
 interface ToolsLike {
@@ -662,7 +675,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       return undefined
     }
   }
-  const toolPresenter = createToolViewPresenter({
+const toolPresenter = createToolViewPresenter({
     call(name, callId, argumentsRaw) {
       let args: unknown
       try {
@@ -675,37 +688,69 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       const cwd = currentCwd
       if (view !== undefined && view.card === 'diff' && view.diffs !== undefined && view.diffs.length > 0) {
         const rawPath = view.diffs[0]!.path
-        const path = typeof rawPath === 'string' && rawPath !== '' ? rawPath
-          : String((args as { file_path?: unknown }).file_path ?? (args as { path?: unknown }).path ?? '')
-        const display = truncateSummary(relativize(path, cwd))
-        if (DIFF_TOOL_NAMES.has(name)) {
-          return {
-            label: `${name}[${display}]`,
-            body: '',
-            diff: { path: relativize(path, cwd), hunks: diffLineGroups(view.diffs) },
-          }
-        }
+        const path = pathFromTitle(view.title, typeof rawPath === 'string' && rawPath !== '' ? rawPath
+          : String((args as { file_path?: unknown }).file_path ?? (args as { path?: unknown }).path ?? ''))
         return {
-          label: `${name}[${display}]`,
-          body: formatDiffDiffs(view.diffs),
-          bodyCol: 2,
+          label: `${name} ${truncateSummary(relativize(path, cwd))}`,
+          body: '',
+          diff: { path: relativize(path, cwd), hunks: diffLineGroups(view.diffs) },
         }
       }
-      if (name === 'read') {
-        const rawPath = String((args as { file_path?: unknown }).file_path ?? '')
+      if (view !== undefined && view.card === 'terminal') {
         return {
-          label: `read[${truncateSummary(relativize(rawPath, cwd) + summarizeOthers(args, ['file_path'], cwd))}]`,
-          body: argsJson(callId) ?? '',
+          label: view.description === undefined || view.description === '' ? name : `${name} ${view.description}`,
+          body: view.title ?? '',
         }
       }
+      if (view !== undefined && view.kind === 'read') {
+        const rawPath = String((args as { file_path?: unknown }).file_path ?? (args as { path?: unknown }).path ?? '')
+        if (rawPath !== '') {
+          const offset = (args as { offset?: unknown }).offset
+          const limit = (args as { limit?: unknown }).limit
+          const window = [
+            ...(typeof offset === 'number' && offset > 0 ? [`offset=${offset}`] : []),
+            ...(typeof limit === 'number' && limit > 0 ? [`lines=${limit}`] : []),
+          ]
+          const label = `${name} ${truncateSummary(relativize(rawPath, cwd))}${window.length === 0 ? '' : `[${window.join(',')}]`}`
+          return { label, body: '' }
+        }
+      }
+      if (view !== undefined && (view.kind === 'search' || view.kind === 'fetch')) {
+        const primary = dedupeTitle(name, view.title ?? '')
+        return {
+          label: primary === '' ? name : `${name} ${primary}`,
+          body: '',
+        }
+      }
+      if (view !== undefined) {
+        const desc = view.description
+        const title = dedupeTitle(name, view.title ?? '')
+        const label = desc !== undefined && desc !== '' && !desc.includes('\n')
+          ? `${name} ${desc}`
+          : title === '' ? name : `${name} ${title}`
+        if (name === TODO_TOOL_NAME) {
+          const items = parseTodoArgs(args)
+          return { label, body: items.length > 0 ? formatTodoBubble(items) : '' }
+        }
+        return { label, body: '' }
+      }
+      if (name === ASK_USER_TOOL_NAME) {
+        return { label: name, body: formatAskQuestions(args) }
+      }
+      const primary = pickPrimaryParam(args)
       return {
-        label: `${name}[${summarizeParams(args, cwd)}]`,
-        body: argsJson(callId) ?? '',
+        label: primary === undefined ? name : `${name} ${primary.key}=${primary.value}`,
+        body: remainingArgsJson(args, primary?.key) ?? '',
       }
     },
     result(callId, result) {
       const call = toolCalls.get(callId)
       if (call === undefined) return undefined
+      // ask/todo deliver their outcome through the interaction panel and the
+      // checklist respectively; the echoed result payload adds no information.
+      if (call.name === ASK_USER_TOOL_NAME || call.name === TODO_TOOL_NAME) {
+        return { kind: 'replace', text: '' }
+      }
       const view = tools?.get?.(call.name, activeAgent)?.presentResult?.(call.args, result)
       if (view === undefined) return undefined
       if (view.card === 'terminal') {
@@ -720,14 +765,39 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
         return { kind: 'replace', text: formatReadLines(view.lines), bodyCol: readBodyCol(view.lines) }
       }
       if (view.card === 'diff' && view.diffs !== undefined) {
-        const base = { kind: 'replace' as const, text: formatDiffDiffs(view.diffs), bodyCol: 2 }
-        if (!DIFF_TOOL_NAMES.has(call.name)) return base
         const rawPath = view.diffs[0]!.path
         const path = typeof rawPath === 'string' && rawPath !== '' ? rawPath : ''
-        return { ...base, diff: { path: relativize(path, currentCwd), hunks: diffLineGroups(view.diffs) } }
+        return { kind: 'replace', text: formatDiffDiffs(view.diffs), bodyCol: 2, diff: { path: relativize(path, currentCwd), hunks: diffLineGroups(view.diffs) } }
       }
       if (view.card === 'generic' && view.content !== undefined) {
         return { kind: 'append', text: textFromBlocks(view.content) }
+      }
+      if (view.card === 'search') {
+        const lines: string[] = []
+        if (view.shape === 'paths') {
+          lines.push(...(view.paths ?? []))
+        } else {
+          for (const file of view.files ?? []) {
+            lines.push(file.path)
+            for (const match of file.matches) lines.push(`${match.lineNumber}: ${match.line}`)
+          }
+        }
+        if (view.truncated === true) lines.push(`... ${view.total} total`)
+        return { kind: 'replace', text: lines.length === 0 ? '' : lines.join('\n') }
+      }
+      if (view.card === 'web' && view.kind === 'search') {
+        const lines: string[] = []
+        if (view.answer !== undefined && view.answer !== '') lines.push(view.answer)
+        for (const source of view.sources ?? []) {
+          lines.push(`- ${source.title === undefined ? source.url : `${source.title} · ${source.url}`}`)
+        }
+        if (view.truncated === true) lines.push('... results truncated')
+        return { kind: 'replace', text: lines.join('\n') }
+      }
+      if (view.card === 'web' && view.kind === 'fetch') {
+        const header = `HTTP ${view.statusCode} ${view.url}`
+        const body = textFromBlocks(result.content)
+        return { kind: 'replace', text: `${header}${view.truncated === true ? ' · ... content truncated' : ''}${body === '' ? '' : `\n\n${body}`}` }
       }
       return undefined
     },

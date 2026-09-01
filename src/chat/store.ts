@@ -1,45 +1,17 @@
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { readFileSync, statSync } from 'node:fs'
-import type { Message, PlanMessage, ToolDiffMessage } from '../model/message.ts'
+import type { Message, ToolCardMessage } from '../model/message.ts'
 import { reasoningFromBlocks, textFromBlocks, userDisplayText } from './blocks.ts'
 import type { ChatToolPresenter, ToolResultLike } from './bridge.ts'
-import { DIFF_TOOL_NAMES } from './bridge.ts'
 import type { CollapsibleMessage } from '../model/message.ts'
 import { glyphs } from '../terminal/glyphs.ts'
-import { extractPartialJsonFields } from './partial-json.ts'
-import { diffCallFromArgs, diffGroupsFromTexts, diffsFromResultMeta, diffLineGroups, flattenText, truncateSummary } from './tool-view.ts'
-import {
-  ASK_USER_TOOL_NAME,
-  formatAskUserBubble,
-  formatAskUserError,
-  parseAskAnswers,
-  parseAskQuestions,
-} from './question-view.ts'
-import {
-  TODO_HANG_COLS,
-  TODO_TOOL_NAME,
-  formatTodoBubble,
-  parseTodoArgs,
-  parseTodoResult,
-} from './todo-view.ts'
+import { diffsFromResultMeta, diffLineGroups } from './tool-view.ts'
 import { applyChatNodes } from './chat-nodes.ts'
 
 export type AgentPhase = 'awaiting-request' | 'thinking' | 'working'
 
 export interface ReduceOptions {
-  readFile?: (path: string) => string | null
-}
-
-const DEFAULT_READ_MAX_BYTES = 262144
-
-function defaultReadFile(path: string): string | null {
-  try {
-    const info = statSync(path)
-    if (info.size > DEFAULT_READ_MAX_BYTES) return null
-    return readFileSync(path, 'utf8')
-  } catch {
-    return null
-  }
+  /** Reserved for future protocol needs; today the reducer is protocol-driven. */
+  readFile?(path: string): string | null
 }
 
 function errorSummary(cause: { name?: string; code?: string } | undefined): string {
@@ -70,9 +42,7 @@ export interface TurnState {
   assistantIds: Map<number, string>
   toolIds: Map<string, string>
   pendingText: Map<number, string>
-  askArgs: Map<string, unknown>
   pendingTools: Map<string, string>
-  pendingArgs: Map<string, string>
   commandNames: Map<string, string>
   compactions: Map<string, string>
   chatNodes: Map<string, string>
@@ -87,9 +57,7 @@ export function initialTurnState(): TurnState {
     assistantIds: new Map(),
     toolIds: new Map(),
     pendingText: new Map(),
-    askArgs: new Map(),
     pendingTools: new Map(),
-    pendingArgs: new Map(),
     commandNames: new Map(),
     compactions: new Map(),
     chatNodes: new Map(),
@@ -166,101 +134,17 @@ export function reduceChatEvent(
       return { messages, turn, changed: true }
     }
     case 'tool/call': {
-      if (event.data.name === ASK_USER_TOOL_NAME) {
-        const id = commitToolPlaceholder(messages, turn, event.data.callId, {
-          kind: 'bubble',
-          id: nextId('ask'),
-          role: 'assistant',
-          content: ASK_USER_TOOL_NAME,
-          variant: 'ask-user',
-          pending: true,
-        })
-        turn.toolIds.set(event.data.callId, id)
-        try {
-          turn.askArgs.set(event.data.callId, JSON.parse(event.data.arguments))
-        } catch {}
-        markRunning(turn, true)
-        markPhase(turn, 'working')
-        return { messages, turn, changed: true }
-      }
-      if (event.data.name === TODO_TOOL_NAME) {
-        let args: unknown
-        try {
-          args = JSON.parse(event.data.arguments)
-        } catch {}
-        const items = parseTodoArgs(args)
-        const id = commitToolPlaceholder(messages, turn, event.data.callId, {
-          kind: 'bubble',
-          id: nextId('todo'),
-          role: 'assistant',
-          content: items.length > 0 ? formatTodoBubble(items) : TODO_TOOL_NAME,
-          variant: 'todo',
-          hang: TODO_HANG_COLS,
-          pending: true,
-        })
-        turn.toolIds.set(event.data.callId, id)
-        markRunning(turn, true)
-        markPhase(turn, 'working')
-        return { messages, turn, changed: true }
-      }
-      if (event.data.name === PLAN_TOOL_NAME) {
-        let args: unknown
-        try {
-          args = JSON.parse(event.data.arguments)
-        } catch {}
-        const record = typeof args === 'object' && args !== null ? args as Record<string, unknown> : {}
-        const plan = typeof record.plan === 'string' ? record.plan : ''
-        const id = commitToolPlaceholder(messages, turn, event.data.callId, {
-          kind: 'plan',
-          id: nextId('plan'),
-          body: plan,
-          running: true,
-        })
-        turn.toolIds.set(event.data.callId, id)
-        turn.pendingArgs.delete(event.data.callId)
-        markRunning(turn, true)
-        markPhase(turn, 'working')
-        return { messages, turn, changed: true }
-      }
-      if (DIFF_TOOL_NAMES.has(event.data.name)) {
-        let args: unknown
-        try {
-          args = JSON.parse(event.data.arguments)
-        } catch {}
-        const view = presenter?.call(event.data.name, event.data.callId, event.data.arguments)
-        let diff = view?.diff ?? diffCallFromArgs(event.data.name, args)
-        if (event.data.name === 'write') {
-          const record = typeof args === 'object' && args !== null ? args as Record<string, unknown> : {}
-          const content = typeof record.content === 'string' ? record.content : ''
-          const filePath = typeof record.file_path === 'string' ? record.file_path : diff.path
-          const oldText = (options.readFile ?? defaultReadFile)(filePath)
-          if (oldText !== null) {
-            diff = { path: diff.path !== '' ? diff.path : filePath, hunks: diffGroupsFromTexts(oldText, content) }
-          }
-        }
-        const id = commitToolPlaceholder(messages, turn, event.data.callId, {
-          kind: 'tool-diff',
-          id: nextId('tdiff'),
-          tool: event.data.name,
-          path: diff.path,
-          hunks: diff.hunks,
-          running: true,
-        })
-        turn.toolIds.set(event.data.callId, id)
-        turn.pendingArgs.delete(event.data.callId)
-        markRunning(turn, true)
-        markPhase(turn, 'working')
-        return { messages, turn, changed: true }
-      }
       const view = presenter?.call(event.data.name, event.data.callId, event.data.arguments)
+      const argsBody = view?.body ?? ''
       const id = commitToolPlaceholder(messages, turn, event.data.callId, {
-        kind: 'collapsible',
+        kind: 'tool-card',
         id: nextId('tool'),
+        tool: event.data.name,
         label: view?.label ?? event.data.name,
-        body: view?.body ?? '',
+        argsBody,
         running: true,
-        collapsed: true,
         ...view?.bodyCol === undefined ? {} : { bodyCol: view.bodyCol },
+        ...view?.diff === undefined ? {} : { diff: view.diff },
       })
       turn.toolIds.set(event.data.callId, id)
       markRunning(turn, true)
@@ -272,77 +156,8 @@ export function reduceChatEvent(
       if (callId === undefined) return { messages, turn, changed: false }
       const id = turn.toolIds.get(callId)
       if (id === undefined) return { messages, turn, changed: false }
-      const target = messageById(messages, id)
-      if (target?.kind === 'bubble' && target.variant === 'ask-user') {
-        return settleAskUserBubble(messages, turn, id, callId, event)
-      }
-      if (target?.kind === 'bubble' && target.variant === 'todo') {
-        turn.toolIds.delete(callId)
-        const items = parseTodoResult(textFromBlocks(event.data.message.content).trim())
-        updateById(messages, id, message => message.kind === 'bubble'
-          ? { ...message, pending: false, ...(items.length > 0 ? { content: formatTodoBubble(items) } : {}) }
-          : message)
-        return { messages, turn, changed: true }
-      }
-      if (target?.kind === 'tool-diff') {
-        turn.toolIds.delete(callId)
-        turn.pendingArgs.delete(callId)
-        markPhase(turn, 'awaiting-request')
-        const error = event.data.error
-        const failed = error !== undefined || event.data.message.content[0]?.isError === true
-        if (failed) {
-          const detail = truncateSummary(flattenText(textFromBlocks(event.data.message.content)))
-          updateById(messages, id, message => message.kind === 'tool-diff'
-            ? {
-                ...message,
-                streaming: false,
-                running: false,
-                error: `${errorSummary(error)}${detail === '' ? '' : ` ${detail}`}`,
-              }
-            : message)
-          return { messages, turn, changed: true }
-        }
-        const result: ToolResultLike = {
-          content: event.data.message.content[0]?.content ?? [],
-          isError: false,
-          ...event.data.meta === undefined ? {} : { meta: event.data.meta },
-        }
-        const presentation = presenter?.result(callId, result)
-        const metaDiffs = presentation?.diff === undefined ? diffsFromResultMeta(event.data.meta) : undefined
-        const diff = presentation?.diff ?? (metaDiffs === undefined
-          ? undefined
-          : {
-              path: target.path !== '' ? target.path : metaDiffs[0]!.path,
-              hunks: diffLineGroups(metaDiffs),
-            })
-        updateById(messages, id, message => message.kind === 'tool-diff'
-          ? {
-              ...message,
-              streaming: false,
-              running: false,
-              ...(diff === undefined ? {} : { path: diff.path, hunks: diff.hunks }),
-            }
-          : message)
-        return { messages, turn, changed: true }
-      }
-      if (target?.kind === 'plan') {
-        turn.toolIds.delete(callId)
-        turn.pendingArgs.delete(callId)
-        markPhase(turn, 'awaiting-request')
-        const error = event.data.error
-        const failed = error !== undefined || event.data.message.content[0]?.isError === true
-        const detail = failed ? truncateSummary(flattenText(textFromBlocks(event.data.message.content))) : ''
-        updateById(messages, id, message => message.kind === 'plan'
-          ? {
-              ...message,
-              running: false,
-              ...(failed && error !== undefined ? { error: `${errorSummary(error)}${detail === '' ? '' : ` ${detail}`}` } : {}),
-            }
-          : message)
-        return { messages, turn, changed: true }
-      }
-      const collapsible = collapsibleById(messages, id)
-      if (collapsible === undefined) return { messages, turn, changed: false }
+      const card = toolCardById(messages, id)
+      if (card === undefined) return { messages, turn, changed: false }
       const error = event.data.error
       const block = event.data.message.content[0]
       const result: ToolResultLike = {
@@ -351,42 +166,30 @@ export function reduceChatEvent(
         ...event.data.meta === undefined ? {} : { meta: event.data.meta },
       }
       const presentation = presenter?.result(callId, result)
-      if (presentation !== undefined && presentation.kind === 'replace') {
-        const body = error === undefined
-          ? presentation.text
-          : `${errorSummary(error)}${presentation.text === '' ? '' : `\n${presentation.text}`}`
-        turn.toolIds.delete(callId)
-        updateById(messages, id, message => ({
-          ...message,
-          body,
-          running: false,
-          bodyCol: error === undefined ? presentation.bodyCol : undefined,
-        }))
-        markPhase(turn, 'awaiting-request')
-        return { messages, turn, changed: true }
-      }
       let text = presentation?.text
       if (text === undefined) text = textFromBlocks(event.data.message.content)
-      if (text.trim() === '' && collapsible.body === '' && presenter !== undefined) {
+      if (text.trim() === '' && card.argsBody === '' && presenter !== undefined) {
         const fallback = presenter.argsJson(callId)
         if (fallback !== undefined && fallback.trim() !== '') text = fallback
       }
-      const lines: string[] = []
-      if (text !== '') lines.push(text)
-      if (presentation?.exitCode !== undefined) lines.push(`[exit code: ${presentation.exitCode}]`)
-      else if (presentation?.signal !== undefined) lines.push(`[killed by signal: ${presentation.signal}]`)
-      const rendered = lines.join('\n')
-      const body = error === undefined
-        ? rendered === '' ? collapsible.body
-          : collapsible.body === '' ? rendered
-            : `${collapsible.body}\n\n${rendered}`
-        : `${errorSummary(error)}${rendered ? `\n${rendered}` : ''}`
+      const metaDiffs = presentation?.diff === undefined ? diffsFromResultMeta(event.data.meta) : undefined
+      const diff = presentation?.diff ?? (metaDiffs === undefined
+        ? undefined
+        : {
+            path: card.diff?.path ?? metaDiffs[0]!.path,
+            hunks: diffLineGroups(metaDiffs),
+          })
       turn.toolIds.delete(callId)
       updateById(messages, id, message => ({
         ...message,
-        body,
+        ...(text === '' ? {} : { resultBody: text }),
+        ...(diff === undefined ? {} : { diff }),
+        ...(presentation?.exitCode === undefined ? {} : { exitCode: presentation.exitCode }),
+        ...(presentation?.signal === undefined ? {} : { signal: presentation.signal }),
         running: false,
-        ...(error === undefined ? {} : { bodyCol: undefined }),
+        ...(error === undefined
+          ? (presentation?.bodyCol === undefined ? {} : { bodyCol: presentation.bodyCol })
+          : { error: errorSummary(error), bodyCol: undefined }),
       }))
       markPhase(turn, 'awaiting-request')
       return { messages, turn, changed: true }
@@ -461,7 +264,13 @@ export function reduceChatEvent(
           message.body = message.body === '' ? '(no result)' : `${message.body}\n(no result)`
           continue
         }
-        if ((message.kind === 'tool-diff' || message.kind === 'plan' || message.kind === 'custom') && message.running) {
+        if (message.kind === 'tool-card' && message.running) {
+          changed = true
+          message.running = false
+          if (message.resultBody === undefined && message.argsBody.trim() === '') message.argsBody = '(no result)'
+          continue
+        }
+        if ((message.kind === 'custom') && message.running) {
           changed = true
           message.running = false
         }
@@ -642,69 +451,15 @@ function appendToolDelta(
   finalizeThinking(messages, turn, step, time)
   if (name === undefined || name === '') return { messages, turn, changed: false }
   const known = turn.pendingTools.has(callId) || turn.toolIds.has(callId)
-  if (name === PLAN_TOOL_NAME) {
-    let changed = false
-    if (!known) {
-      const placeholder: PlanMessage = { kind: 'plan', id: nextId('plan'), body: '', streaming: true }
-      messages.push(placeholder)
-      turn.pendingTools.set(callId, placeholder.id)
-      changed = true
-    }
-    if (delta !== '') {
-      turn.pendingArgs.set(callId, (turn.pendingArgs.get(callId) ?? '') + delta)
-      const plan = extractPartialJsonFields(turn.pendingArgs.get(callId) ?? '').plan?.value ?? ''
-      const id = turn.pendingTools.get(callId)
-      const target = id === undefined ? undefined : messages.find(message => message.id === id)
-      if (target?.kind === 'plan' && target.body !== plan) {
-        updateById(messages, id!, message => message.kind === 'plan' ? { ...message, body: plan } : message)
-        changed = true
-      }
-    }
-    return { messages, turn, changed }
-  }
-  if (DIFF_TOOL_NAMES.has(name)) {
-    let changed = false
-    if (!known) {
-      const placeholder: ToolDiffMessage = {
-        kind: 'tool-diff',
-        id: nextId('tdiff'),
-        tool: name,
-        path: '',
-        hunks: [],
-        streaming: true,
-      }
-      messages.push(placeholder)
-      turn.pendingTools.set(callId, placeholder.id)
-      changed = true
-    }
-    if (delta !== '') {
-      turn.pendingArgs.set(callId, (turn.pendingArgs.get(callId) ?? '') + delta)
-      const fields = extractPartialJsonFields(turn.pendingArgs.get(callId) ?? '')
-      const path = fields.file_path?.value
-      const streamText = name === 'write' ? fields.content?.value : undefined
-      const id = turn.pendingTools.get(callId)
-      const target = id === undefined ? undefined : messages.find(message => message.id === id)
-      if (target?.kind === 'tool-diff') {
-        const pathChanged = path !== undefined && path !== '' && target.path !== path
-        const textChanged = streamText !== undefined && target.streamText !== streamText
-        if (pathChanged || textChanged) {
-          updateById(messages, id!, message => message.kind === 'tool-diff'
-            ? { ...message, ...(pathChanged ? { path: path! } : {}), ...(streamText === undefined ? {} : { streamText }) }
-            : message)
-          changed = true
-        }
-      }
-    }
-    return { messages, turn, changed }
-  }
   if (known) return { messages, turn, changed: false }
-  let placeholder: Message
-  if (name === ASK_USER_TOOL_NAME) {
-    placeholder = { kind: 'bubble', id: nextId('ask'), role: 'assistant', content: name, variant: 'ask-user', streaming: true }
-  } else if (name === TODO_TOOL_NAME) {
-    placeholder = { kind: 'bubble', id: nextId('todo'), role: 'assistant', content: name, variant: 'todo', hang: TODO_HANG_COLS, streaming: true }
-  } else {
-    placeholder = { kind: 'collapsible', id: nextId('tool'), label: name, body: '', running: true, collapsed: true, streaming: true }
+  const placeholder: Message = {
+    kind: 'tool-card',
+    id: nextId('tool'),
+    tool: name,
+    label: name,
+    argsBody: '',
+    running: true,
+    streaming: true,
   }
   messages.push(placeholder)
   turn.pendingTools.set(callId, placeholder.id)
@@ -714,6 +469,11 @@ function appendToolDelta(
 function collapsibleById(messages: Message[], id: string): CollapsibleMessage | undefined {
   const message = messages.find(m => m.id === id)
   return message?.kind === 'collapsible' ? message : undefined
+}
+
+function toolCardById(messages: Message[], id: string): ToolCardMessage | undefined {
+  const message = messages.find(m => m.id === id)
+  return message?.kind === 'tool-card' ? message : undefined
 }
 
 function finalizeThinking(messages: Message[], turn: TurnState, step: number, endedAt: number): boolean {
@@ -732,36 +492,6 @@ function finalizeThinking(messages: Message[], turn: TurnState, step: number, en
       }
     : message)
   return true
-}
-
-function messageById(messages: Message[], id: string): Message | undefined {
-  return messages.find(m => m.id === id)
-}
-
-function settleAskUserBubble(
-  messages: Message[],
-  turn: TurnState,
-  id: string,
-  callId: string,
-  event: Extract<SessionEvent, { type: 'tool/result' }>,
-): { messages: Message[]; turn: TurnState; changed: boolean } {
-  const error = event.data.error
-  const block = event.data.message.content[0]
-  const failed = error !== undefined || block?.isError === true
-  const resultText = textFromBlocks(event.data.message.content).trim()
-  let content = ASK_USER_TOOL_NAME
-  if (failed) {
-    content = formatAskUserError(resultText !== ''
-      ? resultText
-      : `error: ${error?.name ?? error?.code ?? 'unknown error'}`)
-  } else {
-    const questions = parseAskQuestions(turn.askArgs.get(callId))
-    if (questions.length > 0) content = formatAskUserBubble(questions, parseAskAnswers(resultText))
-  }
-  turn.toolIds.delete(callId)
-  turn.askArgs.delete(callId)
-  updateById(messages, id, message => message.kind === 'bubble' ? { ...message, content, pending: false } : message)
-  return { messages, turn, changed: true }
 }
 
 function updateById(messages: Message[], id: string, update: (message: Message) => Message): void {

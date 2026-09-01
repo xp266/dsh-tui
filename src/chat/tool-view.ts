@@ -46,6 +46,50 @@ export function summarizeParams(args: unknown, cwd: string): string {
   return truncateSummary(parts.join(', '))
 }
 
+/**
+ * Generic primary-param picker: among single-line values (short strings,
+ * numbers, booleans) choose the shortest one. Multi-line text, arrays, and
+ * objects never qualify, so a tool whose only arguments are structured shows
+ * a bare name header.
+ */
+export function pickPrimaryParam(args: unknown): { key: string; value: string } | undefined {
+  if (typeof args !== 'object' || args === null) return undefined
+  let best: { key: string; value: string } | undefined
+  for (const [key, value] of Object.entries(args as Record<string, unknown>)) {
+    if (value === undefined || value === null) continue
+    let text: string
+    if (typeof value === 'string') {
+      if (value.includes('\n')) continue
+      text = value
+    } else if (typeof value === 'number' || typeof value === 'boolean') {
+      text = String(value)
+    } else {
+      continue
+    }
+    if (best === undefined || text.length < best.value.length) best = { key, value: text }
+  }
+  return best
+}
+
+/** JSON of the remaining args after the primary key, or '' when nothing remains. */
+export function remainingArgsJson(args: unknown, excludeKey: string | undefined): string {
+  if (typeof args !== 'object' || args === null) return ''
+  if (excludeKey !== undefined) {
+    const rest = { ...(args as Record<string, unknown>) }
+    delete rest[excludeKey]
+    if (Object.keys(rest).length === 0) return ''
+    return JSON.stringify(rest, null, 2) ?? ''
+  }
+  return JSON.stringify(args, null, 2) ?? ''
+}
+
+/** The path part of a diff-card title (`Write foo.txt` -> `foo.txt`). */
+export function pathFromTitle(title: string | undefined, fallback: string): string {
+  if (title === undefined) return fallback
+  const rest = title.trim().split(/\s+/).slice(1).join(' ')
+  return rest === '' ? fallback : rest
+}
+
 export function summarizeOthers(args: unknown, skip: readonly string[], cwd: string): string {
   if (typeof args !== 'object' || args === null) return ''
   const parts: string[] = []
@@ -187,4 +231,22 @@ export function formatReadLines(lines: readonly ReadLineLike[]): string {
 export function readBodyCol(lines: readonly ReadLineLike[]): number {
   const maxDigits = lines.reduce((max, line) => Math.max(max, String(line.number).length), 0)
   return Math.max(0, 3 - maxDigits)
+}
+/** Generic title dedup against the tool name, applied to every protocol:
+ *  1. title === name (case-insensitive)            -> '' (ralph / ralph)
+ *  2. title starts with "name:"                    -> strip prefix (workflow: x -> x)
+ *  3. title's first word === name's stem           -> strip first word
+ *      (create_goal + "Create goal" -> "goal"; grep + "Grep x" -> "x")
+ *  4. otherwise title verbatim
+ */
+export function dedupeTitle(name: string, title: string): string {
+  const trimmed = title.trim()
+  if (trimmed === '') return ''
+  if (trimmed.toLowerCase() === name.toLowerCase()) return ''
+  const colon = /^([a-z0-9_-]+):\s*(.*)$/i.exec(trimmed)
+  if (colon !== null && colon[1]!.toLowerCase() === name.toLowerCase()) return truncateSummary(colon[2]!)
+  const words = trimmed.split(/\s+/)
+  const stem = name.split('_')[0]!.toLowerCase()
+  if (words[0]!.toLowerCase() === stem) return truncateSummary(words.slice(1).join(' '))
+  return truncateSummary(trimmed)
 }

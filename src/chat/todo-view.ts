@@ -52,11 +52,7 @@ export function parseTodoResult(resultText: string): TodoItemLike[] {
 }
 
 export function formatTodoBubble(items: readonly TodoItemLike[]): string {
-  const lines = [TODO_TOOL_NAME, '']
-  for (const item of items) {
-    lines.push(`${todoSymbol(item.status)} ${item.content}`)
-  }
-  return lines.join('\n')
+  return items.map(item => `${todoSymbol(item.status)} ${item.content}`).join('\n')
 }
 
 export function isTodoActive(items: readonly TodoItemLike[]): boolean {

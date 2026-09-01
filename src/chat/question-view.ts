@@ -86,3 +86,17 @@ function answerFromJson(value: unknown): AskUserQuestionAnswerItemLike | undefin
     ...(typeof record.custom === 'string' ? { custom: record.custom } : {}),
   }
 }
+
+/** The ask questions rendered as numbered entries with their options, used
+ *  as the card args area (the original question formatting without the
+ *  tool-name title line). */
+export function formatAskQuestions(raw: unknown): string {
+  const questions = parseAskQuestions(raw)
+  if (questions.length === 0) return ''
+  return questions.map((question, index) => {
+    const lines = [`${index + 1}. ${question.question}`]
+    if (question.detail !== undefined && question.detail !== '') lines.push(`${' '.repeat(3)}${question.detail}`)
+    for (const option of question.options ?? []) lines.push(`${' '.repeat(3)}${option.label}`)
+    return lines.join('\n')
+  }).join('\n')
+}

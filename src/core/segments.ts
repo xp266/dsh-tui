@@ -1,4 +1,4 @@
-import { computeWrapStarts, segmentGraphemes } from './text.ts'
+import { computeWrapStarts, normalizeWrapText, segmentGraphemes } from './text.ts'
 
 export interface MarkStyle {
   color?: string
@@ -47,7 +47,7 @@ export function wrapSegments(segments: Segment[], width: number): Segment[][] {
     styles = []
   }
   for (const seg of segments) {
-    const parts = seg.text.split('\n')
+    const parts = normalizeWrapText(seg.text).split('\n')
     for (let p = 0; p < parts.length; p++) {
       if (p > 0) flushLine()
       appendClusters(parts[p]!, seg.style, clusters, styles)

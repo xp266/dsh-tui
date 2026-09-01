@@ -52,10 +52,8 @@ describe('parseTodoArgs / parseTodoResult', () => {
 })
 
 describe('formatTodoBubble', () => {
-  it('renders the title, a blank line, the checklist, and a trailing blank line', () => {
+  it('renders the checklist symbols only (no tool-name title line)', () => {
     expect(formatTodoBubble(items)).toBe([
-      'todo_write',
-      '',
       '[√] 首先完成代码',
       '[●] 对代码进行测试',
       '[ ] 构建项目',

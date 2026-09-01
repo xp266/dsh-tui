@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { CallId, createToolResultMessage } from '@deepseek-ai/dsh-llm'
 import { initialTurnState, reduceChatEvent, PLAN_TOOL_NAME } from '../src/chat/store.ts'
-import type { Message, PlanMessage } from '../src/model/message.ts'
+import type { Message } from '../src/model/message.ts'
 import { rowInfoAt, rowCount } from '../src/ui/message/layout.ts'
 import type { AskQuestionItemLike } from '../src/chat/interactions.ts'
 import { isPlanReview } from '../src/ui/panels/question-model.ts'
@@ -25,48 +26,39 @@ function deltaChunk(callId: string, text: string): SessionEvent {
   return { type: 'assistant/chunk', data: { step: 1, chunk: { type: 'tool-call-delta', id: callId, name: PLAN_TOOL_NAME, argumentsDelta: text } } } as unknown as SessionEvent
 }
 
-function planOf(messages: readonly Message[]): PlanMessage | undefined {
-  return messages.find((m): m is PlanMessage => m.kind === 'plan')
-}
-
-describe('exit_plan_mode plan bubble', () => {
-  it('streams partial markdown into the bubble and finalizes at commit', () => {
+describe('exit_plan_mode tool card', () => {
+  it('streams a placeholder card and commits the full arguments', () => {
     const d = driver()
     d.fire({ type: 'turn/start', data: {} } as SessionEvent)
     const full = JSON.stringify({ plan: PLAN })
     const cut = full.indexOf('Refactor') + 4
     d.fire(deltaChunk('c1', full.slice(0, cut)))
-    const streaming = planOf(d.messages())
-    expect(streaming?.streaming).toBe(true)
-    expect(streaming?.body).toBe(PLAN.slice(0, cut - '{"plan":"'.length))
-    d.fire(deltaChunk('c1', full.slice(cut)))
-    expect(planOf(d.messages())?.body).toBe(PLAN)
+    const streaming = d.messages()[0]
+    expect(streaming).toMatchObject({ kind: 'tool-card', tool: PLAN_TOOL_NAME, streaming: true, running: true, argsBody: '' })
     d.fire({ type: 'tool/call', data: { callId: 'c1', name: PLAN_TOOL_NAME, arguments: full } } as unknown as SessionEvent)
-    const committed = planOf(d.messages())
-    expect(committed?.streaming).toBe(false)
-    expect(committed?.running).toBe(true)
-    expect(committed?.body).toBe(PLAN)
+    const committed = d.messages()[0]
+    expect(committed).toMatchObject({ kind: 'tool-card', streaming: false, running: true, argsBody: '' })
   })
 
-  it('closes on approval and records keep-planning feedback as error', () => {
+  it('settles the result and records keep-planning feedback as error', () => {
     const d = driver()
     d.fire({ type: 'turn/start', data: {} } as SessionEvent)
-    d.fire(deltaChunk('c1', JSON.stringify({ plan: PLAN })))
     d.fire({ type: 'tool/call', data: { callId: 'c1', name: PLAN_TOOL_NAME, arguments: JSON.stringify({ plan: PLAN }) } } as unknown as SessionEvent)
-    const resultBase = { message: { role: 'tool', content: [{ type: 'text', text: 'ok', toolCallId: 'c1' }] }, meta: undefined }
-    void resultBase.meta
-    d.fire({ type: 'tool/result', data: resultBase } as unknown as SessionEvent)
-    expect(planOf(d.messages())?.running).toBe(false)
-    expect(planOf(d.messages())?.error).toBeUndefined()
+    d.fire({
+      type: 'tool/result',
+      data: { message: createToolResultMessage({ callId: CallId('c1'), content: [{ type: 'text', text: 'ok' }], isError: false }) },
+    } as unknown as SessionEvent)
+    expect(d.messages()[0]).toMatchObject({ kind: 'tool-card', running: false, resultBody: 'ok' })
+    expect((d.messages()[0] as { error?: string }).error).toBeUndefined()
 
     const e = driver()
     e.fire({ type: 'turn/start', data: {} } as SessionEvent)
-    e.fire(deltaChunk('c2', JSON.stringify({ plan: PLAN })))
     e.fire({ type: 'tool/call', data: { callId: 'c2', name: PLAN_TOOL_NAME, arguments: JSON.stringify({ plan: PLAN }) } } as unknown as SessionEvent)
-    e.fire({ type: 'tool/result', data: { ...resultBase, error: { name: 'feedback' }, message: { role: 'tool', content: [{ type: 'text', text: 'make it faster', isError: true, toolCallId: 'c2' }] } } } as unknown as SessionEvent)
-    const failed = planOf(e.messages())
-    expect(failed?.running).toBe(false)
-    expect(failed?.error).toContain('make it faster')
+    e.fire({
+      type: 'tool/result',
+      data: { error: { name: 'feedback' }, message: createToolResultMessage({ callId: CallId('c2'), content: [{ type: 'text', text: 'make it faster' }], isError: true }) },
+    } as unknown as SessionEvent)
+    expect(e.messages()[0]).toMatchObject({ kind: 'tool-card', running: false, error: 'error: feedback' })
   })
 })
 

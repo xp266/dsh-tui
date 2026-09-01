@@ -73,4 +73,14 @@ describe('word wrapping', () => {
       }
     }
   })
+
+  it('normalizes tabs and carriage returns identically in both wrap paths', () => {
+    const input = 'a\tb\r\nc\td'
+    const plain = wrapLines(input, 20)
+    const styled = wrapSegments([{ text: input, style: {} }], 20).map(row => row.map(segment => segment.text).join(''))
+    expect(plain).toEqual(['a    b', 'c    d'])
+    expect(styled).toEqual(['a    b', 'c    d'])
+    expect(wrapLines('a\rb', 20)).toEqual(['a', 'b'])
+    expect(wrapLines('a\tb', 20)).toEqual(['a    b'])
+  })
 })

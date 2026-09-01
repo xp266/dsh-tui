@@ -1,8 +1,8 @@
 import { wrapSegments } from '../../core/segments.ts'
 import type { Segment } from '../../core/segments.ts'
 import { COLORS } from '../../theme.ts'
-import type { ToolDiffMessage } from '../../model/message.ts'
 import { highlightCodeBlock } from './md/highlight.ts'
+import type { DiffLine } from '../../model/message.ts'
 
 const EXTENSION_LANGUAGES: Record<string, string> = {
   ts: 'typescript',
@@ -85,7 +85,7 @@ export function sniffLanguage(content: string): string {
   return ''
 }
 
-export function toolDiffHeader(message: ToolDiffMessage): string {
+export function toolDiffHeader(message: { tool: string; path: string }): string {
   return message.path === '' ? message.tool : `${message.tool} ${message.path}`
 }
 
@@ -113,7 +113,14 @@ function splitHighlightedLines(source: string, lang: string, streamId: string): 
   return out
 }
 
-export function renderToolDiffBody(message: ToolDiffMessage, width: number): ToolDiffBody {
+export interface ToolDiffLike {
+  tool: string
+  path: string
+  hunks: readonly (readonly DiffLine[])[]
+  error?: string
+}
+
+export function renderToolDiffBody(message: ToolDiffLike, width: number): ToolDiffBody {
   const budget = Math.max(4, width)
   const bodyWidth = Math.max(2, budget - 2)
   const lines: string[] = []

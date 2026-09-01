@@ -23,7 +23,7 @@ function stripAnsi(text: string): string {
 const SPINNER_CHARS = new Set(glyphs.spinnerFrames.join(''))
 
 describe('tool streaming bubble', () => {
-  it('shows the spinner next to the tool name during argument streaming and drops it on commit', async () => {
+  it('shows the tool name during argument streaming and the full args on commit', async () => {
     const bridge = fakeBridge()
     let handler: ((event: SessionEvent) => void) | undefined
     bridge.subscribe = cb => {
@@ -45,8 +45,7 @@ describe('tool streaming bubble', () => {
     const streamingFrame = stripAnsi(view.lastFrame() ?? '')
     const labelLine = streamingFrame.split('\n').find(line => line.includes('bash'))
     expect(labelLine).toBeTruthy()
-    const hasSpinnerChar = [...(labelLine ?? '')].some(ch => SPINNER_CHARS.has(ch))
-    expect(hasSpinnerChar).toBe(true)
+    expect(streamingFrame).not.toContain('"command": "ls"')
 
     act(() => {
       handler?.({
@@ -60,7 +59,9 @@ describe('tool streaming bubble', () => {
     const committedFrame = stripAnsi(view.lastFrame() ?? '')
     const committedLine = committedFrame.split('\n').find(line => line.includes('bash'))
     expect(committedLine).toBeTruthy()
-    expect([...(committedLine ?? '')].some(ch => SPINNER_CHARS.has(ch))).toBe(true)
+    // The committed card keeps a bare header: no protocol view, no secondary
+    // parameter, so nothing is rendered below the tool name.
+    expect(committedFrame).not.toContain('"command": "ls"')
   })
 
   it('renders the ask-user placeholder with spinner then settles to the bare tool name', async () => {
@@ -124,24 +125,21 @@ describe('tool streaming bubble', () => {
     })
     await flush(250)
     const streamingFrame = stripAnsi(view.lastFrame() ?? '')
-    expect(streamingFrame).toContain('write src/none/a.ts')
+    expect(streamingFrame).toContain('write')
     expect(streamingFrame).not.toContain('+ const a = 1')
-    expect(streamingFrame).toContain('const a = 1')
-    const writeLine = streamingFrame.split('\n').find(line => line.includes('write src/none/a.ts'))
-    expect([...(writeLine ?? '')].some(ch => SPINNER_CHARS.has(ch))).toBe(false)
+    expect(streamingFrame).not.toContain('"file_path"')
 
     act(() => {
       handler?.({ type: 'tool/call', seq: 2, time: 0, data: { turn: 1, step: 1, callId: CallId('c9'), name: 'write', arguments: '{"file_path":"src/none/a.ts","content":"const a = 1\\nconst b = 2"}' } } as unknown as SessionEvent)
     })
     await flush(250)
     const committedFrame = stripAnsi(view.lastFrame() ?? '')
-    expect(committedFrame).toContain('+ const b = 2')
-    const bubbleLines = committedFrame.split('\n').filter(line => line.includes('write src/none/a.ts') || line.trimStart().startsWith('+ const'))
-    expect(bubbleLines.length).toBeGreaterThan(0)
-    expect(bubbleLines.some(line => [...line].some(ch => SPINNER_CHARS.has(ch)))).toBe(false)
+    expect(committedFrame).toContain('write')
+    expect(committedFrame).not.toContain('"file_path"')
+    expect(committedFrame).not.toContain('+ const')
   })
 
-  it('holds the edit body until the call commits, then shows the full diff at once', async () => {
+  it('holds the edit placeholder until the call commits, then shows the full arguments at once', async () => {
     const bridge = fakeBridge()
     let handler: ((event: SessionEvent) => void) | undefined
     bridge.subscribe = cb => {
@@ -165,7 +163,7 @@ describe('tool streaming bubble', () => {
     })
     await flush(250)
     const streamingFrame = stripAnsi(view.lastFrame() ?? '')
-    expect(streamingFrame).toContain('edit src/b.ts')
+    expect(streamingFrame).toContain('edit')
     expect(streamingFrame).not.toContain('- old')
 
     act(() => {
@@ -178,7 +176,8 @@ describe('tool streaming bubble', () => {
     })
     await flush(250)
     const committedFrame = stripAnsi(view.lastFrame() ?? '')
-    expect(committedFrame).toContain('- old')
-    expect(committedFrame).toContain('+ new')
+    expect(committedFrame).toContain('edit')
+    expect(committedFrame).not.toContain('"old_string"')
+    expect(committedFrame).not.toContain('- old')
   })
 })

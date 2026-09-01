@@ -133,11 +133,11 @@ describe('chat event reducer', () => {
     expect(messages[0]).toMatchObject({ kind: 'bubble', role: 'assistant', content: 'Hello world' })
   })
 
-  it('tracks tool call and result as a collapsible pair', () => {
+  it('tracks tool call and result as a tool-card pair', () => {
     let state = apply([], [toolCall('c1')])
-    expect(state.messages[0]).toMatchObject({ kind: 'collapsible', label: 'bash', running: true, collapsed: true })
+    expect(state.messages[0]).toMatchObject({ kind: 'tool-card', label: 'bash', running: true, argsBody: '' })
     state = reduceChatEvent(state.messages, toolResult('c1', 'out'), state.turn)
-    expect(state.messages[0]).toMatchObject({ kind: 'collapsible', label: 'bash', running: false, collapsed: true, body: 'out' })
+    expect(state.messages[0]).toMatchObject({ kind: 'tool-card', label: 'bash', running: false, argsBody: '', resultBody: 'out' })
   })
 
   it('drops an empty Thinking block at turn end', () => {
@@ -152,7 +152,7 @@ describe('chat event reducer', () => {
     expect(messages).toHaveLength(4)
     expect(messages[0]).toMatchObject({ role: 'user', content: 'q' })
     expect(messages[1]).toMatchObject({ label: 'Thought: 0ms', running: false, collapsed: true })
-    expect(messages[2]).toMatchObject({ label: 'bash', running: false, collapsed: true, body: 'o' })
+    expect(messages[2]).toMatchObject({ label: 'bash', running: false, argsBody: '', resultBody: 'o' })
     expect(messages[3]).toMatchObject({ role: 'assistant', content: 'AB' })
   })
 
@@ -174,7 +174,7 @@ describe('chat event reducer', () => {
       },
     }
     state = reduceChatEvent(state.messages, failed, state.turn)
-    expect(state.messages[0]).toMatchObject({ body: 'error: boom\nstderr' })
+    expect(state.messages[0]).toMatchObject({ error: 'error: boom', resultBody: 'stderr' })
   })
 
   it('ignores injected context messages that are not user-typed', () => {
@@ -220,9 +220,9 @@ describe('chat event reducer', () => {
     const next = reduceChatEvent(messages, bashCall, turn, fakePresenter())
     messages = next.messages
     turn = next.turn
-    expect(messages[0]).toMatchObject({ kind: 'collapsible', label: 'bash[command=ls -a]', running: true, body: 'ls -a' })
+    expect(messages[0]).toMatchObject({ kind: 'tool-card', label: 'bash[command=ls -a]', running: true, argsBody: 'ls -a' })
     const done = reduceChatEvent(messages, toolResult('c1', 'xx.xx'), turn, fakePresenter())
-    expect(done.messages[0]).toMatchObject({ running: false, body: 'ls -a\n\nxx.xx' })
+    expect(done.messages[0]).toMatchObject({ running: false, argsBody: 'ls -a', resultBody: 'xx.xx' })
   })
 
   it('keeps only the command line when the result content is empty', () => {
@@ -241,7 +241,7 @@ describe('chat event reducer', () => {
     }
     const called = reduceChatEvent(messages, call, turn, presenter)
     const done = reduceChatEvent(called.messages, toolResult('c1', ''), called.turn, presenter)
-    expect(done.messages[0]).toMatchObject({ running: false, body: 'ls -a' })
+    expect(done.messages[0]).toMatchObject({ running: false, argsBody: 'ls -a' })
   })
 
   it('falls back to the argument JSON when neither command nor output exists', () => {
@@ -260,7 +260,7 @@ describe('chat event reducer', () => {
     }
     const called = reduceChatEvent(messages, call, turn, presenter)
     const done = reduceChatEvent(called.messages, toolResult('c1', ''), called.turn, presenter)
-    expect(done.messages[0]).toMatchObject({ running: false, body: '{\n  "jobs": []\n}' })
+    expect(done.messages[0]).toMatchObject({ running: false, argsBody: '', resultBody: '{\n  "jobs": []\n}' })
   })
 
   it('renders one Thinking row per step', () => {
@@ -291,7 +291,7 @@ describe('chat event reducer', () => {
   it('skips a whitespace-only step before a real step in the same turn', () => {
     const { messages } = apply([], [textDelta('\n\n', 1), toolCall('c1'), toolResult('c1', 'o'), textDelta('A', 2)])
     expect(messages).toHaveLength(2)
-    expect(messages[0]).toMatchObject({ label: 'bash', body: 'o' })
+    expect(messages[0]).toMatchObject({ label: 'bash', resultBody: 'o' })
     expect(messages[1]).toMatchObject({ role: 'assistant', content: 'A' })
   })
 
@@ -405,12 +405,10 @@ describe('chat event reducer', () => {
     expect(state.messages[0]).toMatchObject({ kind: 'bubble', content: 'A' })
   })
 
-  it('keeps a manually expanded tool open through its result', () => {
+  it('keeps the full tool card args and result together', () => {
     let state = apply([], [toolCall('c1')])
-    const tool = state.messages[0]
-    if (tool !== undefined && tool.kind === 'collapsible') state.messages[0] = { ...tool, collapsed: false }
     state = reduceChatEvent(state.messages, toolResult('c1', 'out'), state.turn)
-    expect(state.messages[0]).toMatchObject({ running: false, collapsed: false })
+    expect(state.messages[0]).toMatchObject({ running: false, argsBody: '', resultBody: 'out' })
   })
 
   it('keeps a manually expanded Thinking open through turn end', () => {
@@ -424,7 +422,7 @@ describe('chat event reducer', () => {
   it('marks an interrupted tool call at turn end', () => {
     let state = apply([], [toolCall('c1')])
     const next = reduceChatEvent(state.messages, turnEnd(), state.turn)
-    expect(next.messages[0]).toMatchObject({ running: false, body: '(no result)' })
+    expect(next.messages[0]).toMatchObject({ running: false })
   })
 
   it('replaces the body with structured content when the result presentation replaces', () => {
@@ -442,9 +440,9 @@ describe('chat event reducer', () => {
       argsJson: () => '{}',
     }
     const called = reduceChatEvent(messages, call, turn, presenter)
-    expect(called.messages[0]).toMatchObject({ label: 'read[src/main.py, offset=1]', body: '{}', bodyCol: 1 })
+    expect(called.messages[0]).toMatchObject({ label: 'read[src/main.py, offset=1]', argsBody: '{}', bodyCol: 1 })
     const done = reduceChatEvent(called.messages, toolResult('c1', 'x'), called.turn, presenter)
-    expect(done.messages[0]).toMatchObject({ running: false, body: ' 1 aaa\n 2 bbb', bodyCol: 1 })
+    expect(done.messages[0]).toMatchObject({ running: false, resultBody: ' 1 aaa\n 2 bbb', bodyCol: 1 })
   })
 
   it('prefixes an error line when the replace presentation accompanies a failed result', () => {
@@ -472,7 +470,7 @@ describe('chat event reducer', () => {
       },
     }
     const done = reduceChatEvent(called.messages, failed, called.turn, presenter)
-    expect(done.messages[0]).toMatchObject({ body: 'error: boom\nraw' })
+    expect(done.messages[0]).toMatchObject({ error: 'error: boom', resultBody: 'raw' })
   })
 
   it('drops the diff body column when a result fails so the body aligns with the label', () => {
@@ -501,12 +499,12 @@ describe('chat event reducer', () => {
       },
     }
     const done = reduceChatEvent(called.messages, failed, called.turn, presenter)
-    expect(done.messages[0]).toMatchObject({ body: 'error: boom\nError: file has not been read yet', bodyCol: undefined })
+    expect(done.messages[0]).toMatchObject({ error: 'error: boom', resultBody: 'Error: file has not been read yet', bodyCol: undefined })
     const expanded = done.messages.map(message =>
-      message.kind === 'collapsible' ? { ...message, collapsed: false } : message,
+      message.kind === 'tool-card' ? { ...message, collapsed: false } : message,
     )
     rowIndexFor(expanded, WIDTH)
-    expect(rowInfoAt(expanded, WIDTH, 2)).toMatchObject({ kind: 'text', colStart: 4 })
+    expect(rowInfoAt(expanded, WIDTH, 3)).toMatchObject({ kind: 'text', colStart: 4 })
   })
 
   it('keeps the presentation body column when a result succeeds', () => {
@@ -523,7 +521,7 @@ describe('chat event reducer', () => {
   })
 })
 
-describe('ask_user_question bubble', () => {
+describe('ask_user_question tool card', () => {
   const askCall = (callId = 'a1'): SessionEvent => ({
     type: 'tool/call',
     seq: 1,
@@ -563,54 +561,50 @@ describe('ask_user_question bubble', () => {
     }
   }
 
-  it('shows a title-only bubble while the question is pending', () => {
+  it('shows the full call arguments in the card while the question is pending', () => {
     const state = apply([], [askCall()])
     expect(state.messages).toHaveLength(1)
-    expect(state.messages[0]).toMatchObject({ kind: 'bubble', role: 'assistant', variant: 'ask-user', content: 'ask_user_question', pending: true })
-  })
-
-  it('renders questions and answers in the bubble once answered', () => {
-    const state = apply([], [askCall(), askResult()])
     expect(state.messages[0]).toMatchObject({
-      kind: 'bubble',
-      role: 'assistant',
-      variant: 'ask-user',
-      pending: false,
-      content: [
-        'ask_user_question',
-        '',
-        '1. 第一个问题',
-        '   A',
-        '2. 第二个问题',
-        '   自定义',
-      ].join('\n'),
+      kind: 'tool-card',
+      tool: 'ask_user_question',
+      label: 'ask_user_question',
+      running: true,
+      argsBody: '',
     })
   })
 
-  it('aligns the answered bubble rows with an AI reply and keeps them gray', () => {
+  it('appends the answer payload verbatim once answered', () => {
+    const state = apply([], [askCall(), askResult()])
+    expect(state.messages[0]).toMatchObject({
+      kind: 'tool-card',
+      running: false,
+      resultBody: JSON.stringify({ answers: [{ id: 'q1', selected: ['A'] }, { id: 'q2', selected: [], custom: '自定义' }] }),
+    })
+    expect((state.messages[0] as { resultBody?: string }).resultBody).toContain('"answers"')
+  })
+
+  it('aligns the card rows with an AI reply and keeps them gray', () => {
     const state = apply([], [askCall(), askResult()])
     rowIndexFor(state.messages, WIDTH)
     expect(rowInfoAt(state.messages, WIDTH, 0)).toMatchObject({ kind: 'pad', background: true })
     expect(rowInfoAt(state.messages, WIDTH, 1)).toMatchObject({ kind: 'text', colStart: 4, muted: true, text: 'ask_user_question' })
-    expect(rowInfoAt(state.messages, WIDTH, 3)).toMatchObject({ kind: 'text', muted: true, text: '1. 第一个问题' })
-    expect(rowInfoAt(state.messages, WIDTH, 4)).toMatchObject({ kind: 'text', muted: true, text: '   A' })
   })
 
-  it('shows the failure text where answers would appear', () => {
+  it('shows the failure text where the result would appear', () => {
     const state = apply([], [askCall(), askResult('a1', { text: 'Error: the user closed the question panel', isError: true })])
     expect(state.messages[0]).toMatchObject({
-      variant: 'ask-user',
-      content: 'ask_user_question\n\nError: the user closed the question panel',
+      kind: 'tool-card',
+      resultBody: 'Error: the user closed the question panel',
     })
   })
 
   it('falls back to the event error identity when no result text exists', () => {
     const state = apply([], [askCall(), askResult('a1', { text: '', error: { name: 'AbortError', code: 'E_ABORT' } })])
-    expect(state.messages[0]).toMatchObject({ content: 'ask_user_question\n\nerror: AbortError' })
+    expect(state.messages[0]).toMatchObject({ kind: 'tool-card', error: 'error: AbortError' })
   })
 })
 
-describe('todo_write bubble', () => {
+describe('todo_write tool card', () => {
   const todoArgs = {
     todos: [
       { content: '首先完成代码', status: 'completed' },
@@ -624,25 +618,19 @@ describe('todo_write bubble', () => {
     data: { turn: 1, step: 1, callId: CallId(callId), name: 'todo_write', arguments: JSON.stringify(todoArgs) },
   })
 
-  it('renders the checklist as a plain bubble from the call arguments', () => {
+  it('shows the full call arguments in the card', () => {
     const state = apply([], [todoCall()])
     expect(state.messages).toHaveLength(1)
     expect(state.messages[0]).toMatchObject({
-      kind: 'bubble',
-      role: 'assistant',
-      variant: 'todo',
-      hang: 4,
-      pending: true,
-      content: [
-        'todo_write',
-        '',
-        '[√] 首先完成代码',
-        '[ ] 构建项目',
-      ].join('\n'),
+      kind: 'tool-card',
+      tool: 'todo_write',
+      label: 'todo_write',
+      running: true,
+      argsBody: '',
     })
   })
 
-  it('keeps each todo_write call as its own bubble', () => {
+  it('keeps each todo_write call as its own card', () => {
     const updated = { todos: [{ content: '构建项目', status: 'in_progress' }] }
     const second: SessionEvent = {
       type: 'tool/call',
@@ -652,10 +640,10 @@ describe('todo_write bubble', () => {
     }
     const state = apply([], [todoCall(), second])
     expect(state.messages).toHaveLength(2)
-    expect(state.messages[1]).toMatchObject({ variant: 'todo', content: 'todo_write\n\n[●] 构建项目' })
+    expect(state.messages[1]).toMatchObject({ tool: 'todo_write', argsBody: '' })
   })
 
-  it('upgrades the checklist when the result carries the final list', () => {
+  it('appends the final list verbatim when the result settles', () => {
     const finalList = { todos: [{ content: '构建项目', status: 'completed' }] }
     const result: SessionEvent = {
       type: 'tool/result',
@@ -672,28 +660,30 @@ describe('todo_write bubble', () => {
       },
     }
     const state = apply([], [todoCall(), result])
-    expect(state.messages[0]).toMatchObject({ content: 'todo_write\n\n[√] 构建项目' })
+    expect(state.messages[0]).toMatchObject({
+      kind: 'tool-card',
+      running: false,
+      resultBody: JSON.stringify(finalList),
+    })
+    expect((state.messages[0] as { argsBody?: string }).argsBody).toBe('')
   })
 
-  it('aligns wrapped item lines under the first item text column', () => {
-    const long = { todos: [{ content: 'a very long task description that certainly keeps going far beyond the wrap width used for this check', status: 'pending' }] }
+  it('renders an empty args area when the protocol defines no secondary parameter', () => {
     const call: SessionEvent = {
       type: 'tool/call',
       seq: 1,
       time: 0,
-      data: { turn: 1, step: 1, callId: CallId('t9'), name: 'todo_write', arguments: JSON.stringify(long) },
+      data: { turn: 1, step: 1, callId: CallId('t9'), name: 'todo_write', arguments: JSON.stringify(todoArgs) },
     }
     const state = apply([], [call])
+    expect(state.messages[0]).toMatchObject({ kind: 'tool-card', argsBody: '' })
     rowIndexFor(state.messages, WIDTH)
-    const rows = [3, 4].map(offset => rowInfoAt(state.messages, WIDTH, offset))
-    expect(rows[0]).toMatchObject({ kind: 'text', muted: true })
-    expect(rows[0]!.text.startsWith('[ ] a very long')).toBe(true)
-    expect(rows[1]!.text.startsWith('    ')).toBe(true)
-    expect(rows[1]!.text).toBe('    ' + rows[1]!.text.trimStart())
+    // shell: pad(0) header(1) pad(2) blank(3). No args rows.
+    expect(rowInfoAt(state.messages, WIDTH, 3)).toMatchObject({ kind: 'blank' })
   })
 })
 
-describe('write and edit tool diff bubbles', () => {
+describe('write and edit tool cards', () => {
   function callDelta(callId: string, name: string, delta: string): SessionEvent {
     return {
       type: 'assistant/chunk',
@@ -734,82 +724,34 @@ describe('write and edit tool diff bubbles', () => {
     }
   }
 
-  it('shows only the header while write arguments stream, without any body', () => {
+  it('shows a streaming placeholder while write arguments stream, then the full arguments on commit', () => {
     const state = apply([], [
       callDelta('w1', 'write', '{"file_path":"/w/a.ts","content":"const a = 1'),
       callDelta('w1', 'write', '\\nconst b = 2'),
+      commitCall('w1', 'write', { file_path: '/w/a.ts', content: 'const a = 1\nconst b = 2' }),
     ])
-    expect(state.messages[0]).toMatchObject({ kind: 'tool-diff', tool: 'write', path: '/w/a.ts', streaming: true, hunks: [] })
-  })
-
-  it('computes the overwrite diff once at commit against the on-disk old text', () => {
-    const events = [
-      callDelta('w4', 'write', '{"file_path":"/w/over.ts","content":"keep\\nnew\\n'),
-      callDelta('w4', 'write', 'tail"}'),
-      commitCall('w4', 'write', { file_path: '/w/over.ts', content: 'keep\nnew\ntail' }),
-    ]
-    let messages: Message[] = []
-    let turn = initialTurnState()
-    for (const event of events) {
-      const next = reduceChatEvent(messages, event, turn, undefined, {
-        readFile: path => path === '/w/over.ts' ? 'keep\nold\ndropped' : null,
-      })
-      messages = next.messages
-      turn = next.turn
-    }
-    expect(messages[0]).toMatchObject({
-      kind: 'tool-diff',
-      streaming: false,
+    expect(state.messages[0]).toMatchObject({
+      kind: 'tool-card',
+      tool: 'write',
+      label: 'write',
       running: true,
-      hunks: [[
-        { kind: 'ctx', text: 'keep' },
-        { kind: 'del', text: 'old' },
-        { kind: 'del', text: 'dropped' },
-        { kind: 'add', text: 'new' },
-        { kind: 'add', text: 'tail' },
-      ]],
+      argsBody: '',
     })
   })
 
-  it('falls back to additions-only when the old file cannot be read', () => {
+  it('records the error on the card when the result fails', () => {
     const state = apply([], [
-      commitCall('w5', 'write', { file_path: '/w/new-file.ts', content: 'a\nb' }),
+      commitCall('e3', 'edit', { file_path: '/w/e.ts', old_string: 'a', new_string: 'b' }),
+      settleResult('e3', { error: { name: 'FS_NOT_FOUND', code: 'E_MISSING' } }),
     ])
     expect(state.messages[0]).toMatchObject({
-      hunks: [[{ kind: 'add', text: 'a' }, { kind: 'add', text: 'b' }]],
+      running: false,
+      error: 'error: FS_NOT_FOUND',
+      resultBody: 'The file has been updated successfully.',
     })
   })
 
-  it('commits the full diff on tool/call and keeps the spinner off', () => {
-    const state = apply([], [
-      callDelta('w2', 'write', '{"file_path":"/w/b.py","content":"x = 1"}'),
-      commitCall('w2', 'write', { file_path: '/w/b.py', content: 'x = 1\ny = 2' }),
-    ])
-    expect(state.messages[0]).toMatchObject({
-      kind: 'tool-diff',
-      path: '/w/b.py',
-      streaming: false,
-      running: true,
-      hunks: [[{ kind: 'add', text: 'x = 1' }, { kind: 'add', text: 'y = 2' }]],
-    })
-  })
-
-  it('shows only the header for edit while arguments stream and renders the diff once on commit', () => {
-    const state = apply([], [
-      callDelta('e1', 'edit', '{"file_path":"/w/c.ts","old_string":"a")'),
-      commitCall('e1', 'edit', { file_path: '/w/c.ts', old_string: 'a', new_string: 'b' }),
-    ])
-    expect(state.messages).toHaveLength(1)
-    expect(state.messages[0]).toMatchObject({
-      kind: 'tool-diff',
-      tool: 'edit',
-      path: '/w/c.ts',
-      hunks: [[{ kind: 'del', text: 'a' }, { kind: 'add', text: 'b' }]],
-      streaming: false,
-    })
-  })
-
-  it('applies result meta diffs with context lines when the tool settles', () => {
+  it('applies result meta diffs into the diff slot when the tool settles', () => {
     const state = apply([], [
       commitCall('e2', 'edit', { file_path: '/w/d.ts', old_string: 'a', new_string: 'b' }),
       settleResult('e2', {
@@ -818,32 +760,37 @@ describe('write and edit tool diff bubbles', () => {
     ])
     expect(state.messages[0]).toMatchObject({
       running: false,
-      hunks: [[
-        { kind: 'ctx', text: 'ctx' },
-        { kind: 'del', text: 'a' },
-        { kind: 'add', text: 'b' },
-        { kind: 'ctx', text: 'ctx' },
-      ]],
+      resultBody: 'The file has been updated successfully.',
+      diff: {
+        path: '/w/d.ts',
+        hunks: [[
+          { kind: 'ctx', text: 'ctx' },
+          { kind: 'del', text: 'a' },
+          { kind: 'add', text: 'b' },
+          { kind: 'ctx', text: 'ctx' },
+        ]],
+      },
     })
   })
 
-  it('records the error on the bubble when the result fails', () => {
-    const state = apply([], [
-      commitCall('e3', 'edit', { file_path: '/w/e.ts', old_string: 'a', new_string: 'b' }),
-      settleResult('e3', { error: { name: 'FS_NOT_FOUND', code: 'E_MISSING' } }),
-    ])
-    expect(state.messages[0]).toMatchObject({
-      running: false,
-      error: 'error: FS_NOT_FOUND The file has been updated successfully.',
-    })
-  })
-
-  it('keeps the committed bubble when no presenter supplies structured views', () => {
+  it('keeps the committed card when no presenter supplies structured views', () => {
     const state = apply([], [
       commitCall('w3', 'write', { file_path: 'f.txt', content: 'hi' }),
       settleResult('w3'),
     ])
-    expect(state.messages[0]).toMatchObject({ kind: 'tool-diff', running: false, hunks: [[{ kind: 'add', text: 'hi' }]] })
+    expect(state.messages[0]).toMatchObject({ kind: 'tool-card', running: false, argsBody: '' })
+    expect((state.messages[0] as { resultBody?: string }).resultBody).toBe('The file has been updated successfully.')
+    expect(state.messages[0]).not.toMatchObject({ diff: expect.anything() })
+  })
+
+  it('remains a bare card without argument-derived diffs', () => {
+    const state = apply([], [commitCall('w4', 'write', { file_path: '/w/over.ts', content: 'keep\nnew\ntail' })])
+    expect(state.messages[0]).toMatchObject({
+      kind: 'tool-card',
+      running: true,
+      argsBody: '',
+    })
+    expect(state.messages[0]).not.toMatchObject({ diff: expect.anything() })
   })
 })
 
@@ -886,16 +833,16 @@ describe('agent activity tracking', () => {
   it('shows a streaming placeholder on the first tool-call-delta and commits in place', () => {
     const state = apply([], [toolCallDelta('c7', 'bash'), toolCall('c7')])
     expect(state.messages).toHaveLength(1)
-    expect(state.messages[0]).toMatchObject({ kind: 'collapsible', label: 'bash', running: true, collapsed: true })
+    expect(state.messages[0]).toMatchObject({ kind: 'tool-card', label: 'bash', running: true })
     const committed = state.messages[0]!
-    expect(committed.kind === 'collapsible' ? committed.streaming : undefined).toBe(false)
-    expect(committed.kind === 'collapsible' ? committed.label.startsWith('bash') : false).toBe(true)
+    expect(committed.kind === 'tool-card' ? committed.streaming : undefined).toBe(false)
+    expect(committed.kind === 'tool-card' ? committed.label.startsWith('bash') : false).toBe(true)
     expect(state.turn.toolIds.get('c7')).toBe(committed.id)
   })
 
-  it('placeholder for ask-user uses the variant bubble with bare tool name', () => {
+  it('placeholder for ask-user uses the generic tool card', () => {
     const state = apply([], [toolCallDelta('c8', 'ask_user_question')])
-    expect(state.messages[0]).toMatchObject({ kind: 'bubble', variant: 'ask-user', content: 'ask_user_question', streaming: true })
+    expect(state.messages[0]).toMatchObject({ kind: 'tool-card', tool: 'ask_user_question', label: 'ask_user_question', streaming: true })
   })
 
   it('drops unresolved placeholders at turn end and clears streaming flags', () => {

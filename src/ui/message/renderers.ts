@@ -12,7 +12,7 @@ export interface MessageRendererResult {
 }
 
 export interface MessageRendererContribution {
-  /** Message kind to take over: 'bubble' | 'collapsible' | 'tool-diff' | 'compaction' | 'plan' | 'custom'. */
+  /** Message kind to take over: 'bubble' | 'collapsible' | 'tool-diff' | 'tool-card' | 'compaction' | 'plan' | 'custom'. */
   kind: MessageKind
   order?: number
   render(message: Message, width: number): MessageRendererResult | undefined

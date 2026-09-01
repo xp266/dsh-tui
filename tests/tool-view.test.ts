@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  dedupeTitle,
   formatDiffDiffs,
   formatReadLines,
+  pathFromTitle,
+  pickPrimaryParam,
   readBodyCol,
   relativize,
-  summarizeOthers,
+  remainingArgsJson,
   summarizeParams,
   truncateSummary,
 } from '../src/chat/tool-view.ts'
@@ -32,11 +35,6 @@ describe('tool-view', () => {
     expect(summarizeParams({ plugin: { kind: 'new' }, enabled: true }, '/w')).toBe('plugin={"kind":"new"}, enabled=true')
     expect(summarizeParams({ a: null, b: undefined, c: '' }, '/w')).toBe('')
     expect(summarizeParams('plain', '/w')).toBe('plain')
-  })
-
-  it('summarizes the remaining params after skipping keys', () => {
-    expect(summarizeOthers({ file_path: '/w/src/main.py', offset: 1, limit: 50 }, ['file_path'], '/w')).toBe(', offset=1, limit=50')
-    expect(summarizeOthers({ file_path: '/w/src/main.py' }, ['file_path'], '/w')).toBe('')
   })
 
   it('flattens newlines and tabs in values so the label stays on one line', () => {
@@ -87,5 +85,51 @@ describe('tool-view', () => {
     expect(readBodyCol([{ number: 9, text: 'a' }, { number: 10, text: 'b' }])).toBe(1)
     expect(readBodyCol([{ number: 100, text: 'a' }])).toBe(0)
     expect(readBodyCol([{ number: 1000, text: 'a' }])).toBe(0)
+  })
+})
+
+describe('generic param pickers', () => {
+  it('picks the shortest single-line value', () => {
+    expect(pickPrimaryParam({ rev: 1, id: 'goal-32d852a3-1fbf-47e6-a8c9-838dbf9e8114', name: 'hello' }))
+      .toEqual({ key: 'rev', value: '1' })
+    expect(pickPrimaryParam({ a: 'bb', b: 'aaa' })).toEqual({ key: 'a', value: 'bb' })
+  })
+
+  it('ignores multi-line strings, arrays, and objects', () => {
+    expect(pickPrimaryParam({ cmd: 'ls\n-rla', todos: [{ content: 'x' }], nested: { deep: 1 } })).toBeUndefined()
+    expect(pickPrimaryParam({ todos: [{ content: 'x' }], flag: true })).toEqual({ key: 'flag', value: 'true' })
+  })
+
+  it('returns nothing for non-object args', () => {
+    expect(pickPrimaryParam('plain')).toBeUndefined()
+    expect(pickPrimaryParam(undefined)).toBeUndefined()
+  })
+
+  it('drops the primary key from the remaining args JSON', () => {
+    expect(remainingArgsJson({ a: 1, b: 2 }, 'a')).toBe('{\n  "b": 2\n}')
+    expect(remainingArgsJson({ a: 1 }, 'a')).toBe('')
+    expect(remainingArgsJson({ a: 1 }, undefined)).toBe('{\n  "a": 1\n}')
+  })
+
+  it('extracts the path after the leading verb of a diff title', () => {
+    expect(pathFromTitle('Write foo.txt', '')).toBe('foo.txt')
+    expect(pathFromTitle('Edit src/a.ts', 'x')).toBe('src/a.ts')
+    expect(pathFromTitle(undefined, 'fallback.ts')).toBe('fallback.ts')
+  })
+
+  it('dedupes the tool name out of titles generically', () => {
+    expect(dedupeTitle('ralph', 'ralph')).toBe('')
+    expect(dedupeTitle('workflow', 'workflow: toolcheck-probe')).toBe('toolcheck-probe')
+    expect(dedupeTitle('create_goal', 'Create goal')).toBe('goal')
+    expect(dedupeTitle('grep', 'Grep EDITED|marker in /home/xp266/test/_toolcheck'))
+      .toBe('EDITED|marker in /home/xp266/test/_toolcheck')
+    expect(dedupeTitle('glob', 'Glob *.ts in src')).toBe('*.ts in src')
+    expect(dedupeTitle('todo_write', 'Update todo list')).toBe('Update todo list')
+    expect(dedupeTitle('web_search', 'DeepSeek AI latest model release news')).toBe('DeepSeek AI latest model release news')
+    expect(dedupeTitle('bash', 'sleep 15; echo hello')).toBe('sleep 15; echo hello')
+    expect(dedupeTitle('update_goal', 'Complete goal')).toBe('Complete goal')
+    expect(dedupeTitle('skill', 'Load skill bash')).toBe('Load skill bash')
+    expect(dedupeTitle('get_goal', 'Read current goal')).toBe('Read current goal')
+    expect(dedupeTitle('bash', '')).toBe('')
   })
 })

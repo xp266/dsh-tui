@@ -1,4 +1,4 @@
-import type { Message, ToolDiffMessage } from '../../model/message.ts'
+import type { Message, ToolCardMessage, ToolDiffMessage } from '../../model/message.ts'
 import type { CustomMessage } from '../../contract/index.ts'
 import { colToCharIndex, textWidth, truncate, wrapIndented, wrapLines } from '../../core/text.ts'
 import { hasFieldChar } from '../../core/fields.ts'
@@ -102,9 +102,10 @@ function bodyRows(count: number, options: { colStart: number; bg: boolean; muted
 }
 
 function renderBody(message: Message, width: number): BodyRendered {
+  const inner = width - BUBBLE_WIDTH_OFFSET
   const override = messageRendererOf(message.kind)
   if (override !== undefined) {
-    const rendered = override.render(message, width - BUBBLE_WIDTH_OFFSET + BUBBLE_WIDTH_OFFSET)
+    const rendered = override.render(message, inner)
     if (rendered !== undefined) {
       return {
         lines: rendered.lines,
@@ -115,7 +116,6 @@ function renderBody(message: Message, width: number): BodyRendered {
       }
     }
   }
-  const inner = width - BUBBLE_WIDTH_OFFSET
   switch (message.kind) {
     case 'bubble': {
       if (message.role !== 'user' && message.variant !== undefined) {
@@ -155,6 +155,34 @@ function renderBody(message: Message, width: number): BodyRendered {
       }
       const rendered = renderToolDiffBody(message, inner)
       return { lines: rendered.lines, rows: rendered.rows, bgs: rendered.bgs }
+    }
+    case 'tool-card': {
+      if (message.diff !== undefined && message.diff.hunks.length > 0) {
+        const rendered = renderToolDiffBody({
+          tool: message.tool,
+          path: message.diff.path,
+          hunks: message.diff.hunks,
+          error: message.error,
+        }, inner)
+        return { lines: rendered.lines, rows: rendered.rows, bgs: rendered.bgs }
+      }
+      const lines: string[] = []
+      const rows: Segment[][] = []
+      const parts: string[] = []
+      if (message.argsBody !== '') parts.push(message.argsBody)
+      if (message.resultBody !== undefined && message.resultBody !== '') parts.push(message.resultBody)
+      if (message.exitCode !== undefined) parts.push(`[exit code: ${message.exitCode}]`)
+      else if (message.signal !== undefined) parts.push(`[killed by signal: ${message.signal}]`)
+      if (parts.length === 0 && (message.error === undefined || message.error === '')) {
+        return { lines: [], rows: null, bgs: null }
+      }
+      lines.push(...wrapLines(parts.join('\n\n'), inner))
+      if (message.error !== undefined && message.error !== '') {
+        const text = truncate(message.error, Math.max(8, inner))
+        lines.push(text)
+        rows.push([{ text, style: { color: COLORS.errorText } }])
+      }
+      return { lines, rows: rows.length === 0 ? null : rows, bgs: null }
     }
     case 'plan': {
       if (message.body === '' && message.error === undefined) return { lines: [], rows: null, bgs: null }
@@ -261,7 +289,30 @@ function planFor(message: Message, body: BodyRendered): PlanRow[] {
         padRow('assistant'),
         header,
         padRow('assistant'),
-        ...bodyRows(body.lines.length, { colStart: streamingShell ? 6 : 4, bg: true, muted: streamingShell, selectable: !streamingShell, role: 'assistant' }),
+        ...bodyRows(body.lines.length, { colStart: 4, bg: true, muted: streamingShell, selectable: !streamingShell, role: 'assistant' }),
+        padRow('assistant'),
+        blankRow(),
+      ]
+    }
+    case 'tool-card': {
+      const header: PlanRow = {
+        type: 'lit',
+        text: message.label,
+        colStart: 4,
+        bg: true,
+        muted: true,
+        selectable: true,
+        role: 'assistant',
+        ...(message.streaming === true || message.running === true ? { wave: true } : {}),
+      }
+      if (body.lines.length === 0 && message.running === true) {
+        return [padRow('assistant'), header, padRow('assistant'), blankRow()]
+      }
+      return [
+        padRow('assistant'),
+        header,
+        padRow('assistant'),
+        ...bodyRows(body.lines.length, { colStart: 4, bg: true, muted: false, selectable: true, role: 'assistant' }),
         padRow('assistant'),
         blankRow(),
       ]
@@ -340,6 +391,7 @@ type RenderFingerprint =
   | { kind: 'bubble'; content: string; variant: string | undefined; role: string | undefined; origin: string | undefined; hang: number | undefined; pending: boolean | undefined; streaming: boolean | undefined }
   | { kind: 'collapsible'; body: string; label: string; collapsed: boolean; running: boolean; thinking: boolean | undefined; streaming: boolean | undefined }
   | { kind: 'tool-diff'; tool: string; path: string; error: string | undefined; hunks: ToolDiffMessage['hunks']; running: boolean | undefined; streaming: boolean | undefined; streamText: string | undefined }
+  | { kind: 'tool-card'; tool: string; label: string; argsBody: string; resultBody: string | undefined; diff: ToolCardMessage['diff']; error: string | undefined; exitCode: number | undefined; signal: string | undefined; bodyCol: number | undefined; running: boolean; streaming: boolean | undefined }
   | { kind: 'plan'; body: string; running: boolean | undefined; streaming: boolean | undefined; error: string | undefined }
   | { kind: 'compaction'; summary: string; running: boolean; error: string | undefined }
   | { kind: 'custom'; view: string; data: unknown; running: boolean | undefined; streaming: boolean | undefined }
@@ -386,6 +438,21 @@ function fingerprintOf(message: Message): RenderFingerprint {
         running: message.running,
         streaming: message.streaming,
         streamText: message.streamText,
+      }
+    case 'tool-card':
+      return {
+        kind: 'tool-card',
+        tool: message.tool,
+        label: message.label,
+        argsBody: message.argsBody,
+        resultBody: message.resultBody,
+        diff: message.diff,
+        error: message.error,
+        exitCode: message.exitCode,
+        signal: message.signal,
+        bodyCol: message.bodyCol,
+        running: message.running,
+        streaming: message.streaming,
       }
     case 'plan':
       return {
@@ -441,6 +508,19 @@ function fingerprintMatches(entry: RenderFingerprint, message: Message): boolean
         && entry.running === message.running
         && entry.streaming === message.streaming
         && entry.streamText === message.streamText
+    case 'tool-card':
+      return message.kind === 'tool-card'
+        && entry.tool === message.tool
+        && entry.label === message.label
+        && entry.argsBody === message.argsBody
+        && entry.resultBody === message.resultBody
+        && entry.diff === message.diff
+        && entry.error === message.error
+        && entry.exitCode === message.exitCode
+        && entry.signal === message.signal
+        && entry.bodyCol === message.bodyCol
+        && entry.running === message.running
+        && entry.streaming === message.streaming
     case 'plan':
       return message.kind === 'plan'
         && entry.body === message.body
@@ -582,7 +662,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number)
       return {
         ...base,
         kind: 'text',
-        text: plan.text,
+        text: fitLabel(plan.text, width),
         colStart: plan.colStart,
         selectable: plan.selectable,
         background: plan.bg,

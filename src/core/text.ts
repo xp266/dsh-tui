@@ -147,10 +147,22 @@ function pushWrapped(line: string, width: number, out: string[]): void {
   }
 }
 
+/**
+ * Single normalization applied before every wrap pass. Terminal rendering
+ * expands tabs and a lone carriage return rewinds the cursor, so both would
+ * make the visually rendered line wider than the width computation assumed
+ * and every later row would land on the wrong column. Both are replaced
+ * with spaces / newlines here so wrap math and rendering always agree.
+ */
+export function normalizeWrapText(text: string): string {
+  if (!text.includes('\r') && !text.includes('\t')) return text
+  return text.replace(/\r\n?/g, '\n').replace(/\t/g, '    ')
+}
+
 export function wrapLines(text: string, width: number): string[] {
   if (width <= 0) return ['']
   const lines: string[] = []
-  for (const rawLine of text.split('\n')) {
+  for (const rawLine of normalizeWrapText(text).split('\n')) {
     pushWrapped(rawLine, width, lines)
   }
   return lines
@@ -159,7 +171,7 @@ export function wrapLines(text: string, width: number): string[] {
 export function wrapIndented(text: string, width: number, hang: number): string[] {
   if (hang <= 0) return wrapLines(text, width)
   const lines: string[] = []
-  for (const rawLine of text.split('\n')) {
+  for (const rawLine of normalizeWrapText(text).split('\n')) {
     if (rawLine === '') {
       lines.push('')
       continue
