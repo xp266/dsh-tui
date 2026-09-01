@@ -45,6 +45,39 @@ export function apply(ctx: Context): void {
 - markdown 与特殊字段的注册会额外失效渲染缓存并触发界面重渲染；窗口/工具/视图/色板注册走同一条重渲染通路。
 - `tui.interactions` / `tui.chat` 在聊天桥就绪前为 `undefined`。
 
+### 原生窗口（`dsh-tui/dialog`）
+
+通过 `tui.windows` 注册的窗口渲染你给出的任意组件，但内置窗口构建在内部
+Dialog 组件栈上。该栈以 `dsh-tui/dialog` 子路径导出，插件窗口可以做到与
+原生完全一致——主题色、边框、标题、焦点导航、搜索、页脚、鼠标点击/滚轮、
+关闭守卫全部免费获得：
+
+```ts
+import { Dialog, React } from 'dsh-tui/dialog'
+import { useStdout } from 'dsh-tui/vendor'
+
+function MyWindow({ open, onClose, handleRef }) {
+  if (!open) return null
+  return (
+    <Dialog
+      ref={handleRef}
+      width={56}
+      maxHeight={16}
+      title="my window"
+      rows={[
+        { items: [{ type: 'button', label: '执行', onPress: () => {} }] },
+      ]}
+      footer={[{ text: 'enter 确认 · esc 关闭', dim: true }]}
+      onClose={onClose}
+    />
+  )
+}
+```
+
+Dialog 条目（`static`/`button`/`select`/`input`/`checkbox`/`actions`/
+`header`/`search`）覆盖绝大多数窗口形态；自定义条目类型经
+`tui.chrome.widgets` 注册。
+
 ### 共享 react/ink 运行时（`dsh-tui/vendor`）
 
 贡献给窗口、控件、覆盖层或面板的组件运行在 dsh-tui 的 React 树内，必须使用

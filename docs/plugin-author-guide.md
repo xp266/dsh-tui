@@ -47,6 +47,40 @@ export function apply(ctx: Context): void {
 - Markdown and special-field registrations additionally invalidate the render caches and re-render the surface; window/tool/view/palette registrations re-render through the same path.
 - `tui.interactions` / `tui.chat` are `undefined` until the chat bridge is ready.
 
+### Native windows (`dsh-tui/dialog`)
+
+Windows registered through `tui.windows` render whatever component you give
+them, but builtin windows are built on the internal Dialog stack. That stack
+is exported as `dsh-tui/dialog`, so a plugin window can look and behave
+exactly like a native one — theme colors, frame, title, focus navigation,
+search, footer, mouse click/wheel, and the close guard:
+
+```ts
+import { Dialog, React } from 'dsh-tui/dialog'
+import { useStdout } from 'dsh-tui/vendor'
+
+function MyWindow({ open, onClose, handleRef }) {
+  if (!open) return null
+  return (
+    <Dialog
+      ref={handleRef}
+      width={56}
+      maxHeight={16}
+      title="my window"
+      rows={[
+        { items: [{ type: 'button', label: 'Do it', onPress: () => {} }] },
+      ]}
+      footer={[{ text: 'enter confirm · esc close', dim: true }]}
+      onClose={onClose}
+    />
+  )
+}
+```
+
+Dialog items (`static`/`button`/`select`/`input`/`checkbox`/`actions`/
+`header`/`search`) cover most window shapes; custom item kinds register
+through `tui.chrome.widgets`.
+
 ### Shared react/ink runtime (`dsh-tui/vendor`)
 
 Components contributed to windows, widgets, overlays, or panels render inside
