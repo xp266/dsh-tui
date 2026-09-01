@@ -124,7 +124,7 @@ describe('theme modes', () => {
     setThemeMode('light')
     expect(Object.keys(COLORS).sort()).toEqual(Object.keys(dark).sort())
     expect(themeMode()).toBe('light')
-    expect(COLORS.modelText).toBe('#111111')
+    expect(COLORS.modelText).toBe('#000000')
     expect(COLORS.dialogBackground).toBe('#ffffff')
     setThemeMode('dark')
     expect(themeMode()).toBe('dark')

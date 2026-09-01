@@ -27,8 +27,8 @@ import {
   switchPage,
 } from './question-model.ts'
 import type { QuestionPageState } from './question-model.ts'
-import { PanelSurface } from './approval-panel.tsx'
-import type { PanelPointerHandle } from './approval-panel.tsx'
+import { PanelSurface } from './surface.tsx'
+import type { PanelPointerHandle } from './surface.tsx'
 
 export interface QuestionPanelProps {
   handleRef?: Ref<PanelPointerHandle>
@@ -145,7 +145,7 @@ export function QuestionPanel({ handleRef, question: panel, background, active, 
     <PanelSurface
       columns={columns}
       rows={rows}
-      body={layout.lines}
+      body={layout.lines.map(segments => ({ segments }))}
       bodyStart={bodyStart}
       background={background}
       blockWidth={blockWidth}

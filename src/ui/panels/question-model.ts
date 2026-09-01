@@ -8,6 +8,7 @@ import { mergeRuns } from '../../core/segments.ts'
 import type { MarkStyle, Segment } from '../../core/segments.ts'
 import { COLORS } from '../../theme.ts'
 import { glyphs } from '../../terminal/glyphs.ts'
+import { panelLegend } from './surface.tsx'
 import type { AskQuestionItemLike, AskUserQuestionAnswerItemLike, AskUserQuestionRequestLike } from '../../chat/interactions.ts'
 
 const questionStyle = (): MarkStyle => ({ color: COLORS.panelQuestionText, bold: true })
@@ -266,17 +267,14 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
       pushWrapped(body, answer, SINGLE_LABEL_COL, innerWidth, answerStyle)
     }
     body.push([])
-    body.push(legend(state.page, total))
+    body.push(questionLegend(state.page, total))
   } else {
     const question = state.request.questions[state.page]!
     const multi = question.multiSelect === true
+    const editing = state.editing
     const labX = labelCol(question)
     const fieldWidth = Math.max(8, innerWidth - labX)
     const above: Segment[][] = []
-    if (question.header !== undefined) {
-      pushWrapped(above, question.header, 0, innerWidth, questionStyle())
-      above.push(lineOf([]))
-    }
     pushWrapped(above, question.question, 0, innerWidth, questionStyle())
     above.push(lineOf([]))
 
@@ -297,6 +295,8 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
         const checked = draft.customChecked
         const box = multi ? (checked ? glyphs.checkboxOn : glyphs.checkboxOff) : ''
         const tick = !multi && checked ? `  ${glyphs.tick}` : ''
+        const value = editing ? state.editor.value : draft.customText
+        const cursor = editing ? state.editor.cursor : value.length
         below.push(lineOf([
           seg(marker, focused ? checkStyle() : undefined),
           ' ',
@@ -305,10 +305,8 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
           ' ',
           seg('Custom input content', focused ? focusedLabelStyle() : undefined),
           ...(tick === '' ? [] : [seg(tick, checkStyle())]),
+          ...(editing && focused ? [seg(caretNonceText(cursor), { color: caretNonceColor(cursor), bold: caretNonceBold(cursor) })] : []),
         ]))
-        const editing = state.editing
-        const value = editing ? state.editor.value : draft.customText
-        const cursor = editing ? state.editor.cursor : value.length
         const field = inputLayout(value, cursor, fieldWidth + INPUT_WIDTH_OFFSET)
         const firstVisible = Math.min(
           Math.max(0, field.cursorRow - (MAX_FIELD_ROWS - 1)),
@@ -317,8 +315,7 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
         const visible = field.lines.slice(firstVisible, firstVisible + MAX_FIELD_ROWS)
         const fieldStart = below.length
         for (const [index, line] of visible.entries()) {
-          const nonce = editing && index === visible.length - 1 ? seg(caretNonceText(cursor), { color: caretNonceColor(cursor), bold: caretNonceBold(cursor) }) : null
-          below.push(lineOf([' '.repeat(labX), seg(line, descriptionStyle()), ...(nonce === null ? [] : [nonce])]))
+          below.push(lineOf([' '.repeat(labX), seg(line, descriptionStyle()), ...(editing && index === visible.length - 1 ? [seg(' ', descriptionStyle())] : [])]))
         }
         if (editing) {
           caretInBelow = {
@@ -346,7 +343,7 @@ export function questionPanelLayout(state: QuestionPageState, innerWidth: number
       }
     }
     below.push(lineOf([]))
-    below.push(legend(state.page, total))
+    below.push(questionLegend(state.page, total))
 
     body.push(...above)
     const detail = question.detail === undefined || question.detail === '' || isPlanReview(question)
@@ -404,12 +401,22 @@ function finalizeCaret(
   return { row, col: caret.col }
 }
 
-function legend(page: number, total: number): Segment[] {
+function questionLegend(page: number, total: number): Segment[] {
   const prefix = `${page + 1}/${total}`
-  const text = page + 1 === total
-    ? `${prefix}  ${glyphs.pageFlip} page  enter submit  esc close`
-    : `${prefix}  ${glyphs.pageFlip} page  ${glyphs.wrapArrows} wrap  enter select  esc close`
-  return lineOf([seg(text, descriptionStyle())])
+  const review = page + 1 === total
+  const hints = review
+    ? [
+        { key: glyphs.pageFlip, description: 'page' },
+        { key: 'enter', description: 'submit' },
+        { key: 'esc', description: 'close' },
+      ]
+    : [
+        { key: glyphs.pageFlip, description: 'page' },
+        { key: glyphs.wrapArrows, description: 'wrap' },
+        { key: 'enter', description: 'select' },
+        { key: 'esc', description: 'close' },
+      ]
+  return panelLegend(hints, { prefix })
 }
 
 interface QuestionLike {

@@ -11,10 +11,6 @@ export const glyphs = {
     ? ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
     : ['|', '/', '-', '\\'],
   bullets: unicode ? ['•', '◦', '▪'] : ['*', 'o', '-'],
-  headingRule(depthOne: boolean): string {
-    if (depthOne) return unicode ? '═' : '='
-    return unicode ? '─' : '-'
-  },
   horizontal: unicode ? '─' : '-',
   tableVertical: unicode ? '│' : '|',
   tableBorders: {
@@ -34,7 +30,7 @@ export const glyphs = {
   tick: unicode ? '✓' : 'x',
   checkboxOn: unicode ? '[✓]' : '[x]',
   checkboxOff: '[ ]',
-  pageFlip: unicode ? '⇆' : '<->',
+  pageFlip: unicode ? '⇄' : '<->',
   wrapArrows: unicode ? '⇅' : '^v',
   carouselLeft: unicode ? '◀' : '<',
   carouselRight: unicode ? '▶' : '>',

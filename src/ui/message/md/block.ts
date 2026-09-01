@@ -22,11 +22,7 @@ function plainOf(segments: Segment[]): string {
 function renderHeading(token: Tokens.Heading, ctx: BlockContext): Segment[][] {
   const style = ctx.palette.heading(token.depth)
   const segments = renderInline(token.tokens, ctx.palette, style)
-  const rows = wrapSegments(segments, ctx.width)
-  if (token.depth > 2 || rows.length === 0) return rows
-  const ruleLen = Math.min(ctx.width, Math.max(textWidth(plainOf(rows[0]!)), 3))
-  const glyph = glyphs.headingRule(token.depth === 1)
-  return [...rows, [{ text: glyph.repeat(ruleLen), style }]]
+  return wrapSegments(segments, ctx.width)
 }
 
 function renderCode(token: Tokens.Code, ctx: BlockContext): Segment[][] {

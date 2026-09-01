@@ -96,11 +96,12 @@ describe('approval panel', () => {
       .split('\n')
       .map(line => line.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, ''))
       .filter(line => line.trim() !== '')
-    expect(textLines.length).toBe(4)
+    expect(textLines.length).toBe(5)
     expect(textLines[0]).toContain('▄▄▄▄')
     expect(textLines[1]).toContain('short reason')
     expect(textLines[2]).toContain('Allow once')
-    expect(textLines[3]).toContain('▀▀▀▀')
+    expect(textLines[3]).toContain('select')
+    expect(textLines[4]).toContain('▀▀▀▀')
   })
 
   it('scrolls an overflowing reason with the arrow keys', async () => {
@@ -154,7 +155,7 @@ describe('approval panel', () => {
       </Box>,
     )
     await settle()
-    const buttonY = 24 - 2 - 5 + 5 - 1
+    const buttonY = 24 - 2 - 7 + 4
     handle.current?.clickAt(buttonY, APPROVAL_BUTTON_COLS.allow + 2)
     handle.current?.clickAt(buttonY, APPROVAL_BUTTON_COLS.reject + 2)
     expect(decide).toHaveBeenNthCalledWith(1, 'allowed-once')

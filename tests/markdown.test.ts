@@ -22,7 +22,7 @@ function rows(md: string, width = 80, thinking = false): Segment[][] {
 }
 
 describe('renderMarkdown inline', () => {
-  it('renders bold with the orange bold style and strips the markers', () => {
+  it('renders bold attribute-only and strips the markers', () => {
     expect(rows('**bold**')).toEqual([[seg('bold', light.bold)]])
   })
 
@@ -55,7 +55,7 @@ describe('renderMarkdown inline', () => {
   })
 
   it('renders bold-italic triple delimiters without stray asterisks', () => {
-    expect(rows('***both***')).toEqual([[{ text: 'both', style: { color: light.bold.color, bold: true, italic: true } }]])
+    expect(rows('***both***')).toEqual([[{ text: 'both', style: { bold: true, italic: true } }]])
   })
 
   it('renders strikethrough with the strike flag', () => {
@@ -72,24 +72,24 @@ describe('renderMarkdown inline', () => {
 })
 
 describe('renderMarkdown blocks', () => {
-  it('renders h1 with an underline rule and strips the hashes', () => {
-    expect(lines('# Title')).toEqual(['Title', '═════'])
+  it('renders h1 bold-colored and strips the hashes', () => {
+    expect(lines('# Title')).toEqual(['Title'])
     expect(rows('# Title')[0]).toEqual([seg('Title', light.heading(1))])
   })
 
-  it('renders h2 with a dash rule and h3 without one', () => {
-    expect(lines('## Head')).toEqual(['Head', '────'])
+  it('renders h2 and h3 without a rule', () => {
+    expect(lines('## Head')).toEqual(['Head'])
     expect(lines('### Head')).toEqual(['Head'])
     expect(rows('## Head')[0]).toEqual([seg('Head', light.heading(2))])
     expect(rows('### Head')[0]).toEqual([seg('Head', light.heading(3))])
   })
 
   it('supports setext headings', () => {
-    expect(lines('Setext Title\n============')).toEqual(['Setext Title', '════════════'])
+    expect(lines('Setext Title\n============')).toEqual(['Setext Title'])
   })
 
   it('strips closing hashes from headings', () => {
-    expect(lines('## My Title ##')).toEqual(['My Title', '────────'])
+    expect(lines('## My Title ##')).toEqual(['My Title'])
   })
 
   it('COLORS list markers and keeps item text plain', () => {
@@ -247,7 +247,8 @@ describe('thinking rendering', () => {
       [seg('use ', think.plain), seg('code', think.inlineCode), seg(' here', think.plain)],
     ])
     expect(think.inlineCode.color).not.toBe(light.inlineCode.color)
-    expect(think.bold.color).not.toBe(light.bold.color)
+    expect(think.bold.color).toBeUndefined()
+    expect(light.bold.color).toBeUndefined()
   })
 
   it('no longer applies a special quote style', () => {
@@ -333,7 +334,7 @@ describe('renderer streaming parity', () => {
     const first = renderer.update('# Head\n\ntail')
     const second = renderer.update('# Head\n\ntail more')
     expect(second.rows[0]).toBe(first.rows[0])
-    expect(second.rows[1]).toBe(first.rows[1])
+    expect(second.rows[1]).not.toBe(first.rows[1])
     expect(second.rows.at(-1)).not.toBe(first.rows.at(-1))
   })
 })

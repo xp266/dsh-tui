@@ -424,6 +424,31 @@ const answer = await tui.interactions.push('my-confirm', { prompt: 'ok?' }, sign
 
 - `panels.register` registers a modal panel component by `kind`, with props `{ request, resolve, reject, active, columns, rows, innerWidth, blockWidth, background, handleRef?, onResize }`.
 - `push(kind, request, signal?)` raises one modal interaction; the promise settles with the panel's `resolve`/`reject`, and `signal` aborts it.
+- The builtin `approval` and `question` panels are themselves registered through this registry at high order, so a plugin contribution for the same `kind` overrides them and disposal restores the builtin.
+- Panels that want the native pill look import the shared shell from `dsh-tui/dialog` instead of rebuilding it: `PanelSurface` (caps, background, per-row text or interactive content), `panelLegend` (key-hint rows with white keys and gray descriptions), and `panelAnchorRow` (the anchor row above the status line):
+
+```ts
+import { Dialog, PanelSurface, panelLegend, panelAnchorRow } from 'dsh-tui/dialog'
+
+function ConfirmPanel({ request, resolve, active, columns, rows, innerWidth, blockWidth, background, onResize }) {
+  const body = [
+    { segments: renderPrompt(request) },
+    { segments: panelLegend([{ key: 'enter', description: 'confirm' }, { key: 'esc', description: 'cancel' }]) },
+  ]
+  return (
+    <PanelSurface
+      columns={columns}
+      rows={rows}
+      body={body}
+      bodyStart={panelAnchorRow(rows, body.length)}
+      background={background}
+      blockWidth={blockWidth}
+    />
+  )
+}
+```
+
+- A row with a `content` node (e.g. buttons) renders that node instead of the segment text; text rows register as selectable chrome so panel text participates in selection and copy like builtin panels.
 
 ### tui.startup.registerSink
 

@@ -23,7 +23,7 @@ export function createMdPalette(thinking: boolean): MdPalette {
     return {
       plain: {},
       get bold() {
-        return { color: COLORS.thinkBold, bold: true }
+        return { bold: true }
       },
       get italic() {
         return { italic: true }
@@ -52,11 +52,8 @@ export function createMdPalette(thinking: boolean): MdPalette {
       get taskTodo() {
         return { color: COLORS.thinkTaskTodo }
       },
-      heading(level) {
-        if (level <= 1) return { color: COLORS.thinkH1, bold: true }
-        if (level === 2) return { color: COLORS.thinkH2, bold: true }
-        if (level === 3) return { color: COLORS.thinkH3, bold: true }
-        return { color: COLORS.thinkH4, bold: true }
+      heading() {
+        return { color: COLORS.thinkH1, bold: true }
       },
       get codePlain() {
         return { color: COLORS.thinkCodePlain }
@@ -69,7 +66,7 @@ export function createMdPalette(thinking: boolean): MdPalette {
   return {
     plain: {},
     get bold() {
-      return { color: COLORS.mdBold, bold: true }
+      return { bold: true }
     },
     get italic() {
       return { italic: true }
@@ -99,10 +96,8 @@ export function createMdPalette(thinking: boolean): MdPalette {
       return { color: COLORS.mdTaskTodo }
     },
     heading(level) {
-      if (level <= 1) return { color: COLORS.mdH1, bold: true }
-      if (level === 2) return { color: COLORS.mdH2, bold: true }
-      if (level === 3) return { color: COLORS.mdH3, bold: true }
-      return { color: COLORS.mdH4, bold: true }
+      if (level <= 2) return { color: COLORS.mdH1, bold: true }
+      return { color: COLORS.mdH3, bold: true }
     },
     get codePlain() {
       return { color: COLORS.mdCodePlain }

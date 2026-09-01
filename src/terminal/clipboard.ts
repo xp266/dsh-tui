@@ -8,6 +8,15 @@ export function writeOsc52(text: string): void {
   process.stdout.write(`\x1b]52;c;${encoded}\x07`)
 }
 
+/**
+ * clip.exe reads its stdin in the console codepage (GBK on Chinese Windows),
+ * which turns UTF-8 bytes into mojibake. A UTF-16LE stream with a BOM is
+ * detected as wide text and stored verbatim.
+ */
+export function clipExeInput(text: string): Buffer {
+  return Buffer.from(`\ufeff${text}`, 'utf16le')
+}
+
 export function isWsl(): boolean {
   if (platform() !== 'linux') return false
   return release().toLowerCase().includes('microsoft')
@@ -103,7 +112,7 @@ async function readClipboardTextBuiltin(): Promise<string | undefined> {
   const os = platform()
   if (os === 'darwin') return firstText([{ command: 'pbpaste', args: [] }])
   if (os === 'win32' || isWsl()) {
-    const text = await firstText([{ command: 'powershell.exe', args: ['-NonInteractive', '-NoProfile', '-command', 'Get-Clipboard'] }])
+    const text = await firstText([{ command: 'powershell.exe', args: ['-NonInteractive', '-NoProfile', '-command', '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Clipboard'] }])
     return text
   }
   return firstText([
@@ -150,23 +159,23 @@ function writeOsc52WithFallback(text: string): void {
 }
 
 function spawnSystemWriters(text: string): void {
-  const commands: Array<{ command: string; args: string[] }> = []
+  const commands: Array<{ command: string; args: string[]; utf16?: boolean }> = []
   if (platform() === 'darwin') {
     commands.push({ command: 'pbcopy', args: [] })
   } else if (platform() === 'linux') {
-    if (isWsl()) commands.push({ command: 'clip.exe', args: [] })
+    if (isWsl()) commands.push({ command: 'clip.exe', args: [], utf16: true })
     else {
       commands.push({ command: 'wl-copy', args: [] })
       commands.push({ command: 'xclip', args: ['-selection', 'clipboard'] })
     }
   } else if (platform() === 'win32') {
-    commands.push({ command: 'clip', args: [] })
+    commands.push({ command: 'clip', args: [], utf16: true })
   }
   for (const entry of commands) {
     try {
       const child = spawn(entry.command, entry.args, { stdio: ['pipe', 'ignore', 'ignore'] })
       child.on('error', () => {})
-      child.stdin.end(text)
+      child.stdin.end(entry.utf16 ? clipExeInput(text) : text)
     } catch {
       // best-effort only; OSC52 already handled the capable terminals
     }

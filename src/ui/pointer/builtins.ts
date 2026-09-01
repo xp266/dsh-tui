@@ -102,6 +102,7 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
       }
       if (!event.ui.dialogOpen && !event.ui.panelActive && deps.inInputContent(y)) {
         inputCandidate.current = { x, y }
+        deps.setSelection(null)
         owner = 'input'
         return true
       }
@@ -150,7 +151,13 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
               focusCol: x,
               inMessage: false,
             })
+            return
           }
+          deps.setSelection(current => current === null || current.inMessage ? current : {
+            ...current,
+            focusRow: y,
+            focusCol: x,
+          })
           return
         }
         case 'panel': {
@@ -164,7 +171,13 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
               focusCol: x,
               inMessage: false,
             })
+            return
           }
+          deps.setSelection(current => current === null || current.inMessage ? current : {
+            ...current,
+            focusRow: y,
+            focusCol: x,
+          })
           return
         }
         case 'dialog': {
@@ -178,7 +191,13 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
               focusCol: x,
               inMessage: false,
             })
+            return
           }
+          deps.setSelection(current => current === null || current.inMessage ? current : {
+            ...current,
+            focusRow: y,
+            focusCol: x,
+          })
           return
         }
         case 'message': {

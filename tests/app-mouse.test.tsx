@@ -190,6 +190,31 @@ describe('app mouse routing', () => {
     const well = lines.slice(19, 21).join('|')
     expect(well).not.toContain('message number')
   })
+
+  it('extends approval panel selection across drag moves and clears on dead click', async () => {
+    const interactions = new InteractionStore()
+    const view = render(<App bridge={fakeBridgeWith(interactions)} />)
+    await flush()
+    void interactions.pushApproval('bash', undefined, 'alpha beta gamma delta epsilon zeta')
+    await flush()
+    const row = frameRow(view.lastFrame() ?? '', 'alpha beta')
+    act(() => {
+      fakeStdin.emit('data', Buffer.from(`\x1b[<0;8;${row + 1}M`, 'latin1'))
+      fakeStdin.emit('data', Buffer.from(`\x1b[<32;20;${row + 2}M`, 'latin1'))
+      fakeStdin.emit('data', Buffer.from(`\x1b[<32;30;${row + 3}M`, 'latin1'))
+      fakeStdin.emit('data', Buffer.from(`\x1b[<0;30;${row + 3}m`, 'latin1'))
+    })
+    await flush()
+    const frame = view.lastFrame() ?? ''
+    const selectionHighlight = (text: string) => (text.match(/48;5;33m/g) ?? []).length
+    expect(selectionHighlight(frame)).toBeGreaterThanOrEqual(2)
+    act(() => {
+      fakeStdin.emit('data', Buffer.from('\x1b[<0;8;4M', 'latin1'))
+      fakeStdin.emit('data', Buffer.from('\x1b[<0;8;4m', 'latin1'))
+    })
+    await flush()
+    expect(selectionHighlight(view.lastFrame() ?? '')).toBe(0)
+  })
 })
 
 function fakeBridgeWith(interactions: InteractionStore): ChatBridge {

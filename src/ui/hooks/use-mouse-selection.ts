@@ -296,9 +296,13 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
               return
             }
           }
+          // Dead click on unclaimed space (blank rows, padding): drop any
+          // lingering selection, matching native text-editor behavior.
+          setSelection(null)
           return
         }
         case 'drag': {
+          console.error('EVDRAG owner=%s y=%d x=%d', ownerId, rawEvent.y, rawEvent.x)
           entryFor(ownerId)?.value.onDrag?.(frame)
           return
         }

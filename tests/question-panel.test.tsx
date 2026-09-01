@@ -53,7 +53,7 @@ describe('question panel', () => {
     expect(frame).toMatch(/❯\s+1\. Vercel/)
     expect(frame).toContain('2. Fly.io')
     expect(frame).toContain('edge network, fastest cold start')
-    expect(frame).toContain('1/2  ⇆ page  ⇅ wrap  enter select  esc close')
+    expect(frame).toContain('1/2  ⇄ page  ⇅ wrap  enter select  esc close')
     stdin.write('\r')
     await settle()
     frame = plain(lastFrame() ?? '')
@@ -168,7 +168,7 @@ describe('question panel', () => {
     expect(frame).toContain('One')
     expect(frame).toContain('2. Second question?')
     expect(frame).toContain('(Question not answered)')
-    expect(frame).toContain('3/3  ⇆ page  enter submit  esc close')
+    expect(frame).toContain('3/3  ⇄ page  enter submit  esc close')
     stdin.write('\r')
     await settle()
     expect(submit).toHaveBeenCalledWith({

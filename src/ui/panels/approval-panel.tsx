@@ -2,17 +2,20 @@ import { Box, Text, useInput } from 'ink'
 import { panelAnchorRow } from '../layout-service.ts'
 import { isKeyConsumed } from '../key-arbiter.ts'
 import { useEffect, useState } from 'react'
-import type { ReactNode, Ref } from 'react'
+import type { Ref } from 'react'
 import { useImperativeHandle } from 'react'
-import { wrapLines, padToWidth, textWidth } from '../../core/text.ts'
+import { wrapLines } from '../../core/text.ts'
 import { mergeRuns } from '../../core/segments.ts'
 import type { Segment } from '../../core/segments.ts'
 import { COLORS } from '../../theme.ts'
 import { glyphs } from '../../terminal/glyphs.ts'
-import { CHROME_MARGIN_X, CHROME_PAD_X, CHROME_TEXT_X } from '../../core/metrics.ts'
+import { CHROME_TEXT_X } from '../../core/metrics.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
 import { SelectableText } from '../selection.tsx'
-import { Region } from '../region.tsx'
+import { PanelSurface, panelLegend } from './surface.tsx'
+import type { PanelPointerHandle, PanelRow } from './surface.tsx'
+
+export type { PanelPointerHandle } from './surface.tsx'
 
 export const APPROVAL_SECTION_ROWS = 3
 const BUTTON_GAP_TEXT = ' '.repeat(8)
@@ -22,11 +25,6 @@ const REJECT_BLOCK = ' Reject '
 export const APPROVAL_BUTTON_COLS = {
   allow: CHROME_TEXT_X,
   reject: CHROME_TEXT_X + ALLOW_BLOCK.length + BUTTON_GAP_TEXT.length,
-}
-
-export interface PanelPointerHandle {
-  clickAt(y: number, x: number): void
-  wheel(dir: -1 | 1): boolean
 }
 
 export interface ApprovalPanelProps {
@@ -61,6 +59,7 @@ function reasonSection(raw: string | undefined, innerWidth: number): Segment[][]
   rows.push([{ text: raw.slice(0, colon + 1), style: { color: COLORS.errorText } }])
   const description = raw.slice(colon + 1).trim()
   if (description !== '') {
+    rows.push([])
     for (const line of wrapLines(description, Math.max(4, innerWidth))) {
       rows.push([{ text: line, style: {} }])
     }
@@ -92,13 +91,21 @@ export function ApprovalPanel({ handleRef, reason, command, background, active, 
   const visibleReason = allReason.slice(scroll.reason, scroll.reason + APPROVAL_SECTION_ROWS)
   const visibleCommand = allCommand.slice(scroll.command, scroll.command + APPROVAL_SECTION_ROWS)
   const showCommand = visibleCommand.some(line => line.trim() !== '')
-  const body: Segment[][] = [...visibleReason]
-  body.push([])
+  const body: PanelRow[] = []
+  for (const row of visibleReason) body.push({ segments: row })
+  if (visibleReason.length > 0) body.push({ segments: [] })
   if (showCommand) {
-    body.push(...commandSection(visibleCommand))
-    body.push([])
+    for (const row of commandSection(visibleCommand)) body.push({ segments: row })
+    body.push({ segments: [] })
   }
-  body.push([{ text: BUTTON_ALLOW_TEXT + BUTTON_GAP_TEXT + 'Reject', style: {} }])
+  const buttonRowIndex = body.length
+  const legend = panelLegend([
+    { key: glyphs.pageFlip, description: 'select' },
+    { key: 'enter', description: 'submit' },
+  ])
+  body.push({ segments: mergeRuns([{ text: BUTTON_ALLOW_TEXT + BUTTON_GAP_TEXT + 'Reject', style: {} }]) })
+  body.push({ segments: [] })
+  body.push({ segments: legend })
   const bodyCount = body.length
   const totalHeight = bodyCount + 2
   const bodyStart = panelAnchorRow(rows, bodyCount)
@@ -115,7 +122,7 @@ export function ApprovalPanel({ handleRef, reason, command, background, active, 
   useImperativeHandle(handleRef, () => ({
     clickAt(y, x) {
       if (!active) return
-      if (y !== bodyStart + bodyCount - 1) return
+      if (y !== bodyStart + buttonRowIndex) return
       if (x >= APPROVAL_BUTTON_COLS.allow && x < APPROVAL_BUTTON_COLS.allow + ALLOW_BLOCK.length) {
         onDecide('allowed-once')
         return
@@ -161,74 +168,26 @@ export function ApprovalPanel({ handleRef, reason, command, background, active, 
       onDecide('rejected')
     }
   })
-  const buttonY = bodyStart + bodyCount - 1
+  const buttonY = bodyStart + buttonRowIndex
   return (
     <PanelSurface
       columns={columns}
       rows={rows}
-      body={body}
+      body={body.map((row, index) => index === buttonRowIndex
+        ? {
+            segments: row.segments,
+            content: (
+              <Box flexDirection="row">
+                <SelectableText y={buttonY} col={APPROVAL_BUTTON_COLS.allow} text={ALLOW_BLOCK} inverse={focusAllow} />
+                <Text>{BUTTON_GAP_TEXT}</Text>
+                <SelectableText y={buttonY} col={APPROVAL_BUTTON_COLS.reject} text={REJECT_BLOCK} inverse={!focusAllow} />
+              </Box>
+            ),
+          }
+        : row)}
       bodyStart={bodyStart}
       background={background}
       blockWidth={blockWidth}
-      buttonRow={(
-        <Box flexDirection="row">
-          <SelectableText y={buttonY} col={APPROVAL_BUTTON_COLS.allow} text={ALLOW_BLOCK} inverse={focusAllow} />
-          <SelectableText y={buttonY} col={APPROVAL_BUTTON_COLS.allow + ALLOW_BLOCK.length} text={BUTTON_GAP_TEXT} />
-          <SelectableText y={buttonY} col={APPROVAL_BUTTON_COLS.reject} text={REJECT_BLOCK} inverse={!focusAllow} />
-        </Box>
-      )}
     />
   )
-}
-
-export function PanelSurface({ columns, rows, body, bodyStart, background, blockWidth, buttonRow }: {
-  columns: number
-  rows: number
-  body: Segment[][]
-  bodyStart: number
-  background: string
-  blockWidth: number
-  buttonRow?: ReactNode
-}) {
-  return (
-    <Region>
-      <Box position="absolute" top={0} left={0} width={columns} height={rows}>
-        <Box position="absolute" top={bodyStart - 1} left={CHROME_MARGIN_X} width={blockWidth}>
-          {glyphs.halfBlockCaps
-            ? <Text color={background}>{glyphs.blockCapTop.repeat(blockWidth)}</Text>
-            : <Text backgroundColor={background}>{' '.repeat(blockWidth)}</Text>}
-        </Box>
-        {body.map((row, index) => {
-          const padded = padRow(row, blockWidth - CHROME_PAD_X * 2)
-          return (
-            <Box
-              key={`panel-row-${index}`}
-              position="absolute"
-              top={bodyStart + index}
-              left={CHROME_MARGIN_X}
-              width={blockWidth}
-              paddingLeft={CHROME_PAD_X}
-              paddingRight={CHROME_PAD_X}
-              backgroundColor={background}
-            >
-              {buttonRow !== undefined && index === body.length - 1
-                ? buttonRow
-                : <SelectableText y={bodyStart + index} col={CHROME_TEXT_X} segments={padded.length > 0 ? padded : [{ text: ' ', style: {} }]} />}
-            </Box>
-          )
-        })}
-        <Box position="absolute" top={bodyStart + body.length} left={CHROME_MARGIN_X} width={blockWidth}>
-          {glyphs.halfBlockCaps
-            ? <Text color={background}>{glyphs.blockCapBottom.repeat(blockWidth)}</Text>
-            : <Text backgroundColor={background}>{' '.repeat(blockWidth)}</Text>}
-        </Box>
-      </Box>
-    </Region>
-  )
-}
-
-function padRow(row: Segment[], width: number): Segment[] {
-  const used = textWidth(row.map(segment => segment.text).join(''))
-  if (used >= width) return row
-  return mergeRuns([...row, { text: ' '.repeat(width - used), style: {} }])
 }

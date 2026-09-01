@@ -1,4 +1,4 @@
-import { Box, useInput } from 'ink'
+import { Box, Text, useInput } from 'ink'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { RefObject } from 'react'
@@ -37,9 +37,9 @@ import type { DialogHandle } from './dialog/dialog.tsx'
 import { registerBuiltinWindows } from './windows-builtin.tsx'
 import { registerWindowServices, registerTodosService } from './window-services-bridge.ts'
 import { useAvailableWindows } from './use-available-windows.ts'
-import { padToWidth, truncate } from '../core/text.ts'
+import { padToWidth, textWidth, truncate } from '../core/text.ts'
 import type { ActivePanel, InteractionStore } from '../chat/interactions.ts'
-import type { PanelPointerHandle } from './panels/approval-panel.tsx'
+import type { PanelPointerHandle } from './panels/surface.tsx'
 import { registerBuiltinPanels } from './panels-builtin.tsx'
 import { isTodoActive, todoProgress } from '../chat/todo-view.ts'
 import type { TodoItemLike } from '../chat/todo-view.ts'
@@ -433,11 +433,16 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
                   const blockWidth = Math.max(1, columns - CHROME_MARGIN_X * 2)
                   const leftWidth = Math.max(1, Math.floor((blockWidth * 2) / 5))
                   const label = command.hint === undefined ? command.command : `${command.command} ${command.hint}`
-                  const line = '  ' + padToWidth(truncate(label, leftWidth - 1), leftWidth) + command.description
-                  const filled = padToWidth(truncate(line, blockWidth), blockWidth)
+                  const labelPiece = truncate(label, leftWidth - 1)
+                  const descriptionPiece = truncate(command.description, Math.max(1, blockWidth - leftWidth - 2))
                   return (
                     <Box key={command.command} width={blockWidth} backgroundColor={COLORS.dialogBackground}>
-                      <SelectableText y={index} col={CHROME_MARGIN_X} text={filled} inverse={selected} />
+                      <Box flexDirection="row">
+                        <Text>{'  '}</Text>
+                        <SelectableText y={index} col={CHROME_MARGIN_X + 2} text={labelPiece} inverse={selected} />
+                        <Text>{' '.repeat(Math.max(1, leftWidth - textWidth(labelPiece)))}</Text>
+                        <SelectableText y={index} col={CHROME_MARGIN_X + 2 + leftWidth} text={descriptionPiece} inverse={selected} />
+                      </Box>
                     </Box>
                   )
                 })}
