@@ -435,13 +435,16 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
                   const label = command.hint === undefined ? command.command : `${command.command} ${command.hint}`
                   const labelPiece = truncate(label, leftWidth - 1)
                   const descriptionPiece = truncate(command.description, Math.max(1, blockWidth - leftWidth - 2))
+                  const gap = Math.max(1, leftWidth - textWidth(labelPiece))
+                  const trail = Math.max(0, blockWidth - 2 - leftWidth - textWidth(descriptionPiece))
                   return (
                     <Box key={command.command} width={blockWidth} backgroundColor={COLORS.dialogBackground}>
                       <Box flexDirection="row">
-                        <Text>{'  '}</Text>
+                        <Text inverse={selected}>{'  '}</Text>
                         <SelectableText y={index} col={CHROME_MARGIN_X + 2} text={labelPiece} inverse={selected} />
-                        <Text>{' '.repeat(Math.max(1, leftWidth - textWidth(labelPiece)))}</Text>
+                        <Text inverse={selected}>{' '.repeat(gap)}</Text>
                         <SelectableText y={index} col={CHROME_MARGIN_X + 2 + leftWidth} text={descriptionPiece} inverse={selected} />
+                        <Text inverse={selected}>{' '.repeat(trail)}</Text>
                       </Box>
                     </Box>
                   )
