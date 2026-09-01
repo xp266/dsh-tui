@@ -29,6 +29,10 @@
       "types": "./lib/vendor.d.mts",
       "default": "./lib/vendor.mjs"
     },
+    "./dialog": {
+      "types": "./lib/dialog.d.mts",
+      "default": "./lib/dialog.mjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
