@@ -192,6 +192,7 @@ export function ModelsDialog({ api, onClose, onModelSelected, onAddProvider, ref
       onClose={onClose}
       search
       searchRight
+      centerScroll
       onCtrlA={(_focused) => {
         onAddProvider()
         return true

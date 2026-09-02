@@ -155,6 +155,7 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
       onClose={onClose}
       search
       searchRight
+      centerScroll
       onCtrlD={handleCtrlD}
       onActivity={disarm}
     />

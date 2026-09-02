@@ -7,7 +7,7 @@ import { createFakeBridge } from './helpers/fake-bridge.ts'
 
 vi.mock('../src/ui/input/commands.ts', async importOriginal => {
   const actual = await importOriginal<typeof import('../src/ui/input/commands.ts')>()
-  const commands = Array.from({ length: 12 }, (_, i) => ({ command: `/c${String(i + 1).padStart(2, '0')}`, description: `d${i + 1}` }))
+  const commands = Array.from({ length: 30 }, (_, i) => ({ command: `/c${String(i + 1).padStart(2, '0')}`, description: `d${i + 1}` }))
   const filterCommands = (value: string) => {
     const token = value.split(/\s+/, 1)[0] ?? ''
     if (!token.startsWith('/')) return []
@@ -51,8 +51,8 @@ async function type(stdin: { write(data: string): void }, data: string) {
   await new Promise(resolve => setTimeout(resolve, 20))
 }
 
-describe('command hint windowing', () => {
-  it('caps visible hints and scrolls the window with the pointer', async () => {
+describe('command hint centered scrolling', () => {
+  it('anchors the selection to the middle while scrolling entries', async () => {
     const { lastFrame, stdin } = render(<App bridge={fakeBridge()} />)
     await type(stdin, '/')
     let frame = lastFrame() ?? ''
@@ -61,41 +61,45 @@ describe('command hint windowing', () => {
     expect(frame).not.toContain('/c11')
     expect(focusedSegment(frame)).toContain('/c01')
 
-    for (let i = 0; i < 10; i++) await type(stdin, '\u001b[B')
+    for (let i = 0; i < 9; i++) await type(stdin, '\u001b[B')
     frame = lastFrame() ?? ''
     expect(frame).not.toContain('/c01')
-    expect(frame).toContain('/c11')
-    expect(focusedSegment(frame)).toContain('/c11')
+    expect(frame).toContain('/c05')
+    expect(frame).toContain('/c14')
+    expect(frame).not.toContain('/c15')
+    expect(focusedSegment(frame)).toContain('/c10')
 
-    await type(stdin, '\u001b[B')
+    for (let i = 0; i < 20; i++) await type(stdin, '\u001b[B')
     frame = lastFrame() ?? ''
-    expect(frame).not.toContain('/c02')
-    expect(frame).toContain('/c12')
-    expect(focusedSegment(frame)).toContain('/c12')
+    expect(frame).not.toContain('/c24')
+    expect(frame).toContain('/c25')
+    expect(frame).toContain('/c30')
+    expect(focusedSegment(frame)).toContain('/c30')
 
-    for (let i = 0; i < 11; i++) await type(stdin, '\u001b[A')
+    for (let i = 0; i < 7; i++) await type(stdin, '\u001b[B')
     frame = lastFrame() ?? ''
     expect(frame).toContain('/c01')
-    expect(frame).not.toContain('/c11')
     expect(focusedSegment(frame)).toContain('/c01')
   })
 
-  it('keeps the window still until the pointer leaves its bounds', async () => {
+  it('moves the highlight only once no entries remain beyond the boundary', async () => {
     const { lastFrame, stdin } = render(<App bridge={fakeBridge()} />)
     await type(stdin, '/')
-    for (let i = 0; i < 9; i++) await type(stdin, '\u001b[B')
+    for (let i = 0; i < 10; i++) await type(stdin, '\u001b[B')
     let frame = lastFrame() ?? ''
-    expect(frame).toContain('/c01')
-    expect(focusedSegment(frame)).toContain('/c10')
+    expect(frame).toContain('/c06')
+    expect(frame).not.toContain('/c05')
+    expect(focusedSegment(frame)).toContain('/c11')
 
-    await type(stdin, '\u001b[A')
+    for (let i = 0; i < 5; i++) await type(stdin, '\u001b[B')
     frame = lastFrame() ?? ''
-    expect(frame).toContain('/c01')
-    expect(focusedSegment(frame)).toContain('/c09')
+    expect(frame).toContain('/c11')
+    expect(focusedSegment(frame)).toContain('/c16')
 
-    for (let i = 0; i < 8; i++) await type(stdin, '\u001b[A')
+    for (let i = 0; i < 14; i++) await type(stdin, '\u001b[B')
     frame = lastFrame() ?? ''
-    expect(frame).toContain('/c01')
-    expect(focusedSegment(frame)).toContain('/c01')
+    expect(frame).toContain('/c25')
+    expect(frame).not.toContain('/c24')
+    expect(focusedSegment(frame)).toContain('/c30')
   })
 })

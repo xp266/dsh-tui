@@ -2,7 +2,7 @@ import { Box, Text, useInput } from 'ink'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { RefObject } from 'react'
-import { COLORS, permissionModeInfo } from '../theme.ts'
+import { permissionModeInfo } from '../theme.ts'
 import { writeClipboardText } from '../terminal/clipboard.ts'
 import { copySelection } from './selection/service.ts'
 import type { ChatBridge } from '../chat/bridge.ts'
@@ -13,7 +13,6 @@ import { chromeSelectionText } from './selection-registry.ts'
 import type { ScreenCapture } from '../terminal/screen.ts'
 import type { LineSelection } from '../model/selection.ts'
 import { SelectionContext } from './selection.tsx'
-import { SelectableText } from './selection.tsx'
 import { useTerminalSize } from './hooks/use-terminal-size.ts'
 import { useChatEvents } from './hooks/use-chat-events.ts'
 import { useScroll } from './hooks/use-scroll.ts'
@@ -26,7 +25,7 @@ import type { InputBarHandle } from './input/input-bar.tsx'
 import { COMMANDS, KNOWN_COMMAND_ARGS, commandArgHints, filterHintEntries, matchCommand, mergeCommandEntries, matchAvailableCommand, useCommandVersion } from './input/commands.ts'
 import { hintArgsFor } from './chrome/hint-service.ts'
 import type { CommandAvailability, CommandDef } from './input/commands.ts'
-import { CHROME_MARGIN_X, MESSAGE_INPUT_GAP_ROWS, hintBlockTop } from '../core/metrics.ts'
+import { MESSAGE_INPUT_GAP_ROWS } from '../core/metrics.ts'
 import { useComposer } from './input/use-composer.ts'
 import type { ComposerSubmission } from './input/composer-fields.ts'
 import { Region } from './region.tsx'
@@ -36,7 +35,6 @@ import type { DialogHandle } from './dialog/dialog.tsx'
 import { registerBuiltinWindows } from './windows-builtin.tsx'
 import { registerWindowServices, registerTodosService } from './window-services-bridge.ts'
 import { useAvailableWindows } from './use-available-windows.ts'
-import { padToWidth, textWidth, truncate } from '../core/text.ts'
 import type { ActivePanel, InteractionStore } from '../chat/interactions.ts'
 import type { PanelPointerHandle } from './panels/surface.tsx'
 import { registerBuiltinPanels } from './panels-builtin.tsx'
@@ -239,15 +237,13 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   sendRef.current = handleSend
   const showHint = dialog === null && hintOpen && commands.length > 0
   const maxVisible = Math.max(1, Math.min(HINT_MAX_ROWS, rows - inputHeight - 1))
-  const hintStartRef = useRef(0)
-  let hintVisibleStart = hintStartRef.current
-  if (commandIndex < hintVisibleStart) {
-    hintVisibleStart = commandIndex
-  } else if (commandIndex >= hintVisibleStart + maxVisible) {
-    hintVisibleStart = commandIndex - maxVisible + 1
-  }
-  hintVisibleStart = Math.max(0, Math.min(hintVisibleStart, Math.max(0, commands.length - maxVisible)))
-  hintStartRef.current = hintVisibleStart
+  const hintPrevIndexRef = useRef(0)
+  const hintDir: -1 | 1 = showHint && commandIndex !== hintPrevIndexRef.current
+    ? commandIndex > hintPrevIndexRef.current ? 1 : -1
+    : 1
+  const hintAnchor = hintDir === 1 ? Math.floor(maxVisible / 2) : Math.floor((maxVisible - 1) / 2)
+  const hintVisibleStart = Math.max(0, Math.min(commandIndex - hintAnchor, Math.max(0, commands.length - maxVisible)))
+  hintPrevIndexRef.current = commandIndex
   const hintState = showHint
     ? {
         commands: commands.slice(hintVisibleStart, hintVisibleStart + maxVisible),
@@ -377,6 +373,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
               effortName={bridge?.effortName()}
               presetName={bridge?.presetName()}
               interactive={composerInteractive}
+              hint={hintState}
             />
           )}
           {panel !== null && bridge !== undefined && (() => {
@@ -416,39 +413,6 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
               />
             )
           })()}
-          {hintState !== null && dialog === null && panel === null && (
-            <Box
-              position="absolute"
-              top={hintBlockTop(rows, inputHeight, hintState.commands.length)}
-              left={CHROME_MARGIN_X}
-              width={Math.max(1, columns - CHROME_MARGIN_X * 2)}
-              flexDirection="column"
-            >
-              <Region y={hintBlockTop(rows, inputHeight, hintState.commands.length)}>
-                {hintState.commands.map((command, index) => {
-                  const selected = index === hintState.selectedIndex
-                  const blockWidth = Math.max(1, columns - CHROME_MARGIN_X * 2)
-                  const leftWidth = Math.max(1, Math.floor((blockWidth * 2) / 5))
-                  const label = command.hint === undefined ? command.command : `${command.command} ${command.hint}`
-                  const labelPiece = truncate(label, leftWidth - 1)
-                  const descriptionPiece = truncate(command.description, Math.max(1, blockWidth - leftWidth - 2))
-                  const gap = Math.max(1, leftWidth - textWidth(labelPiece))
-                  const trail = Math.max(0, blockWidth - 2 - leftWidth - textWidth(descriptionPiece))
-                  return (
-                    <Box key={command.command} width={blockWidth} backgroundColor={COLORS.dialogBackground}>
-                      <Box flexDirection="row">
-                        <Text inverse={selected} color={COLORS.ink}>{'  '}</Text>
-                        <SelectableText y={index} col={CHROME_MARGIN_X + 2} text={labelPiece} inverse={selected} />
-                        <Text inverse={selected} color={COLORS.ink}>{' '.repeat(gap)}</Text>
-                        <SelectableText y={index} col={CHROME_MARGIN_X + 2 + leftWidth} text={descriptionPiece} inverse={selected} />
-                        <Text inverse={selected} color={COLORS.ink}>{' '.repeat(trail)}</Text>
-                      </Box>
-                    </Box>
-                  )
-                })}
-              </Region>
-            </Box>
-          )}
           {bridge !== undefined && (
             <StatusBar
               bridge={bridge}

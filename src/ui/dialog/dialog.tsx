@@ -33,6 +33,7 @@ export interface DialogProps {
   onClose: () => void
   search?: boolean
   searchRight?: boolean
+  centerScroll?: boolean
   onCtrlA?(focused: DialogItem | undefined): boolean
   onCtrlD?(focused: DialogItem | undefined): boolean
   onCtrlE?(focused: DialogItem | undefined): boolean
@@ -54,6 +55,7 @@ export function Dialog({
   onClose,
   search = false,
   searchRight = false,
+  centerScroll = false,
   onCtrlA,
   onCtrlD,
   onCtrlE,
@@ -205,6 +207,7 @@ export function Dialog({
     live,
     search,
     closeGuarded,
+    centerScroll,
     onClose,
     onCtrlA,
     onCtrlD,
@@ -231,7 +234,7 @@ export function Dialog({
         }
         return false
       }
-      applyNavigation(live.current, dir === -1 ? 'up' : 'down', search, { setFocus, setScrollTop })
+      applyNavigation(live.current, dir === -1 ? 'up' : 'down', search, { setFocus, setScrollTop }, centerScroll)
       return true
     },
     clickAt(y, x) {

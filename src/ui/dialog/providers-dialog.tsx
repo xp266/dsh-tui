@@ -261,6 +261,7 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
         errors={errorLines}
         onClose={onClose}
         search={window.kind === 'select-models'}
+        centerScroll={window.kind === 'select-models'}
       />
     )
   }
@@ -304,6 +305,7 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
       errors={providerErrors}
       onClose={onClose}
       search
+      centerScroll
       onCtrlD={handleCtrlD}
       onActivity={disarm}
     />

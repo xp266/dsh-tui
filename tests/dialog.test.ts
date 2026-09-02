@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ReactNode } from 'react'
-import { adjustScroll, clampFocus, filterRowsWithHeaders, moveFocus, rowBlockSpan, rowHeight, rowTopOffset, selectableSpan, snapRow } from '../src/ui/dialog/dialog.tsx'
+import { adjustScroll, clampFocus, filterRowsWithHeaders, listCenterScroll, moveFocus, rowBlockSpan, rowHeight, rowTopOffset, selectableSpan, snapRow } from '../src/ui/dialog/dialog.tsx'
 import { INPUT_MAX_ROWS } from '../src/ui/dialog/sizes.ts'
 import type { DialogRow } from '../src/ui/dialog/dialog.tsx'
 import { actionPositions, renderRow, selectBlock } from '../src/ui/dialog/dialog-item.tsx'
@@ -183,6 +183,39 @@ describe('modal scroll adjustment', () => {
   it('extends the block over a trailing header below the focus', () => {
     const trailing: DialogRow[] = [rows(1)[0]!, headerRow('Other', true)]
     expect(adjustScroll(trailing, { row: 0, col: 0 }, 0, 1, WIDTH)).toBe(2)
+  })
+
+  it('anchors the focused row to the middle of the window when scrolling', () => {
+    const flat = rows(20)
+    expect(listCenterScroll(flat, 2, 5, WIDTH, 'down')).toBe(0)
+    expect(listCenterScroll(flat, 5, 5, WIDTH, 'down')).toBe(3)
+    expect(listCenterScroll(flat, 10, 5, WIDTH, 'down')).toBe(8)
+    expect(listCenterScroll(flat, 10, 5, WIDTH, 'up')).toBe(8)
+  })
+
+  it('moves the highlight only when the list edge is reached', () => {
+    const flat = rows(20)
+    expect(listCenterScroll(flat, 19, 5, WIDTH, 'down')).toBe(15)
+    expect(listCenterScroll(flat, 0, 5, WIDTH, 'up')).toBe(0)
+    expect(listCenterScroll(flat, 0, 5, WIDTH, 'down')).toBe(0)
+  })
+
+  it('takes the upper middle when moving up and the lower middle when moving down', () => {
+    const flat = rows(20)
+    expect(listCenterScroll(flat, 7, 4, WIDTH, 'down')).toBe(5)
+    expect(listCenterScroll(flat, 7, 4, WIDTH, 'up')).toBe(6)
+  })
+
+  it('keeps the window at zero when every row fits', () => {
+    const short = rows(3)
+    expect(listCenterScroll(short, 2, 5, WIDTH, 'down')).toBe(0)
+    expect(listCenterScroll(short, 2, 5, WIDTH, 'up')).toBe(0)
+  })
+
+  it('accounts for variable row heights', () => {
+    const mixed: DialogRow[] = [rows(1)[0]!, { items: [{ type: 'input', label: 'i', value: 'x'.repeat(80), onChange: () => {} }] }]
+    expect(listCenterScroll(mixed, 1, 5, WIDTH, 'down')).toBe(0)
+    expect(listCenterScroll(mixed, 0, 5, WIDTH, 'up')).toBe(0)
   })
 })
 

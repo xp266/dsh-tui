@@ -3,7 +3,7 @@ import { isKeyConsumed } from '../key-arbiter.ts'
 import type { RefObject } from 'react'
 import { isMouseResidue } from '../../terminal/mouse.ts'
 import { editBackspace, editDelete, editInsert } from '../../core/edit.ts'
-import { adjustScroll } from './geometry.ts'
+import { adjustScroll, listCenterScroll } from './geometry.ts'
 import { asTextItem, clampFocus, focusedItem, moveFocus } from './items.ts'
 import type { DialogFocus, DialogItem, DialogRow } from './items.ts'
 import { widgetOf } from '../widgets/registry.ts'
@@ -31,12 +31,14 @@ export interface NavigationSetters {
   setScrollTop(scrollTop: number): void
 }
 
-export function applyNavigation(live: DialogLiveState, direction: 'up' | 'down' | 'left' | 'right', search: boolean, setters: NavigationSetters): void {
+export function applyNavigation(live: DialogLiveState, direction: 'up' | 'down' | 'left' | 'right', search: boolean, setters: NavigationSetters, centerScroll = false): void {
   const next = moveFocus(live.rows, live.focus, direction)
   const clamped = clampFocus(live.rows, next, live.focusMinRow, live.focusMaxRow)
   setters.setFocus(clamped)
   const contentRow = Math.max(0, clamped.row - (search ? 1 : 0))
-  setters.setScrollTop(adjustScroll(live.contentRows, { row: contentRow, col: clamped.col }, live.scrollTop, live.viewportHeight, live.contentWidth))
+  setters.setScrollTop(centerScroll && (direction === 'up' || direction === 'down')
+    ? listCenterScroll(live.contentRows, contentRow, live.viewportHeight, live.contentWidth, direction)
+    : adjustScroll(live.contentRows, { row: contentRow, col: clamped.col }, live.scrollTop, live.viewportHeight, live.contentWidth))
 }
 
 function arrowFromRaw(input: string): 'up' | 'down' | 'left' | 'right' | null {
@@ -50,6 +52,7 @@ export interface DialogInputOptions {
   live: RefObject<DialogLiveState>
   search: boolean
   closeGuarded: boolean
+  centerScroll?: boolean
   onClose(): void
   onCtrlA?(focused: DialogItem | undefined): boolean
   onCtrlD?(focused: DialogItem | undefined): boolean
@@ -64,6 +67,7 @@ export interface DialogInputOptions {
 export function useDialogInput(options: DialogInputOptions): void {
   const { live, search, closeGuarded, onClose, onCtrlA, onCtrlD, onCtrlE, onActivity, requestSearch, setFocus, setScrollTop, setCursor } = options
   const setters: NavigationSetters = { setFocus, setScrollTop }
+  const centerScroll = options.centerScroll === true
   usePaste(text => {
     onActivity?.()
     const state = live.current
@@ -104,20 +108,20 @@ export function useDialogInput(options: DialogInputOptions): void {
         setCursor(next)
       },
       navigate(direction) {
-        applyNavigation(state, direction, search, setters)
+        applyNavigation(state, direction, search, setters, centerScroll)
       },
     }
     if ((isLeft || isRight) && liveCurrent !== undefined && def !== undefined) {
       if (def.onLeftRight?.(liveCurrent, isRight ? 1 : -1, keyApi) === true) return
     }
     if (isUp || isDown) {
-      applyNavigation(state, isUp ? 'up' : 'down', search, setters)
+      applyNavigation(state, isUp ? 'up' : 'down', search, setters, centerScroll)
       return
     }
     if (key.return) {
       if (liveCurrent === undefined || def === undefined) return
       const handled = def.onEnter?.(liveCurrent, keyApi) ?? false
-      if (!handled) applyNavigation(state, 'down', search, setters)
+      if (!handled) applyNavigation(state, 'down', search, setters, centerScroll)
       return
     }
     if (input === ' ' && liveCurrent !== undefined && def?.onSpace !== undefined) {

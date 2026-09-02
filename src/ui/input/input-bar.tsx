@@ -6,13 +6,14 @@ import { useImperativeHandle, useEffect } from 'react'
 import { COLORS, permissionModeInfo } from '../../theme.ts'
 import { glyphs } from '../../terminal/glyphs.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
-import { CHROME_FRAME_ROWS, CHROME_MARGIN_X, CHROME_PAD_X, CHROME_TEXT_X, INPUT_WIDTH_OFFSET, inputFrameTop, inputStatusRow } from '../../core/metrics.ts'
+import { CHROME_FRAME_ROWS, CHROME_MARGIN_X, CHROME_PAD_X, CHROME_TEXT_X, INPUT_WIDTH_OFFSET, hintBlockTop, inputFrameTop, inputStatusRow } from '../../core/metrics.ts'
 import { inputStatusParts } from '../chrome/input-status.ts'
 import { CapText } from '../chrome/caps.tsx'
 import { colToCharIndex, lineBreaks, textWidth, truncate, wrapLines } from '../../core/text.ts'
 import { hasFieldChar } from '../../core/fields.ts'
 import { expandFieldChars, fieldRowSegments } from '../../core/field-view.ts'
 import type { ComposerApi } from './use-composer.ts'
+import type { CommandHintState } from './commands.ts'
 import { SelectableText } from '../selection.tsx'
 import { Region } from '../region.tsx'
 
@@ -47,6 +48,7 @@ interface InputBarProps {
   presetName?: string
   interactive?: boolean
   statusReady?: boolean
+  hint?: CommandHintState | null
 }
 
 export function InputBar({
@@ -63,6 +65,7 @@ export function InputBar({
   presetName,
   interactive = true,
   statusReady = true,
+  hint = null,
 }: InputBarProps) {
   const { setCursorPosition } = useCaret()
   const contentWidth = width - INPUT_WIDTH_OFFSET
@@ -78,6 +81,7 @@ export function InputBar({
   }, [])
   const layout = inputLayout(value, cursor, width)
   const { lines, cursorRow, cursorCol, realRows, barHeight, visibleStart } = layout
+  const hintCount = hint?.commands.length ?? 0
   const firstRealY = inputFrameTop(rows, realRows)
   const caretVisibleRow = cursorRow - visibleStart
   if (interactive) {
@@ -153,14 +157,55 @@ export function InputBar({
       used += textWidth(text)
     }
   }
-  const blockTop = firstRealY - 1
+  const blockTop = hintCount > 0 ? Math.max(0, hintBlockTop(rows, barHeight, hintCount) - 1) : firstRealY - 1
   const statusLocalY = inputStatusRow(rows) - blockTop
+  const hintTop = hintCount > 0 ? hintBlockTop(rows, barHeight, hintCount) : 0
   return (
     <Region y={blockTop}>
       <Box position="absolute" top={0} left={0} width={columns} height={rows}>
         <Box position="absolute" top={blockTop} left={CHROME_MARGIN_X} width={blockWidth}>
           <CapText background={permission.color} top width={blockWidth} />
         </Box>
+        {hintCount > 0 && hint?.commands.map((command, index) => {
+          const selected = index === hint.selectedIndex
+          const leftWidth = Math.max(1, Math.floor((blockWidth * 2) / 5))
+          const label = command.hint === undefined ? command.command : `${command.command} ${command.hint}`
+          const labelPiece = truncate(label, leftWidth - 1)
+          const descriptionPiece = truncate(command.description, Math.max(1, blockWidth - leftWidth - 2))
+          const gap = Math.max(1, leftWidth - textWidth(labelPiece))
+          const trail = Math.max(0, blockWidth - 2 - leftWidth - textWidth(descriptionPiece))
+          return (
+            <Box
+              key={command.command}
+              position="absolute"
+              top={hintTop + index}
+              left={CHROME_MARGIN_X}
+              width={blockWidth}
+              backgroundColor={permission.color}
+            >
+              <Box flexDirection="row">
+                <Text inverse={selected} color={COLORS.ink}>{'  '}</Text>
+                <SelectableText y={hintTop + index - blockTop} col={CHROME_MARGIN_X + 2} text={labelPiece} inverse={selected} />
+                <Text inverse={selected} color={COLORS.ink}>{' '.repeat(gap)}</Text>
+                <SelectableText y={hintTop + index - blockTop} col={CHROME_MARGIN_X + 2 + leftWidth} text={descriptionPiece} inverse={selected} />
+                <Text inverse={selected} color={COLORS.ink}>{' '.repeat(trail)}</Text>
+              </Box>
+            </Box>
+          )
+        })}
+        {hintCount > 0 && (
+          <Box
+            position="absolute"
+            top={firstRealY - 1}
+            left={CHROME_MARGIN_X}
+            width={blockWidth}
+            paddingLeft={CHROME_PAD_X}
+            paddingRight={CHROME_PAD_X}
+            backgroundColor={permission.color}
+          >
+            <Text>{' '}</Text>
+          </Box>
+        )}
         {Array.from({ length: realRows }, (_, row) => {
           const line = lines[visibleStart + row] ?? ''
           const expanded = expandFieldChars(line)
@@ -177,7 +222,7 @@ export function InputBar({
               backgroundColor={permission.color}
             >
               <SelectableText
-                y={row + 1}
+                y={firstRealY + row - blockTop}
                 col={CHROME_TEXT_X}
                 text={expanded || ' '}
                 segments={segments}

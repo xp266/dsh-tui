@@ -79,6 +79,14 @@ export function adjustScroll(rows: DialogRow[], focus: DialogFocus, scrollTop: n
   return scrollTop
 }
 
+export function listCenterScroll(rows: DialogRow[], focusRow: number, viewportHeight: number, width: number, direction: 'up' | 'down'): number {
+  const total = rows.reduce((sum, row) => sum + rowHeight(row, width), 0)
+  const maxScroll = Math.max(0, total - viewportHeight)
+  const anchor = direction === 'down' ? Math.floor(viewportHeight / 2) : Math.floor((viewportHeight - 1) / 2)
+  const top = rowTopOffset(rows, focusRow, width)
+  return Math.max(0, Math.min(top - anchor, maxScroll))
+}
+
 export function hitRowIndex(y: number, top: number, titleLines: number, rows: DialogRow[], scrollTop = 0, width = Number.POSITIVE_INFINITY): number | null {
   const localY = y - top - 1 - titleLines + scrollTop
   let offset = 0

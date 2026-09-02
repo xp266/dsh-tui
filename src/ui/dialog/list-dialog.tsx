@@ -57,6 +57,7 @@ export function ListDialog<T>({
       onClose={onClose}
       search={search}
       searchRight={searchRight}
+      centerScroll
     />
   )
 }
