@@ -224,6 +224,7 @@ function renderBody(message: Message, width: number): BodyRendered {
         }
       }
       if (hasError) {
+        if (lines.length > 0 && lines[lines.length - 1] !== '') push('')
         const text = truncate(message.error!, Math.max(8, inner))
         push(text, [{ text, style: { color: COLORS.errorText } }])
       }

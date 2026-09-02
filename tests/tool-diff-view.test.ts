@@ -183,11 +183,11 @@ describe('tool diff bubbles', () => {
       resultBody: 'Verify that the goal tools are available.\n\nError: this goal operation requires a direct human turn.',
       error: 'error: HarnessError',
     })]
-    // body rows: two text lines, a blank, then the styled error line
+    // body rows: two text lines, a blank, a separator blank, then the styled error line
     const first = rowInfoAt(messages, WIDTH, 3)
     expect(first?.text).toBe('Verify that the goal tools are available.')
     expect(first?.segments).toBeUndefined()
-    const errorRow = rowInfoAt(messages, WIDTH, 6)
+    const errorRow = rowInfoAt(messages, WIDTH, 7)
     expect(errorRow?.text).toBe('error: HarnessError')
     expect(errorRow?.segments?.[0]).toMatchObject({ text: 'error: HarnessError', style: { color: COLORS.errorText } })
   })

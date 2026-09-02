@@ -292,4 +292,27 @@ describe('compaction bubble layout', () => {
       }
     }
   })
+
+  it('separates a tool card error line from the body with a blank row', () => {
+    const failed: Message = {
+      kind: 'tool-card',
+      id: 't1',
+      tool: 'ask_user_question',
+      label: 'ask_user_question',
+      argsBody: '1. This is the second question test: which option do you want?\n   End the test',
+      error: 'error: ToolOutcomeUnknownError',
+      running: false,
+    }
+    const index = buildRowIndex([failed], WIDTH)
+    const rows: string[] = []
+    for (let row = 0; row < index.total; row++) {
+      const info = index.rowAt(row)
+      rows.push(info?.kind === 'text' ? info.text : '')
+    }
+    const errorAt = rows.findIndex(text => text.includes('ToolOutcomeUnknownError'))
+    expect(errorAt).toBeGreaterThan(0)
+    expect(rows[errorAt - 1]).toBe('')
+    const lastBody = rows[errorAt - 2]
+    expect(lastBody).not.toBe('')
+  })
 })
