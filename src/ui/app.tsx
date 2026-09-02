@@ -440,11 +440,11 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
                   return (
                     <Box key={command.command} width={blockWidth} backgroundColor={COLORS.dialogBackground}>
                       <Box flexDirection="row">
-                        <Text inverse={selected}>{'  '}</Text>
+                        <Text inverse={selected} color={COLORS.ink}>{'  '}</Text>
                         <SelectableText y={index} col={CHROME_MARGIN_X + 2} text={labelPiece} inverse={selected} />
-                        <Text inverse={selected}>{' '.repeat(gap)}</Text>
+                        <Text inverse={selected} color={COLORS.ink}>{' '.repeat(gap)}</Text>
                         <SelectableText y={index} col={CHROME_MARGIN_X + 2 + leftWidth} text={descriptionPiece} inverse={selected} />
-                        <Text inverse={selected}>{' '.repeat(trail)}</Text>
+                        <Text inverse={selected} color={COLORS.ink}>{' '.repeat(trail)}</Text>
                       </Box>
                     </Box>
                   )

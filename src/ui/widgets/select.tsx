@@ -31,17 +31,17 @@ function paintSelect(paint: PaintArgs<SelectItem>) {
       <SelectableText y={y} col={x} text={`${item.label}:`} />
       <Box width={block.blockWidth} flexDirection="row">
         {hasArrows && (
-          <Text backgroundColor={paint.pressed === 'left' ? COLORS.carouselButtonPressedBg : COLORS.carouselButtonBg}>{` ${glyphs.carouselLeft} `}</Text>
+          <Text color={COLORS.ink} backgroundColor={paint.pressed === 'left' ? COLORS.carouselButtonPressedBg : COLORS.carouselButtonBg}>{` ${glyphs.carouselLeft} `}</Text>
         )}
         <SelectableText
           y={y}
           col={valueCol}
           text={valueText}
-          color={paint.focused ? COLORS.carouselSelectedText : undefined}
+          color={paint.focused ? COLORS.carouselSelectedText : COLORS.ink}
           backgroundColor={COLORS.carouselCurrentBg}
         />
         {hasArrows && (
-          <Text backgroundColor={paint.pressed === 'right' ? COLORS.carouselButtonPressedBg : COLORS.carouselButtonBg}>{` ${glyphs.carouselRight} `}</Text>
+          <Text color={COLORS.ink} backgroundColor={paint.pressed === 'right' ? COLORS.carouselButtonPressedBg : COLORS.carouselButtonBg}>{` ${glyphs.carouselRight} `}</Text>
         )}
       </Box>
     </Box>
