@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { writeOsc52, clipExeInput } from '../src/terminal/clipboard.ts'
+import { writeOsc52, readClipboardText } from '../src/terminal/clipboard.ts'
 
 describe('clipboard write encoding', () => {
   it('osc52 payload decodes back to the original utf8 text', () => {
@@ -21,11 +21,13 @@ describe('clipboard write encoding', () => {
     expect(Buffer.from(match![1]!, 'base64').toString('utf8')).toBe(text)
   })
 
-  it('clip.exe input is utf16le with a bom so gbk codepages cannot corrupt it', () => {
-    const text = '1. 提问工具测试：'
-    const buffer = clipExeInput(text)
-    expect(buffer[0]).toBe(0xff)
-    expect(buffer[1]).toBe(0xfe)
-    expect(buffer.toString('utf16le').slice(1)).toBe(text)
+  it('readClipboardText strips bom contamination from any backend', async () => {
+    const { registerClipboardBackend } = await import('../src/terminal/clipboard-backends.ts')
+    const dispose = registerClipboardBackend({ id: 'test-bom', readText: () => '\ufeffresult \ufefftext' })
+    try {
+      await expect(readClipboardText()).resolves.toBe('result text')
+    } finally {
+      dispose()
+    }
   })
 })

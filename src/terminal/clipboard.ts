@@ -1,20 +1,18 @@
-import { execFile, spawn } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { platform, release, tmpdir } from 'node:os'
 import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import { clipboardReadImage, clipboardReadText, clipboardWriteText } from './clipboard-backends.ts'
 
+/**
+ * Clipboard writes go through OSC52 only: one escape sequence to the terminal,
+ * no child processes. The terminal owns the system clipboard, so the app never
+ * races platform tools (clip.exe mangles unicode through the console codepage
+ * and every spawned helper adds copy latency for no benefit).
+ */
 export function writeOsc52(text: string): void {
   const encoded = Buffer.from(text, 'utf8').toString('base64')
   process.stdout.write(`\x1b]52;c;${encoded}\x07`)
-}
-
-/**
- * clip.exe reads its stdin in the console codepage (GBK on Chinese Windows),
- * which turns UTF-8 bytes into mojibake. A UTF-16LE stream with a BOM is
- * detected as wide text and stored verbatim.
- */
-export function clipExeInput(text: string): Buffer {
-  return Buffer.from(`\ufeff${text}`, 'utf16le')
 }
 
 export function isWsl(): boolean {
@@ -66,10 +64,8 @@ async function firstText(attempts: Array<{ command: string; args: string[] }>): 
   return undefined
 }
 
-
 async function readClipboardImageBuiltin(): Promise<ClipboardImage | undefined> {
-  const os = platform()
-  if (os === 'darwin') {
+  if (platform() === 'darwin') {
     const file = join(tmpdir(), 'dsh-tui-clipboard.png')
     const script = [
       'set imageData to the clipboard as "PNGf"',
@@ -90,7 +86,14 @@ async function readClipboardImageBuiltin(): Promise<ClipboardImage | undefined> 
       await rm(file, { force: true }).catch(() => {})
     }
   }
-  if (os === 'win32' || isWsl()) {
+  const unix = await firstCapture([
+    { command: 'wl-paste', args: ['-t', 'image/png'], mediaType: 'image/png' },
+    { command: 'wl-paste', args: ['-t', 'image/jpeg'], mediaType: 'image/jpeg' },
+    { command: 'xclip', args: ['-selection', 'clipboard', '-t', 'image/png', '-o'], mediaType: 'image/png' },
+    { command: 'xclip', args: ['-selection', 'clipboard', '-t', 'image/jpeg', '-o'], mediaType: 'image/jpeg' },
+  ])
+  if (unix !== undefined) return unix
+  if (platform() === 'win32' || isWsl()) {
     const script = 'Add-Type -AssemblyName System.Windows.Forms; $img = [System.Windows.Forms.Clipboard]::GetImage(); if ($img) { $ms = New-Object System.IO.MemoryStream; $img.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); [Console]::Out.Write([Convert]::ToBase64String($ms.ToArray())) }'
     try {
       const base64 = (await capture('powershell.exe', ['-NonInteractive', '-NoProfile', '-command', script])).toString('utf8').trim()
@@ -100,26 +103,21 @@ async function readClipboardImageBuiltin(): Promise<ClipboardImage | undefined> 
       return undefined
     }
   }
-  return firstCapture([
-    { command: 'wl-paste', args: ['-t', 'image/png'], mediaType: 'image/png' },
-    { command: 'wl-paste', args: ['-t', 'image/jpeg'], mediaType: 'image/jpeg' },
-    { command: 'xclip', args: ['-selection', 'clipboard', '-t', 'image/png', '-o'], mediaType: 'image/png' },
-    { command: 'xclip', args: ['-selection', 'clipboard', '-t', 'image/jpeg', '-o'], mediaType: 'image/jpeg' },
-  ])
+  return undefined
 }
 
 async function readClipboardTextBuiltin(): Promise<string | undefined> {
-  const os = platform()
-  if (os === 'darwin') return firstText([{ command: 'pbpaste', args: [] }])
-  if (os === 'win32' || isWsl()) {
-    const text = await firstText([{ command: 'powershell.exe', args: ['-NonInteractive', '-NoProfile', '-command', '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Clipboard'] }])
-    return text
-  }
-  return firstText([
+  if (platform() === 'darwin') return firstText([{ command: 'pbpaste', args: [] }])
+  const unix = await firstText([
     { command: 'wl-paste', args: [] },
     { command: 'xclip', args: ['-selection', 'clipboard', '-o'] },
     { command: 'xsel', args: ['--clipboard', '--output'] },
   ])
+  if (unix !== undefined) return unix
+  if (platform() === 'win32' || isWsl()) {
+    return firstText([{ command: 'powershell.exe', args: ['-NonInteractive', '-NoProfile', '-command', '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Clipboard'] }])
+  }
+  return undefined
 }
 
 export async function readClipboardImageUris(): Promise<string[]> {
@@ -136,11 +134,12 @@ export async function readClipboardImageUris(): Promise<string[]> {
     .map(line => decodeURIComponent(line.slice('file://'.length)))
 }
 
-import { clipboardReadImage, clipboardReadText, clipboardWriteText } from './clipboard-backends.ts'
-
 /** Backend-chain-aware clipboard read; plugin backends run first. */
 export async function readClipboardText(): Promise<string | undefined> {
-  return clipboardReadText(readClipboardTextBuiltin)
+  const text = await clipboardReadText(readClipboardTextBuiltin)
+  // A U+FEFF in clipboard text is BOM contamination (legacy clip.exe writes),
+  // never meaningful content: drop it for every consumer.
+  return text === undefined ? undefined : text.replace(/\ufeff/g, '')
 }
 
 /** Backend-chain-aware image read; plugin backends run first. */
@@ -150,34 +149,5 @@ export async function readClipboardImage(): Promise<ClipboardImage | undefined> 
 
 /** Backend-chain-aware write; the first backend claiming the write stops the chain. */
 export function writeClipboardText(text: string): void {
-  clipboardWriteText(text, writeOsc52WithFallback)
-}
-
-function writeOsc52WithFallback(text: string): void {
-  writeOsc52(text)
-  spawnSystemWriters(text)
-}
-
-function spawnSystemWriters(text: string): void {
-  const commands: Array<{ command: string; args: string[]; utf16?: boolean }> = []
-  if (platform() === 'darwin') {
-    commands.push({ command: 'pbcopy', args: [] })
-  } else if (platform() === 'linux') {
-    if (isWsl()) commands.push({ command: 'clip.exe', args: [], utf16: true })
-    else {
-      commands.push({ command: 'wl-copy', args: [] })
-      commands.push({ command: 'xclip', args: ['-selection', 'clipboard'] })
-    }
-  } else if (platform() === 'win32') {
-    commands.push({ command: 'clip', args: [], utf16: true })
-  }
-  for (const entry of commands) {
-    try {
-      const child = spawn(entry.command, entry.args, { stdio: ['pipe', 'ignore', 'ignore'] })
-      child.on('error', () => {})
-      child.stdin.end(entry.utf16 ? clipExeInput(text) : text)
-    } catch {
-      // best-effort only; OSC52 already handled the capable terminals
-    }
-  }
+  clipboardWriteText(text, writeOsc52)
 }
