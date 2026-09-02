@@ -10,6 +10,7 @@ import { createScreenCapture } from './terminal/screen.ts'
 import { writeCursorShape } from './terminal/cursor-shape.ts'
 import { startHotTheme } from './hot-theme.ts'
 import { applyTheme } from './apply-theme.ts'
+import { registerPalette } from './theme.ts'
 import { detectBackgroundMode } from './terminal/background.ts'
 import { registerThemeSettings } from './theme-settings.ts'
 import type { ThemeSettingsScope } from './theme-settings.ts'
@@ -25,6 +26,8 @@ export const name = 'dsh-tui'
 
 export interface Config {
   theme: 'auto' | 'dark' | 'light'
+  /** Palette overrides applied on top of the built-in dark and light themes (palette key -> hex). */
+  colors: Record<string, string>
   maxFps: number
   bootListTimeout: number
   alternateScreen: boolean
@@ -32,14 +35,18 @@ export interface Config {
 
 export const Config: z<Config> = z.object({
   theme: z.union(['auto', 'dark', 'light']).default('auto'),
+  colors: z.dict(z.string()).default({}),
   maxFps: z.number().default(240),
   bootListTimeout: z.number().default(10000),
   alternateScreen: z.boolean().default(true),
 })
 
-const DEFAULT_CONFIG: Config = { theme: 'auto', maxFps: 240, bootListTimeout: 10000, alternateScreen: true }
+const DEFAULT_CONFIG: Config = { theme: 'auto', colors: {}, maxFps: 240, bootListTimeout: 10000, alternateScreen: true }
 
-async function initTheme(scope: ThemeSettingsScope | undefined, theme: Config['theme']): Promise<void> {
+async function initTheme(scope: ThemeSettingsScope | undefined, theme: Config['theme'], colors: Config['colors']): Promise<void> {
+  if (Object.keys(colors).length > 0) {
+    registerPalette({ id: 'dsh-tui-config', order: Number.MAX_SAFE_INTEGER, colors })
+  }
   const saved = scope?.get().mode
   applyTheme(saved === 'dark' || saved === 'light'
     ? saved
@@ -124,7 +131,7 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
       const probed = await probeColorLevel()
       if (probed !== undefined) setColorLevel(probed)
       emitBootLine('theme: applying initial theme')
-      await initTheme(themeScope, config.theme)
+      await initTheme(themeScope, config.theme, config.colors)
       emitBootLine('chat bridge: connecting harness services')
       bridge = await createChatBridge(ctx)
       exposeFaces = exposeRuntimeFaces(extensionPoint, bridge)

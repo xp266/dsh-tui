@@ -38,7 +38,7 @@ export function createMdPalette(thinking: boolean): MdPalette {
         return { color: COLORS.thinkInlineCode }
       },
       get quoteBar() {
-        return { color: COLORS.thinkQuoteBar }
+        return { color: COLORS.mdQuoteBar }
       },
       get hr() {
         return { color: COLORS.thinkHr }

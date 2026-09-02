@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { COLORS, setThemeMode, themeMode } from '../src/theme.ts'
+import { COLORS, palettes, registerPalette, setThemeMode, themeMode } from '../src/theme.ts'
 import { glyphs } from '../src/terminal/glyphs.ts'
 import { registerThemeSettings, THEME_SETTINGS_NAMESPACE } from '../src/theme-settings.ts'
 
@@ -128,8 +128,19 @@ describe('theme modes', () => {
     expect(COLORS.dialogBackground).toBe('#ffffff')
     setThemeMode('dark')
     expect(themeMode()).toBe('dark')
-    expect(COLORS.modelText).toBe('#f0f0f0')
+    expect(COLORS.modelText).toBe('#cccccc')
     expect(COLORS.dialogBackground).toBe('#0d0d0d')
+  })
+
+  it('applies config palette overrides on top of both modes', () => {
+    const dispose = registerPalette({ id: 'test-override', mode: 'both', colors: { modelText: '#123456' } })
+    expect(COLORS.modelText).toBe('#123456')
+    expect(palettes.light.modelText).not.toBe('#123456')
+    setThemeMode('light')
+    expect(COLORS.modelText).toBe('#123456')
+    dispose()
+    setThemeMode('dark')
+    expect(COLORS.modelText).toBe(palettes.dark.modelText)
   })
 
   it('keeps every glyph table populated', () => {

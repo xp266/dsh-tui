@@ -51,7 +51,7 @@ const DARK_LADDER: GrayLadder = {
   raised: '#333333',
   line: '#686868',
   text: '#9a9a9a',
-  ink: '#f0f0f0',
+  ink: '#cccccc',
 }
 
 const LIGHT_LADDER: GrayLadder = {
@@ -59,7 +59,7 @@ const LIGHT_LADDER: GrayLadder = {
   sunken: '#f2f2f2',
   surface: '#e6e6e6',
   raised: '#d9d9d9',
-  line: '#a6a6a6',
+  line: '#999999',
   text: '#595959',
   ink: '#1a1a1a',
 }
@@ -193,18 +193,18 @@ function buildPalette(ladder: GrayLadder, hues: SemanticHues, code: CodeHues, mo
 
     diffAdded: hues.added,
     diffRemoved: hues.removed,
-    diffAddedBackground: mode === 'dark' ? '#384751' : '#ddf0ea',
+    diffAddedBackground: mode === 'dark' ? '#384751' : '#e1f1e5',
     diffRemovedBackground: mode === 'dark' ? '#4f312c' : '#f5e8e5',
 
     scrollTrackBackground: ladder.sunken,
     scrollThumbBackground: ladder.line,
 
-    // The text selection highlight is a fixed saturated blue in both modes:
-    // it must stay high-contrast behind white fg, and it is not the info hue.
+    // The selection highlight is a fixed saturated blue in both modes; the
+    // foreground rides the terminal-default gray so selected text never
+    // outshines the selection itself.
     selectionBg: '#0066ff',
-    selectionFg: '#ffffff',
+    selectionFg: '#cccccc',
 
-    mdBold: ladder.ink,
     mdLink: hues.info,
     mdInlineCode: hues.added,
     mdQuoteBar: ladder.line,
@@ -227,11 +227,9 @@ function buildPalette(ladder: GrayLadder, hues: SemanticHues, code: CodeHues, mo
     codeConstant: code.variable,
     codeOperator: ladder.ink,
 
-    thinkBold: ladder.text,
     thinkLink: think(hues.info),
     thinkInlineCode: think(hues.added),
-    thinkQuoteBar: ladder.line,
-    thinkHr: tint(ladder.line, ladder.base, 0.35),
+    thinkHr: tint(ladder.line, ladder.base, mode === 'dark' ? 0.35 : 0.15),
     thinkList: ladder.text,
     thinkTaskDone: think(hues.added),
     thinkTaskTodo: ladder.line,

@@ -26,7 +26,7 @@ describe('palette audit', () => {
   it('text gray ladder is tight (<=6 grays for text roles)', () => {
     const dark = palettes.dark as Record<string, string>
     const textGrays = new Set([
-      dark.panelQuestionText, dark.modelText, dark.mdBold, dark.mdCodePlain, dark.codeOperator,
+      dark.panelQuestionText, dark.modelText, dark.mdCodePlain, dark.codeOperator,
       dark.statusSeparator, dark.presetText, dark.cwdText, dark.statsText,
       dark.dialogHintText, dark.toolBodyText, dark.mdQuoteBar, dark.mdTaskTodo, dark.mdHr,
       dark.scrollThumbBackground,

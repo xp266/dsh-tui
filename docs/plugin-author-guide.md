@@ -599,6 +599,9 @@ tui.content.renderers.register({
   name: dsh-tui
   config:
     theme: dark            # auto | dark | light
+    colors:                # palette key -> override, layered over both dark and light themes
+      modelText: '#e6e6e6'
+      sectionHeader: '#ffae00'
     maxFps: 120
     bootListTimeout: 10000
     alternateScreen: true

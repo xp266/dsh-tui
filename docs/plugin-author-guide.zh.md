@@ -545,6 +545,9 @@ tui.content.renderers.register({
   name: dsh-tui
   config:
     theme: dark            # auto | dark | light
+    colors:                # 色板键 -> 覆盖值，作用在 dark/light 两套主题之上
+      modelText: '#e6e6e6'
+      sectionHeader: '#ffae00'
     maxFps: 120
     bootListTimeout: 10000
     alternateScreen: true
