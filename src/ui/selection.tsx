@@ -47,9 +47,9 @@ const SelectableContent = memo(function SelectableContent({ content, segments, c
     if (segments !== undefined) {
       return (
         <Text backgroundColor={backgroundColor}>
-          {renderSegments(segments, 0, sliceStart, color)}
+          {renderSegments(segments, 0, sliceStart, color ?? COLORS.ink)}
           {highlight}
-          {renderSegments(segments, sliceEnd, content.length, color)}
+          {renderSegments(segments, sliceEnd, content.length, color ?? COLORS.ink)}
         </Text>
       )
     }
