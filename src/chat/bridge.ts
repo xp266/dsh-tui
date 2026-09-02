@@ -996,11 +996,15 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     cyclePermission: () => {
       const service = permission()
       if (service === undefined) return
-      const current = service.current(activeAgent.session.events)
-      const names = service.names.length > 0 ? service.names : PERMISSION_PRESETS
-      const index = names.indexOf(current)
-      const next = names[(index + 1) % names.length]
-      service.set(activeAgent.session, next)
+      try {
+        const current = service.current(activeAgent.session.events)
+        const names = service.names.length > 0 ? service.names : PERMISSION_PRESETS
+        const index = names.indexOf(current)
+        const next = names[(index + 1) % names.length]
+        service.set(activeAgent.session, next)
+      } catch (error) {
+        console.error(`dsh-tui: permission mode switch rejected: ${error instanceof Error ? error.message : String(error)}`)
+      }
     },
     listPermissionPresets: async () => {
       const service = permission()
