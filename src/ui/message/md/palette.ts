@@ -18,92 +18,70 @@ export interface MdPalette {
   codeFallback: MarkStyle
 }
 
-export function createMdPalette(thinking: boolean): MdPalette {
-  if (thinking) {
-    return {
-      plain: {},
-      get bold() {
-        return { bold: true }
-      },
-      get italic() {
-        return { italic: true }
-      },
-      get strike() {
-        return { strike: true }
-      },
-      get link() {
-        return { color: COLORS.thinkLink, underline: true }
-      },
-      get inlineCode() {
-        return { color: COLORS.thinkInlineCode }
-      },
-      get quoteBar() {
-        return { color: COLORS.mdQuoteBar }
-      },
-      get hr() {
-        return { color: COLORS.thinkHr }
-      },
-      get listMarker() {
-        return { color: COLORS.thinkList }
-      },
-      get taskDone() {
-        return { color: COLORS.thinkTaskDone }
-      },
-      get taskTodo() {
-        return { color: COLORS.thinkTaskTodo }
-      },
-      heading() {
-        return { color: COLORS.thinkH1, bold: true }
-      },
-      get codePlain() {
-        return { color: COLORS.thinkCodePlain }
-      },
-      get codeFallback() {
-        return { color: COLORS.thinkCodeFallback }
-      },
-    }
-  }
+interface ColorSpec {
+  link: string
+  inlineCode: string
+  quoteBar: string
+  hr: string
+  list: string
+  taskDone: string
+  taskTodo: string
+  h1: string
+  h3: string
+  codePlain: string
+  codeFallback: string
+}
+
+const MD_SPEC: ColorSpec = {
+  link: 'mdLink',
+  inlineCode: 'mdInlineCode',
+  quoteBar: 'mdQuoteBar',
+  hr: 'mdHr',
+  list: 'mdList',
+  taskDone: 'mdTaskDone',
+  taskTodo: 'mdTaskTodo',
+  h1: 'mdH1',
+  h3: 'mdH3',
+  codePlain: 'mdCodePlain',
+  codeFallback: 'mdCodeFallback',
+}
+
+const THINK_SPEC: ColorSpec = {
+  link: 'thinkLink',
+  inlineCode: 'thinkInlineCode',
+  quoteBar: 'mdQuoteBar',
+  hr: 'thinkHr',
+  list: 'thinkList',
+  taskDone: 'thinkTaskDone',
+  taskTodo: 'thinkTaskTodo',
+  h1: 'thinkH1',
+  h3: 'thinkH1',
+  codePlain: 'thinkCodePlain',
+  codeFallback: 'thinkCodeFallback',
+}
+
+function buildPalette(spec: ColorSpec): MdPalette {
+  const at = (key: string): MarkStyle => ({ color: (COLORS as unknown as Record<string, string>)[key] })
   return {
     plain: {},
-    get bold() {
-      return { bold: true }
-    },
-    get italic() {
-      return { italic: true }
-    },
-    get strike() {
-      return { strike: true }
-    },
-    get link() {
-      return { color: COLORS.mdLink, underline: true }
-    },
-    get inlineCode() {
-      return { color: COLORS.mdInlineCode }
-    },
-    get quoteBar() {
-      return { color: COLORS.mdQuoteBar }
-    },
-    get hr() {
-      return { color: COLORS.mdHr }
-    },
-    get listMarker() {
-      return { color: COLORS.mdList }
-    },
-    get taskDone() {
-      return { color: COLORS.mdTaskDone }
-    },
-    get taskTodo() {
-      return { color: COLORS.mdTaskTodo }
-    },
+    bold: { bold: true },
+    italic: { italic: true },
+    strike: { strike: true },
+    link: { ...at(spec.link), underline: true },
+    inlineCode: at(spec.inlineCode),
+    quoteBar: at(spec.quoteBar),
+    hr: at(spec.hr),
+    listMarker: at(spec.list),
+    taskDone: at(spec.taskDone),
+    taskTodo: at(spec.taskTodo),
     heading(level) {
-      if (level <= 2) return { color: COLORS.mdH1, bold: true }
-      return { color: COLORS.mdH3, bold: true }
+      return { color: (COLORS as unknown as Record<string, string>)[level <= 2 ? spec.h1 : spec.h3], bold: true }
     },
-    get codePlain() {
-      return { color: COLORS.mdCodePlain }
-    },
-    get codeFallback() {
-      return { color: COLORS.mdCodeFallback }
-    },
+    codePlain: at(spec.codePlain),
+    codeFallback: at(spec.codeFallback),
   }
+}
+
+export function createMdPalette(thinking: boolean): MdPalette {
+  return buildPalette(thinking ? THINK_SPEC : MD_SPEC)
 }

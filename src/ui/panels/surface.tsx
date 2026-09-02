@@ -3,10 +3,10 @@ import type { ReactNode } from 'react'
 import { mergeRuns } from '../../core/segments.ts'
 import type { Segment } from '../../core/segments.ts'
 import { COLORS } from '../../theme.ts'
-import { glyphs } from '../../terminal/glyphs.ts'
 import { CHROME_MARGIN_X, CHROME_PAD_X, CHROME_TEXT_X } from '../../core/metrics.ts'
 import { SelectableText } from '../selection.tsx'
 import { Region } from '../region.tsx'
+import { CapText } from '../chrome/caps.tsx'
 
 export interface PanelPointerHandle {
   clickAt(y: number, x: number): void
@@ -53,13 +53,6 @@ export function panelLegend(hints: readonly PanelHint[], options: PanelLegendOpt
   return mergeRuns(parts)
 }
 
-function glyphCap(background: string, top: boolean, width: number): ReactNode {
-  if (glyphs.halfBlockCaps) {
-    return <Text color={background}>{(top ? glyphs.blockCapTop : glyphs.blockCapBottom).repeat(width)}</Text>
-  }
-  return <Text backgroundColor={background}>{' '.repeat(width)}</Text>
-}
-
 /**
  * Shared panel chrome: a floating block anchored above the status line with
  * half-block caps, the panel background, and per-row text or interactive
@@ -81,7 +74,7 @@ export function PanelSurface({ columns, rows, body, bodyStart, background, block
     <Region>
       <Box position="absolute" top={0} left={0} width={columns} height={rows}>
         <Box position="absolute" top={bodyStart - 1} left={CHROME_MARGIN_X} width={blockWidth}>
-          {glyphCap(background, true, blockWidth)}
+          <CapText background={background} top width={blockWidth} />
         </Box>
         {body.map((row, index) => {
           const isEmpty = row.segments.every(segment => segment.text.trim() === '')
@@ -105,7 +98,7 @@ export function PanelSurface({ columns, rows, body, bodyStart, background, block
           )
         })}
         <Box position="absolute" top={bodyStart + body.length} left={CHROME_MARGIN_X} width={blockWidth}>
-          {glyphCap(background, false, blockWidth)}
+          <CapText background={background} top={false} width={blockWidth} />
         </Box>
       </Box>
     </Region>

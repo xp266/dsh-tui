@@ -5,6 +5,20 @@ export const ASK_USER_TOOL_NAME = 'ask_user_question'
 const ANSWER_INDENT = 3
 const UNANSWERED_TEXT = '(Question not answered)'
 
+export function answerSummary(
+  question: AskQuestionItemLike,
+  selected: readonly string[],
+  custom: string,
+  customChecked: boolean,
+): string {
+  if (customChecked && custom !== '') {
+    return question.multiSelect === true && selected.length > 0
+      ? [...selected, custom].join(', ')
+      : custom
+  }
+  return selected.length === 0 ? UNANSWERED_TEXT : selected.join(', ')
+}
+
 export function parseAskQuestions(raw: unknown): AskQuestionItemLike[] {
   if (typeof raw !== 'object' || raw === null) return []
   const questions = (raw as { questions?: unknown }).questions
@@ -45,12 +59,7 @@ export function formatAskUserError(errorText: string): string {
 function answerTextOf(question: AskQuestionItemLike, answer: AskUserQuestionAnswerItemLike | undefined): string {
   if (answer === undefined) return UNANSWERED_TEXT
   const custom = answer.custom?.trim() ?? ''
-  if (custom !== '') {
-    return question.multiSelect === true && answer.selected.length > 0
-      ? [...answer.selected, custom].join(', ')
-      : custom
-  }
-  return answer.selected.length === 0 ? UNANSWERED_TEXT : answer.selected.join(', ')
+  return answerSummary(question, answer.selected, custom, custom !== '')
 }
 
 function questionFromJson(value: unknown): AskQuestionItemLike | undefined {

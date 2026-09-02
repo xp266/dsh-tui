@@ -480,7 +480,9 @@ export interface TuiContentFace {
   nodes: { register(definition: ChatNodeDefinition): () => void }
   views: { register(contribution: MessageViewContribution): () => void }
   renderers: { register(contribution: MessageRendererContribution): () => void }
-}export interface TuiStartupSink {
+}
+
+export interface TuiStartupSink {
   id: string
   /** Invoked for each boot progress line while the shell is starting. */
   write(line: string): void

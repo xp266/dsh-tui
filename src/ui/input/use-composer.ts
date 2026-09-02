@@ -75,9 +75,31 @@ export function useComposer(
     setCursor(next.cursor)
     reconcileComposerFields(next.value, fieldsRef.current)
   }
+  const closeHint = (): void => {
+    setHintOpen(false)
+    hintOpenRef.current = false
+    setCommandIndex(0)
+    commandIndexRef.current = 0
+  }
+  const openHint = (): void => {
+    setHintOpen(true)
+    hintOpenRef.current = true
+    setCommandIndex(0)
+    commandIndexRef.current = 0
+  }
+  const refreshHint = (): void => {
+    if (opensHint(valueRef.current)) openHint()
+    else closeHint()
+  }
+  const applyEditAndRefreshHint = (next: { value: string; cursor: number } | null): boolean => {
+    if (next === null) return false
+    applyEdit(next)
+    refreshHint()
+    return true
+  }
   const apiRef = useRef<ComposerApi>({
     moveLineBy(delta) {
-      const next = moveLine(valueRef.current, widthRef.current, cursorRef.current, delta)
+      const next = moveCaretLine(valueRef.current, cursorRef.current, widthRef.current, delta)
       cursorRef.current = next
       setCursor(next)
     },
@@ -102,10 +124,7 @@ export function useComposer(
       cursorRef.current = completed.length
       setValue(completed)
       setCursor(completed.length)
-      setHintOpen(false)
-      hintOpenRef.current = false
-      setCommandIndex(0)
-      commandIndexRef.current = 0
+      closeHint()
     },
     hintMove(delta) {
       const commands = visibleFor(valueRef.current)
@@ -128,15 +147,6 @@ export function useComposer(
       apiRef.current.confirmHint()
     },
   })
-  const refreshHint = (): void => {
-    const open = opensHint(valueRef.current)
-    setHintOpen(open)
-    hintOpenRef.current = open
-    if (open) {
-      setCommandIndex(0)
-      commandIndexRef.current = 0
-    }
-  }
   const insertPaste = (normalized: string): void => {
     const sanitized = sanitizePastedText(normalized)
     if (sanitized === '') return
@@ -233,10 +243,7 @@ export function useComposer(
       cursorRef.current = completed.length
       setValue(completed)
       setCursor(completed.length)
-      setHintOpen(false)
-      hintOpenRef.current = false
-      setCommandIndex(0)
-      commandIndexRef.current = 0
+      closeHint()
     })()
   }
   useInput((input, key) => {
@@ -261,10 +268,7 @@ export function useComposer(
       }
     }
     if (key.escape && showHint) {
-      setHintOpen(false)
-      hintOpenRef.current = false
-      setCommandIndex(0)
-      commandIndexRef.current = 0
+      closeHint()
       return
     }
     if (key.tab) {
@@ -309,10 +313,7 @@ export function useComposer(
       cursorRef.current = 0
       setValue('')
       setCursor(0)
-      setHintOpen(false)
-      hintOpenRef.current = false
-      setCommandIndex(0)
-      commandIndexRef.current = 0
+      closeHint()
       return
     }
     if (key.return) {
@@ -323,29 +324,11 @@ export function useComposer(
       void pasteFromClipboard(true)
       return
     }
-    if (key.backspace) {
-      const next = editBackspace({ value: v, cursor: c })
-      if (next !== null) {
-        applyEdit(next)
-        const open = opensHint(next.value)
-        setHintOpen(open)
-        hintOpenRef.current = open
-        setCommandIndex(0)
-        commandIndexRef.current = 0
-        return
-      }
+    if (key.backspace && applyEditAndRefreshHint(editBackspace({ value: v, cursor: c }))) {
+      return
     }
-    if (key.delete) {
-      const next = editDelete({ value: v, cursor: c })
-      if (next !== null) {
-        applyEdit(next)
-        const open = opensHint(next.value)
-        setHintOpen(open)
-        hintOpenRef.current = open
-        setCommandIndex(0)
-        commandIndexRef.current = 0
-        return
-      }
+    if (key.delete && applyEditAndRefreshHint(editDelete({ value: v, cursor: c }))) {
+      return
     }
     if (key.leftArrow && c > 0) {
       const moved = editCursorLeft({ value: v, cursor: c })
@@ -360,13 +343,13 @@ export function useComposer(
       return
     }
     if (key.upArrow) {
-      const next = moveLine(v, contentWidth, c, -1)
+      const next = moveCaretLine(v, c, contentWidth, -1)
       cursorRef.current = next
       setCursor(next)
       return
     }
     if (key.downArrow) {
-      const next = moveLine(v, contentWidth, c, 1)
+      const next = moveCaretLine(v, c, contentWidth, 1)
       cursorRef.current = next
       setCursor(next)
       return
@@ -383,20 +366,9 @@ export function useComposer(
     }
     if (input && !key.ctrl && !key.meta && !isMouseResidue(input)) {
       if (/[\u0000-\u001f\u007f]/.test(input)) return
-      applyEdit(editInsert({ value: v, cursor: c }, input))
-      const open = opensHint(valueRef.current)
-      setHintOpen(open)
-      hintOpenRef.current = open
-      if (open) {
-        setCommandIndex(0)
-        commandIndexRef.current = 0
-      }
+      applyEditAndRefreshHint(editInsert({ value: v, cursor: c }, input))
       return
     }
   })
   return { value, cursor, hintOpen, commandIndex, api: apiRef.current }
-}
-
-function moveLine(value: string, width: number, cursor: number, delta: -1 | 1): number {
-  return moveCaretLine(value, cursor, width, delta)
 }

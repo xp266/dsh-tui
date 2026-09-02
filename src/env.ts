@@ -8,6 +8,7 @@ export const env = {
   ascii: process.env.DSH_TUI_ASCII === '1',
   /** Force background mode: 'dark' or 'light'. */
   background: process.env.DSH_TUI_BG,
-  /** Reload theme.ts on every save. */
+  /** Reload theme.ts on every save (path relative to cwd, default src/theme.ts). */
   hotTheme: process.env.DSH_TUI_HOT_THEME === '1',
+  themePath: process.env.DSH_TUI_THEME_PATH,
 }

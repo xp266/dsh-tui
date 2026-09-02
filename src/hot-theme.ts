@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { replacePalettes } from './theme.ts'
 import type { Theme, ThemeMode } from './theme.ts'
 import { env } from './env.ts'
@@ -10,35 +12,38 @@ export interface HotThemeHandle {
   stop(): void
 }
 
+const themeUrl = env.themePath === undefined
+  ? new URL('../src/theme.ts', import.meta.url)
+  : pathToFileURL(resolve(process.cwd(), env.themePath))
+
 export function startHotTheme(onChange: () => void): HotThemeHandle | undefined {
   if (!env.hotTheme) return undefined
-  const themePath = new URL('../src/theme.ts', import.meta.url)
   let lastSource = ''
   try {
-    lastSource = readFileSync(themePath, 'utf8')
+    lastSource = readFileSync(themeUrl, 'utf8')
   } catch {
-    console.error('dsh-tui: DSH_TUI_HOT_THEME is set but src/theme.ts is missing; hot theme disabled')
+    console.error('dsh-tui: DSH_TUI_HOT_THEME is set but the theme file is missing; hot theme disabled')
     return undefined
   }
-  console.error('dsh-tui: hot theme enabled; saving src/theme.ts applies colors live')
+  console.error('dsh-tui: hot theme enabled; saving the theme file applies colors live')
   const timer = setInterval(async () => {
     let source: string
     try {
-      source = readFileSync(themePath, 'utf8')
+      source = readFileSync(themeUrl, 'utf8')
     } catch {
       return
     }
     if (source === lastSource) return
     lastSource = source
     try {
-      const fresh = (await import(`../src/theme.ts?t=${Date.now()}`)) as {
+      const fresh = (await import(`${themeUrl.href}?t=${Date.now()}`)) as {
         palettes: Record<ThemeMode, Theme>
       }
       replacePalettes(fresh.palettes)
       bumpSurface()
       onChange()
     } catch {
-      // theme.ts is mid-edit or temporarily broken; retry on the next tick
+      // theme file is mid-edit or temporarily broken; retry on the next tick
     }
   }, REFRESH_MS)
   timer.unref()

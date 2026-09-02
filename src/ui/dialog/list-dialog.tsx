@@ -10,7 +10,6 @@ export interface ListDialogProps<T> {
   width: number
   maxHeight: number
   load: () => Promise<T[]>
-  cacheKey?: string
   search?: boolean
   searchRight?: boolean
   labelOf(item: T): string
@@ -27,7 +26,6 @@ export function ListDialog<T>({
   width,
   maxHeight,
   load,
-  cacheKey,
   search = false,
   searchRight = false,
   labelOf,
@@ -37,7 +35,7 @@ export function ListDialog<T>({
   footerLines,
   errors,
 }: ListDialogProps<T>) {
-  const { items, loading, error } = useAsyncList(load, cacheKey)
+  const { items, loading, error } = useAsyncList(load)
   const itemRows: DialogRow[] = items.map(item => {
     const button: DialogItem = { type: 'button', label: labelOf(item), right: rightOf?.(item), onPress: () => onSelect(item) }
     return { items: [button] }

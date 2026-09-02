@@ -92,14 +92,6 @@ function isSubsequence(query: string, text: string): boolean {
   return at === query.length
 }
 
-function matchTier(entry: CommandHintItem, query: string): 0 | 1 | 2 | undefined {
-  const name = entry.command.slice(1).toLowerCase()
-  if (name.startsWith(query)) return 0
-  if (isSubsequence(query, name)) return 1
-  if (entry.description.toLowerCase().includes(query)) return 2
-  return undefined
-}
-
 export function filterHintEntries(entries: readonly CommandHintItem[], value: string): CommandHintItem[] {
   if (!value.startsWith('/') || /\s/.test(value)) return []
   return matchHintEntries(entries, value)

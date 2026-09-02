@@ -58,11 +58,11 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
   const armedRef = useRef<string | null>(null)
   const armTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const providerItemRefs = useRef(new Map<DialogItem, OfficialProvider>())
-  const latestProviderItemMap = useRef(providerItemRefs.current)
+  const providerItemMap = new Map<DialogItem, OfficialProvider>()
   useLayoutEffect(() => {
-    providerItemRefs.current = latestProviderItemMap.current
+    providerItemRefs.current = providerItemMap
   })
-  const { items: directory, loading, error: loadError, reload } = useAsyncList(api.listProviderDirectory, 'providers')
+  const { items: directory, loading, error: loadError, reload } = useAsyncList(api.listProviderDirectory)
   const disarm = () => {
     clearTimeout(armTimer.current)
     if (armedRef.current !== null) {
@@ -264,7 +264,6 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
       />
     )
   }
-  const providerItemMap = new Map<DialogItem, OfficialProvider>()
   const providerRows: DialogRow[] = [
     ...directory.map(entry => {
       const armed = armedKey === entry.provider
@@ -284,7 +283,6 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
       ],
     },
   ]
-  latestProviderItemMap.current = providerItemMap
   const providerFooter: DialogFooterLine[] = [
     ...(loading ? [loadingLine()] : []),
     ...DELETE_HINT,

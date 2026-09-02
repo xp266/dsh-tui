@@ -70,7 +70,7 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
       onClose()
     })
   }
-  const { items, loading, error: loadError, reload, remove } = useAsyncList(loadSessions, 'sessions')
+  const { items, loading, error: loadError, reload, remove } = useAsyncList(loadSessions)
   const sections = useMemo(() => groupSessions(items), [items])
   const disarm = () => {
     clearTimeout(armTimer.current)

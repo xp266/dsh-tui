@@ -34,7 +34,7 @@ export interface ChatEvents {
 
 export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolean): ChatEvents {
   const [messages, setMessages] = useState<Message[]>([])
-  const [modelName, setModelName] = useState('deepseek-v4-flash')
+  const [modelName, setModelName] = useState('')
   const [activity, setActivity] = useState<AgentActivity>(IDLE_ACTIVITY)
   const [todos, setTodos] = useState<TodoItemLike[]>(NO_TODOS)
   const [retryStatus, setRetryStatus] = useState<RetryStatus | undefined>(undefined)

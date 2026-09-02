@@ -10,18 +10,6 @@ function parseForcedColorLevel(value: string | undefined): ColorLevel | undefine
   return undefined
 }
 
-function fallbackColorLevel(): ColorLevel {
-  const term = process.env.TERM ?? ''
-  if (term === 'dumb') return 0
-  const colorterm = process.env.COLORTERM ?? ''
-  if (colorterm === 'truecolor' || colorterm === '24bit') return 3
-  if (term.includes('truecolor')) return 3
-  if (process.env.WT_SESSION !== undefined) return 3
-  if (term.includes('256color')) return 2
-  if (term !== '' || process.env.TERM_PROGRAM !== undefined) return 1
-  return process.stdout.isTTY ? 1 : 0
-}
-
 function detectColorLevel(): ColorLevel {
   const forced = parseForcedColorLevel(env.color)
   if (forced !== undefined) return forced
@@ -33,7 +21,15 @@ function detectColorLevel(): ColorLevel {
     const parsed = Number(forceColor)
     if (parsed === 1 || parsed === 2 || parsed === 3) return parsed
   }
-  return fallbackColorLevel()
+  const term = process.env.TERM ?? ''
+  if (term === 'dumb') return 0
+  const colorterm = process.env.COLORTERM ?? ''
+  if (colorterm === 'truecolor' || colorterm === '24bit') return 3
+  if (term.includes('truecolor')) return 3
+  if (process.env.WT_SESSION !== undefined) return 3
+  if (term.includes('256color')) return 2
+  if (term !== '' || process.env.TERM_PROGRAM !== undefined) return 1
+  return 0
 }
 
 function detectUnicode(): boolean {

@@ -1,10 +1,9 @@
 import { act } from 'react'
 import { render } from 'ink-testing-library'
 import { Box } from 'ink'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { SessionSummary } from '../src/chat/session-list.ts'
 import type { DialogHandle } from '../src/ui/dialog/dialog.tsx'
-import { clearAsyncListCache } from '../src/ui/hooks/use-async-list.ts'
 import { SessionsDialog } from '../src/ui/dialog/sessions-dialog.tsx'
 
 function sessions(): SessionSummary[] {
@@ -31,10 +30,6 @@ async function untilFocused(lastFrame: () => string | undefined, label: string):
 }
 
 describe('list dialog', () => {
-  beforeEach(() => {
-    clearAsyncListCache()
-  })
-
   it('loads rows and selects the focused item with enter', async () => {
     const selected: string[] = []
     const api = {
@@ -121,34 +116,6 @@ describe('list dialog', () => {
       resolveLoad?.(sessions())
     })
     await until(() => (lastFrame() ?? '').includes('Alpha'))
-  })
-
-  it('hides the loading hint while cached rows revalidate', async () => {
-    const api = {
-      listSessions: vi.fn(async () => sessions()),
-      openSession: vi.fn(async () => {}),
-      archiveSession: vi.fn(async () => {}),
-      activeSessionId: () => '',
-      newSession: vi.fn(async () => {}),
-    }
-    const first = render(
-      <Box width={100} height={24}>
-        <SessionsDialog api={api} onClose={() => {}} onSessionSelected={() => {}} />
-      </Box>,
-    )
-    await untilFocused(first.lastFrame, 'Alpha')
-    first.unmount()
-    api.listSessions = vi.fn(() => new Promise<SessionSummary[]>(() => {}))
-    const second = render(
-      <Box width={100} height={24}>
-        <SessionsDialog api={api} onClose={() => {}} onSessionSelected={() => {}} />
-      </Box>,
-    )
-    await until(() => (second.lastFrame() ?? '').includes('Alpha'))
-    await new Promise(resolve => setTimeout(resolve, 200))
-    const frame = second.lastFrame() ?? ''
-    expect(frame).toContain('Alpha')
-    expect(frame).not.toContain('loading')
   })
 
   it('surfaces load failures in the footer', async () => {

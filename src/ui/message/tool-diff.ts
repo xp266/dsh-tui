@@ -1,52 +1,8 @@
 import { wrapSegments } from '../../core/segments.ts'
 import type { Segment } from '../../core/segments.ts'
 import { COLORS } from '../../theme.ts'
-import { highlightCodeBlock } from './md/highlight.ts'
+import { highlightCodeBlock, LANGUAGE_ALIASES } from './md/highlight.ts'
 import type { DiffLine } from '../../model/message.ts'
-
-const EXTENSION_LANGUAGES: Record<string, string> = {
-  ts: 'typescript',
-  tsx: 'typescript',
-  js: 'javascript',
-  jsx: 'javascript',
-  mjs: 'javascript',
-  cjs: 'javascript',
-  json: 'json',
-  jsonc: 'json',
-  py: 'python',
-  rb: 'ruby',
-  rs: 'rust',
-  go: 'go',
-  java: 'java',
-  kt: 'kotlin',
-  swift: 'swift',
-  c: 'c',
-  h: 'c',
-  cpp: 'cpp',
-  cc: 'cpp',
-  cxx: 'cpp',
-  hpp: 'cpp',
-  cs: 'csharp',
-  php: 'php',
-  lua: 'lua',
-  sql: 'sql',
-  sh: 'bash',
-  bash: 'bash',
-  zsh: 'bash',
-  yml: 'yaml',
-  yaml: 'yaml',
-  toml: 'toml',
-  md: 'markdown',
-  markdown: 'markdown',
-  html: 'markup',
-  htm: 'markup',
-  xml: 'markup',
-  svg: 'markup',
-  vue: 'markup',
-  css: 'css',
-  scss: 'scss',
-  less: 'less',
-}
 
 const FILENAME_LANGUAGES: Record<string, string> = {
   makefile: 'makefile',
@@ -60,7 +16,7 @@ export function languageFromPath(path: string): string {
   if (filename !== undefined) return filename
   const dot = name.lastIndexOf('.')
   if (dot < 0) return ''
-  return EXTENSION_LANGUAGES[name.slice(dot + 1).toLowerCase()] ?? ''
+  return LANGUAGE_ALIASES[name.slice(dot + 1).toLowerCase()] ?? ''
 }
 
 const SNIFF_RULES: readonly (readonly [RegExp, string])[] = [

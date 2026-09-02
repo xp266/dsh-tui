@@ -44,7 +44,7 @@ type Window =
 export function ModelsDialog({ api, onClose, onModelSelected, onAddProvider, ref }: ModelsDialogProps) {
   const [window, setWindow] = useState<Window>({ kind: 'list' })
   const { error, clearError, run } = useAsyncAction()
-  const { items: models, loading, error: loadError, reload } = useAsyncList(api.listModels, 'models')
+  const { items: models, loading, error: loadError, reload } = useAsyncList(api.listModels)
   const modelItemRefs = useRef(new Map<DialogItem, ConfiguredModel>())
   const modelItemMap = new Map<DialogItem, ConfiguredModel>()
   useLayoutEffect(() => {

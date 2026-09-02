@@ -100,7 +100,7 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
       const onResize = () => {
         lastColumns = capture.stream.columns
         lastRows = capture.stream.rows
-        capture.stream.write('\x1b[2J\x1b[3J\x1b[H')
+        capture.stream.write('\x1b[2J\x1b[H')
         app!.clear()
         app!.rerender(buildAppNode())
       }

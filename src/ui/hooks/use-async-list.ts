@@ -9,35 +9,10 @@ export interface AsyncListState<T> {
   remove(predicate: (item: T) => boolean): void
 }
 
-const LIST_CACHE_LIMIT = 32
 const LOADING_HINT_DELAY_MS = 120
 
-const listCache = new Map<string, unknown>()
-
-function readListCache<T>(key: string): T[] | undefined {
-  return listCache.get(key) as T[] | undefined
-}
-
-function writeListCache<T>(key: string, items: T[]): void {
-  if (listCache.size >= LIST_CACHE_LIMIT && !listCache.has(key)) {
-    const oldest = listCache.keys().next()
-    if (!oldest.done) listCache.delete(oldest.value)
-  }
-  listCache.set(key, items)
-}
-
-export function clearAsyncListCache(): void {
-  listCache.clear()
-}
-
-export function seedAsyncListCache<T>(key: string, items: readonly T[]): void {
-  writeListCache(key, [...items])
-}
-
-export function useAsyncList<T>(load: () => Promise<T[]>, cacheKey?: string): AsyncListState<T> {
-  const keyRef = useRef(cacheKey)
-  keyRef.current = cacheKey
-  const [items, setItems] = useState<T[]>(() => (cacheKey === undefined ? [] : readListCache<T>(cacheKey) ?? []))
+export function useAsyncList<T>(load: () => Promise<T[]>): AsyncListState<T> {
+  const [items, setItems] = useState<T[]>([])
   const itemsRef = useRef(items)
   itemsRef.current = items
   const [loading, setLoading] = useState(false)
@@ -69,7 +44,6 @@ export function useAsyncList<T>(load: () => Promise<T[]>, cacheKey?: string): As
         itemsRef.current = next
         setItems(next)
         setError(null)
-        if (keyRef.current !== undefined) writeListCache(keyRef.current, next)
       })
       .catch(cause => {
         if (cancelled.current) return
@@ -85,7 +59,6 @@ export function useAsyncList<T>(load: () => Promise<T[]>, cacheKey?: string): As
     const next = itemsRef.current.filter(item => !predicate(item))
     itemsRef.current = next
     setItems(next)
-    if (keyRef.current !== undefined) writeListCache(keyRef.current, next)
   }, [])
   useEffect(() => {
     reload()

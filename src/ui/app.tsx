@@ -29,7 +29,6 @@ import type { CommandAvailability, CommandDef } from './input/commands.ts'
 import { CHROME_MARGIN_X, MESSAGE_INPUT_GAP_ROWS, hintBlockTop } from '../core/metrics.ts'
 import { useComposer } from './input/use-composer.ts'
 import type { ComposerSubmission } from './input/composer-fields.ts'
-import { seedAsyncListCache } from './hooks/use-async-list.ts'
 import { Region } from './region.tsx'
 import { MessageList } from './message/message-list.tsx'
 import { CloseGuardContext } from './dialog/dialog.tsx'
@@ -93,9 +92,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
       },
       onNewSession: startNewSession,
     })
-    void bridge.listSessions()
-      .then(items => seedAsyncListCache('sessions', items))
-      .catch(() => {})
+    void bridge.listSessions().catch(() => {})
     return () => {
       offWindows()
       offPanels()

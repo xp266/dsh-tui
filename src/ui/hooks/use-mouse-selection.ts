@@ -10,12 +10,12 @@ import { clampFocusRow, toScreenSelection } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
 import type { ScrollSnapshot } from './use-scroll.ts'
 import { rowInfoAt, rowCount, scrollbarGeometry } from '../message/layout.ts'
+import { POINTER_BUILTIN_ORDER } from '../pointer/registry.ts'
 import type { InputBarHandle } from '../input/input-bar.tsx'
 import type { PanelPointerHandle } from '../panels/approval-panel.tsx'
 import type { CommandHintState } from '../input/commands.ts'
 import type { Message } from '../../model/message.ts'
 
-const WHEEL_SCROLL_LINES = 3
 const DRAG_SCROLL_INTERVAL_MS = 15
 
 export interface HintRegion {
@@ -281,7 +281,7 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
       // The builtin composite participates in the same dispatch chain as
       // plugin handlers, sorted by order (builtin at 100, plugin default 300).
       const entries = [
-        { key: builtinHandler.id, order: 100, value: builtinHandler as PointerHandlerContribution },
+        { key: builtinHandler.id, order: POINTER_BUILTIN_ORDER, value: builtinHandler as PointerHandlerContribution },
         ...pointerHandlerEntries(),
       ].sort((a, b) => a.order - b.order)
       const entryFor = (id: string | null) => entries.find(entry => entry.key === id)
@@ -302,7 +302,6 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
           return
         }
         case 'drag': {
-          console.error('EVDRAG owner=%s y=%d x=%d', ownerId, rawEvent.y, rawEvent.x)
           entryFor(ownerId)?.value.onDrag?.(frame)
           return
         }

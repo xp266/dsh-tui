@@ -167,11 +167,6 @@ function renderBody(message: Message, width: number): BodyRendered {
       }
       const lines: string[] = []
       const rows: Segment[][] = []
-      // A styled line is pushed together with its segments AT ITS OWN INDEX:
-      // rows is sparse, and a plain rows.push would attach the segment to an
-      // earlier body line (segments replace the row's text for display while
-      // selection reads the plain text, so a misaligned row shows one string
-      // and copies another).
       const push = (text: string, segments?: Segment[]): void => {
         lines.push(text)
         if (segments !== undefined) rows[lines.length - 1] = segments

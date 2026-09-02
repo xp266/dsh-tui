@@ -89,7 +89,3 @@ export function copySelection(sel: LineSelection, ctx: SelectionExtractContext):
   }
   return text
 }
-
-export function resetSelectionService(): void {
-  installed = false
-}

@@ -908,7 +908,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   void modelsList.get().catch(() => {})
 
   return {
-    modelName: () => currentSelection()?.model ?? 'deepseek-v4-flash',
+    modelName: () => currentSelection()?.model ?? '',
     send(text: string, images?: ReadonlyArray<readonly PendingImage[]>) {
       const hasText = text !== ''
       sendContent(activeAgent, text, hasText, images ?? [], ctx)
@@ -997,8 +997,9 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       const service = permission()
       if (service === undefined) return
       const current = service.current(activeAgent.session.events)
-      const index = (PERMISSION_PRESETS as readonly string[]).indexOf(current)
-      const next = PERMISSION_PRESETS[(index + 1) % PERMISSION_PRESETS.length]
+      const names = service.names.length > 0 ? service.names : PERMISSION_PRESETS
+      const index = names.indexOf(current)
+      const next = names[(index + 1) % names.length]
       service.set(activeAgent.session, next)
     },
     listPermissionPresets: async () => {

@@ -35,14 +35,6 @@ export function pluginGrammarOf(lang: string): Prism.Grammar | undefined {
   return pluginGrammars.get(lang.toLowerCase())
 }
 
-export function subscribeMarkdownBlocks(listener: () => void): () => void {
-  return blocks.subscribe(listener)
-}
-
-export function subscribeMarkdownInlines(listener: () => void): () => void {
-  return inline.subscribe(listener)
-}
-
 function markdownBlockOf(token: { type: string }) {
   return blocks.get(token.type)
 }

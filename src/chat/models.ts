@@ -10,8 +10,6 @@ export interface ConfiguredModel {
 
 export type ModelEffortKey = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
-export const MODEL_EFFORT_LEVELS: readonly ModelEffortKey[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
-
 export interface ModelEntryConfig {
   id: string
   name?: string

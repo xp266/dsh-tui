@@ -35,7 +35,6 @@ export function EffortDialog({ api, onClose, ref }: EffortDialogProps) {
       width={DIALOG_WIDTH_MEDIUM}
       maxHeight={DIALOG_MAX_HEIGHT}
       load={api.listEfforts}
-      cacheKey="efforts"
       labelOf={effort => effort.name}
       rightOf={effort => (effort.id === current ? 'current' : undefined)}
       onSelect={effort => void selectEffort(effort.id)}

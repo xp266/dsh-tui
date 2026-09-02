@@ -93,7 +93,8 @@ export function asTextItem(item: DialogItem): TextItem | null {
   return widgetOf(item.type).editable === true ? item as TextItem : null
 }
 
-export function filterRowsWithHeaders(rows: DialogRow[], query: string, searchRight: boolean): DialogRow[] {  const q = query.trim().toLowerCase()
+export function filterRowsWithHeaders(rows: DialogRow[], query: string, searchRight: boolean): DialogRow[] {
+  const q = query.trim().toLowerCase()
   if (q === '') return rows
   const matches = (item: DialogItem): boolean => {
     const texts = widgetOf(item.type).searchTexts?.(item, searchRight)

@@ -12,10 +12,6 @@ export function registerInputStatus(contribution: InputStatusContribution): () =
   return inputStatus.register(contribution.id, contribution, { order: contribution.order })
 }
 
-export function subscribeInputStatus(listener: () => void): () => void {
-  return inputStatus.subscribe(listener)
-}
-
 export function inputStatusParts(context: InputStatusContext): Array<{ text: string; color?: string; bold?: boolean }> {
   const parts: Array<{ text: string; color?: string; bold?: boolean }> = []
   for (const contribution of inputStatus.values()) {

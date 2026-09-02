@@ -1,4 +1,4 @@
-import { Box, Text, useStdout } from 'ink'
+import { Box, Text } from 'ink'
 import type { Ref } from 'react'
 import { useCaret } from '../hooks/use-caret.ts'
 import { caretNonceBold, caretNonceColor, caretNonceText } from '../../core/caret-nonce.ts'
@@ -8,6 +8,7 @@ import { glyphs } from '../../terminal/glyphs.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
 import { CHROME_FRAME_ROWS, CHROME_MARGIN_X, CHROME_PAD_X, CHROME_TEXT_X, INPUT_WIDTH_OFFSET, inputFrameTop, inputStatusRow } from '../../core/metrics.ts'
 import { inputStatusParts } from '../chrome/input-status.ts'
+import { CapText } from '../chrome/caps.tsx'
 import { colToCharIndex, lineBreaks, textWidth, truncate, wrapLines } from '../../core/text.ts'
 import { hasFieldChar } from '../../core/fields.ts'
 import { expandFieldChars, fieldRowSegments } from '../../core/field-view.ts'
@@ -158,9 +159,7 @@ export function InputBar({
     <Region y={blockTop}>
       <Box position="absolute" top={0} left={0} width={columns} height={rows}>
         <Box position="absolute" top={blockTop} left={CHROME_MARGIN_X} width={blockWidth}>
-          {glyphs.halfBlockCaps
-            ? <Text color={permission.color}>{glyphs.blockCapTop.repeat(blockWidth)}</Text>
-            : <Text backgroundColor={permission.color}>{' '.repeat(blockWidth)}</Text>}
+          <CapText background={permission.color} top width={blockWidth} />
         </Box>
         {Array.from({ length: realRows }, (_, row) => {
           const line = lines[visibleStart + row] ?? ''
@@ -227,9 +226,7 @@ export function InputBar({
           )}
         </Box>
         <Box position="absolute" top={inputStatusRow(rows) + 1} left={CHROME_MARGIN_X} width={blockWidth}>
-          {glyphs.halfBlockCaps
-            ? <Text color={permission.color}>{glyphs.blockCapBottom.repeat(blockWidth)}</Text>
-            : <Text backgroundColor={permission.color}>{' '.repeat(blockWidth)}</Text>}
+          <CapText background={permission.color} top={false} width={blockWidth} />
         </Box>
       </Box>
     </Region>

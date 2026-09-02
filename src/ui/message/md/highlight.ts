@@ -266,7 +266,7 @@ function buildStyles(roleFns: Record<CodeRole, () => MarkStyle>): Record<string,
 export const codeStyles = buildStyles(ROLE_STYLE_LIGHT)
 export const codeStylesThinking = buildStyles(ROLE_STYLE_THINKING)
 
-const LANGUAGE_ALIASES: Record<string, string> = {
+export const LANGUAGE_ALIASES: Record<string, string> = {
   py: 'python',
   python3: 'python',
   js: 'javascript',
@@ -274,7 +274,9 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   nodejs: 'javascript',
   mjs: 'javascript',
   cjs: 'javascript',
+  jsx: 'javascript',
   ts: 'typescript',
+  tsx: 'typescript',
   sh: 'bash',
   shell: 'bash',
   zsh: 'bash',
@@ -285,6 +287,9 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   kt: 'kotlin',
   kts: 'kotlin',
   'c++': 'cpp',
+  c: 'c',
+  h: 'c',
+  cpp: 'cpp',
   cc: 'cpp',
   cxx: 'cpp',
   hpp: 'cpp',
@@ -302,9 +307,11 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   bat: 'batch',
   cmd: 'batch',
   htm: 'markup',
+  html: 'markup',
   xhtml: 'markup',
   svg: 'markup',
   xml: 'markup',
+  vue: 'markup',
   xsl: 'markup',
   plist: 'markup',
   styl: 'stylus',
@@ -314,6 +321,7 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   mysql: 'sql',
   pgsql: 'sql',
   sqlite: 'sql',
+  sql: 'sql',
   gql: 'graphql',
   md: 'markdown',
   mdwn: 'markdown',
@@ -350,6 +358,16 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   jinja: 'django',
   jinja2: 'django',
   coffee: 'coffeescript',
+  json: 'json',
+  jsonc: 'json',
+  java: 'java',
+  swift: 'swift',
+  php: 'php',
+  lua: 'lua',
+  toml: 'toml',
+  css: 'css',
+  scss: 'scss',
+  less: 'less',
 }
 
 const LANGUAGE_COMPONENTS: string[] = [
@@ -388,16 +406,7 @@ const WARM_SLICE_MS = 6
 let warmStarted = false
 const warmListeners: Array<() => void> = []
 
-export interface WarmState {
-  done: boolean
-  remaining: number
-}
-
-const warmState: WarmState = { done: false, remaining: LANGUAGE_COMPONENTS.length }
-
-export function warmProgress(): WarmState {
-  return { ...warmState }
-}
+const warmState = { done: false, remaining: LANGUAGE_COMPONENTS.length }
 
 function loadNext(names: string[]): void {
   const t0 = performance.now()

@@ -1,5 +1,8 @@
 import type { LineSelection, PointerEventFrame } from '../../contract/index.ts'
 import { panelContains } from '../layout-service.ts'
+import { POINTER_BUILTIN_ORDER } from './registry.ts'
+
+const WHEEL_LINES = 3
 
 export interface PointerBuiltinDeps {
   inInputContent(y: number): boolean
@@ -55,8 +58,28 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
     inputCandidate.current = null
   }
 
+  function extendOrDrag(candidate: { current: { x: number; y: number } | null }, event: PointerEventFrame): void {
+    const anchor = candidate.current
+    if (anchor !== null) {
+      candidate.current = null
+      deps.setSelection({
+        anchorRow: anchor.y,
+        anchorCol: anchor.x,
+        focusRow: event.event.y,
+        focusCol: event.event.x,
+        inMessage: false,
+      })
+      return
+    }
+    deps.setSelection(current => current === null || current.inMessage ? current : {
+      ...current,
+      focusRow: event.event.y,
+      focusCol: event.event.x,
+    })
+  }
+
   return {
-    order: 100,
+    order: POINTER_BUILTIN_ORDER,
     id: 'builtin.pointer',
     beginDown(): void {
       clearCandidates()
@@ -140,66 +163,15 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
           }
           return
         }
-        case 'input': {
-          const candidate = inputCandidate.current
-          if (candidate !== null) {
-            inputCandidate.current = null
-            deps.setSelection({
-              anchorRow: candidate.y,
-              anchorCol: candidate.x,
-              focusRow: y,
-              focusCol: x,
-              inMessage: false,
-            })
-            return
-          }
-          deps.setSelection(current => current === null || current.inMessage ? current : {
-            ...current,
-            focusRow: y,
-            focusCol: x,
-          })
+        case 'input':
+          extendOrDrag(inputCandidate, event)
           return
-        }
-        case 'panel': {
-          const candidate = panelCandidate.current
-          if (candidate !== null) {
-            panelCandidate.current = null
-            deps.setSelection({
-              anchorRow: candidate.y,
-              anchorCol: candidate.x,
-              focusRow: y,
-              focusCol: x,
-              inMessage: false,
-            })
-            return
-          }
-          deps.setSelection(current => current === null || current.inMessage ? current : {
-            ...current,
-            focusRow: y,
-            focusCol: x,
-          })
+        case 'panel':
+          extendOrDrag(panelCandidate, event)
           return
-        }
-        case 'dialog': {
-          const candidate = dialogCandidate.current
-          if (candidate !== null) {
-            dialogCandidate.current = null
-            deps.setSelection({
-              anchorRow: candidate.y,
-              anchorCol: candidate.x,
-              focusRow: y,
-              focusCol: x,
-              inMessage: false,
-            })
-            return
-          }
-          deps.setSelection(current => current === null || current.inMessage ? current : {
-            ...current,
-            focusRow: y,
-            focusCol: x,
-          })
+        case 'dialog':
+          extendOrDrag(dialogCandidate, event)
           return
-        }
         case 'message': {
           const candidate = clickCandidate.current
           if (candidate !== null) {
@@ -295,7 +267,7 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
         deps.inputWheel(dir)
         return true
       }
-      const delta = dir === -1 ? -3 : 3
+      const delta = dir === -1 ? -WHEEL_LINES : WHEEL_LINES
       const live = event.ui.getScroll()
       const next = Math.max(0, Math.min(live.maxScroll, live.top + delta))
       if (next !== live.top) deps.onScroll(next)

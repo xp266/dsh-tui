@@ -17,6 +17,7 @@ export function writeOsc52(text: string): void {
 
 export function isWsl(): boolean {
   if (platform() !== 'linux') return false
+  if (process.env.WSL_DISTRO_NAME !== undefined) return true
   return release().toLowerCase().includes('microsoft')
 }
 
@@ -124,7 +125,7 @@ export async function readClipboardImageUris(): Promise<string[]> {
   if (platform() !== 'linux') return []
   const uris = await firstText([
     { command: 'wl-paste', args: ['-t', 'text/uri-list'] },
-    { command: 'xclip', args: ['selection', 'clipboard', '-t', 'text/uri-list', '-o'] },
+    { command: 'xclip', args: ['-selection', 'clipboard', '-t', 'text/uri-list', '-o'] },
   ])
   if (uris === undefined) return []
   return uris

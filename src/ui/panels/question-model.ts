@@ -9,6 +9,7 @@ import type { MarkStyle, Segment } from '../../core/segments.ts'
 import { COLORS } from '../../theme.ts'
 import { glyphs } from '../../terminal/glyphs.ts'
 import { panelLegend } from './surface.tsx'
+import { answerSummary } from '../../chat/question-view.ts'
 import type { AskQuestionItemLike, AskUserQuestionAnswerItemLike, AskUserQuestionRequestLike } from '../../chat/interactions.ts'
 
 const questionStyle = (): MarkStyle => ({ color: COLORS.panelQuestionText, bold: true })
@@ -228,12 +229,7 @@ export function buildAnswers(state: QuestionPageState): AskUserQuestionAnswerIte
 export function reviewAnswerOf(question: AskQuestionItemLike, draft: QuestionDraft): string {
   const labels = (question.options ?? []).filter(option => draft.selected.includes(option.label)).map(option => option.label)
   const custom = draft.customText.trim()
-  if (draft.customChecked && custom !== '') {
-    return question.multiSelect === true && labels.length > 0
-      ? [...labels, custom].join(', ')
-      : custom
-  }
-  return labels.length === 0 ? '(Question not answered)' : labels.join(', ')
+  return answerSummary(question, labels, custom, draft.customChecked)
 }
 
 export interface PanelHitRow {

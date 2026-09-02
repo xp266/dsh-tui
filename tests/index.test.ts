@@ -46,6 +46,7 @@ describe('dsh-tui plugin', () => {
     expect(instance.clear).toHaveBeenCalledTimes(1)
     expect(instance.rerender).toHaveBeenCalledTimes(1)
     const writes = writeSpy.mock.calls.map(call => String(call[0]))
-    expect(writes.some(write => write.includes('\x1b[2J\x1b[3J\x1b[H'))).toBe(true)
+    expect(writes.some(write => write.includes('\x1b[2J\x1b[H'))).toBe(true)
+    expect(writes.some(write => write.includes('\x1b[3J'))).toBe(false)
   })
 })
