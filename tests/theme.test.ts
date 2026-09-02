@@ -124,12 +124,12 @@ describe('theme modes', () => {
     setThemeMode('light')
     expect(Object.keys(COLORS).sort()).toEqual(Object.keys(dark).sort())
     expect(themeMode()).toBe('light')
-    expect(COLORS.modelText).toBe('#000000')
+    expect(COLORS.modelText).toBe('#1a1a1a')
     expect(COLORS.dialogBackground).toBe('#ffffff')
     setThemeMode('dark')
     expect(themeMode()).toBe('dark')
-    expect(COLORS.modelText).toBe('#ffffff')
-    expect(COLORS.dialogBackground).toBe('#000000')
+    expect(COLORS.modelText).toBe('#f0f0f0')
+    expect(COLORS.dialogBackground).toBe('#0d0d0d')
   })
 
   it('keeps every glyph table populated', () => {

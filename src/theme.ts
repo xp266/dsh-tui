@@ -21,211 +21,241 @@ export function subscribePalettes(listener: () => void): () => void {
   return paletteContributions.subscribe(listener)
 }
 
-const darkPalette = {
-  userBubbleBackground: '#262626',
-  aiBubbleBackground: '#141414',
+/**
+ * The palette is built from a fixed gray ladder plus one value per semantic
+ * hue, so near-duplicate grays cannot drift apart again: every surface picks
+ * its shade from the ladder, and every meaning (accent, info, success, error,
+ * added, removed) owns exactly one color.
+ */
+interface GrayLadder {
+  /** Page background (dialog backdrop). */
+  base: string
+  /** Sunken surface: tool cards, read bodies, terminal fills. */
+  sunken: string
+  /** Panel surface: dialogs, permission strip, user bubble. */
+  surface: string
+  /** Raised surface: inputs, hovered/selected rows. */
+  raised: string
+  /** Decorative gray: hr, quote bar, task markers, scroll thumb. */
+  line: string
+  /** Secondary text: hints, separators, tool body, thinking body. */
+  text: string
+  /** Primary text. */
+  ink: string
+}
 
-  permissionBackground: '#202020',
-  workspaceWriteText: '#006eff',
-  dangerFullAccessText: '#ffae00',
-  readOnlyText: '#4caf50',
+const DARK_LADDER: GrayLadder = {
+  base: '#0d0d0d',
+  sunken: '#1a1a1a',
+  surface: '#262626',
+  raised: '#333333',
+  line: '#686868',
+  text: '#9a9a9a',
+  ink: '#f0f0f0',
+}
 
-  dialogBackground: '#000000',
-  dialogInputBackground: '#2f2f2f',
-  dialogHintText: '#808080',
-  carouselCurrentBg: '#2e2e2e',
-  carouselButtonBg: '#1a1a1a',
-  carouselButtonPressedBg: '#3a3a3a',
-  carouselSelectedText: '#ffae00',
+const LIGHT_LADDER: GrayLadder = {
+  base: '#ffffff',
+  sunken: '#f2f2f2',
+  surface: '#e6e6e6',
+  raised: '#d9d9d9',
+  line: '#a6a6a6',
+  text: '#595959',
+  ink: '#1a1a1a',
+}
 
-  sectionHeader: '#ffae00',
+interface SemanticHues {
+  /** The one accent: section headers, list markers, effort, selection focus. */
+  accent: string
+  /** Informational blue: permission mode, links, focus labels. */
+  info: string
+  success: string
+  error: string
+  /** Diff/code-fence addition green (distinct from success so status and diff never share). */
+  added: string
+  /** Diff/code-fence removal red (distinct from error so status and diff never share). */
+  removed: string
+}
 
-  panelQuestionText: '#ffffff',
-  panelKeyText: '#ffffff',
-  modelText: '#ffffff',
-  effortText: '#ffae00',
-  statusSeparator: '#aaaaaa',
-  presetText: '#aaaaaa',
-
-  cwdText: '#aaaaaa',
-  statsText: '#aaaaaa',
-
-  errorText: '#ff6753',
+const DARK_HUES: SemanticHues = {
+  accent: '#ffae00',
+  info: '#4da0e8',
   success: '#4caf50',
-  warning: '#ffae00',
+  error: '#ff6753',
+  added: '#33b84d',
+  removed: '#d25044',
+}
 
-  specialFieldText: '#1a1a1a',
-  specialFieldBackground: '#ffae00',
+const LIGHT_HUES: SemanticHues = {
+  accent: '#a86800',
+  info: '#2f6fd0',
+  success: '#2e8b3d',
+  error: '#d44a3a',
+  added: '#0a8a2c',
+  removed: '#c22318',
+}
 
-  toolLabel: '#2fc0e0',
-  toolBodyText: '#8a8a8a',
+/**
+ * Code-fence hues: one value per syntax role, tuned per theme. Thinking uses
+ * the same hues desaturated toward the gray ladder instead of a hand-written
+ * second copy, so the two can never drift.
+ */
+interface CodeHues {
+  comment: string
+  string: string
+  number: string
+  keyword: string
+  fn: string
+  type: string
+  variable: string
+  fallback: string
+}
 
-  diffAdded: '#33b84d',
-  diffRemoved: '#d25044',
-  diffAddedBackground: '#384751',
-  diffRemovedBackground: '#4f312c',
+const DARK_CODE: CodeHues = {
+  comment: '#5d9e50',
+  string: '#d78f6e',
+  number: '#82c46e',
+  keyword: '#c883c8',
+  fn: '#d8d89e',
+  type: '#52a898',
+  variable: '#4d9fd6',
+  fallback: '#a3b56a',
+}
 
-  scrollTrackBackground: '#2b2b2b',
-  scrollThumbBackground: '#5b5b5b',
+const LIGHT_CODE: CodeHues = {
+  comment: '#4a8a3d',
+  string: '#a05f42',
+  number: '#3f9a63',
+  keyword: '#8f4a88',
+  fn: '#7a7a3d',
+  type: '#2a7a6e',
+  variable: '#3a76a8',
+  fallback: '#647a34',
+}
 
-  selectionBg: '#0066ff',
-  selectionFg: '#ffffff',
+/** Mix two hex colors channel-wise; t=0 keeps the hue, t=1 keeps the gray. */
+function tint(hue: string, gray: string, t: number): string {
+  const channel = (hex: string, at: number): number => parseInt(hex.slice(at, at + 2), 16)
+  const mix = (at: number): string => {
+    const value = Math.round(channel(hue, at) * (1 - t) + channel(gray, at) * t)
+    return value.toString(16).padStart(2, '0')
+  }
+  return `#${mix(1)}${mix(3)}${mix(5)}`
+}
 
-  mdBold: '#d4d4d4',
-  mdLink: '#4da0e8',
-  mdInlineCode: '#4caf50',
-  mdQuoteBar: '#8a8a8a',
-  mdHr: '#666666',
-  mdList: '#ffae00',
-  mdTaskDone: '#4caf50',
-  mdTaskTodo: '#8a8a8a',
-  mdH1: '#e0b568',
-  mdH2: '#e0b568',
-  mdH3: '#64b5d6',
-  mdH4: '#64b5d6',
-  mdCodePlain: '#d4d4d4',
-  mdCodeFallback: '#a3b56a',
+const THINK_DESATURATE = 0.55
 
-  thinkBold: '#9a9a9a',
-  thinkLink: '#39698f',
-  thinkInlineCode: '#2e7d32',
-  thinkQuoteBar: '#585858',
-  thinkHr: '#444444',
-  thinkList: '#6e6e6e',
-  thinkTaskDone: '#2e7d32',
-  thinkTaskTodo: '#686868',
-  thinkH1: '#8d8d8d',
-  thinkH2: '#8d8d8d',
-  thinkH3: '#8d8d8d',
-  thinkH4: '#8d8d8d',
-  thinkCodePlain: '#9a9a9a',
-  thinkCodeFallback: '#708258',
+function buildPalette(ladder: GrayLadder, hues: SemanticHues, code: CodeHues, mode: 'dark' | 'light'): Theme {
+  const think = (hue: string): string => tint(hue, ladder.text, mode === 'dark' ? THINK_DESATURATE : 0.35)
+  const thinkCode = Object.fromEntries(
+    Object.entries(code).map(([key, hue]) => [key, think(hue)]),
+  ) as Record<keyof CodeHues, string>
+  return {
+    userBubbleBackground: ladder.surface,
+    aiBubbleBackground: ladder.sunken,
 
-  codeComment: '#5d9e50',
-  codeString: '#d78f6e',
-  codeNumber: '#82c46e',
-  codeKeyword: '#c883c8',
-  codeFunction: '#d8d89e',
-  codeType: '#52a898',
-  codeVariable: '#4d9fd6',
-  codeConstant: '#4d9fd6',
-  codeOperator: '#cccccc',
+    permissionBackground: ladder.sunken,
+    workspaceWriteText: hues.info,
+    dangerFullAccessText: hues.accent,
+    readOnlyText: hues.success,
 
-  thinkCodeComment: '#4e7a3f',
-  thinkCodeString: '#93684f',
-  thinkCodeNumber: '#7f9c73',
-  thinkCodeKeyword: '#8d5c8a',
-  thinkCodeFunction: '#9c9a6e',
-  thinkCodeType: '#38897a',
-  thinkCodeVariable: '#6e9cb3',
-  thinkCodeConstant: '#3888b3',
-} as const
+    dialogBackground: ladder.base,
+    dialogInputBackground: ladder.raised,
+    dialogHintText: ladder.text,
+    carouselCurrentBg: ladder.raised,
+    carouselButtonBg: ladder.sunken,
+    carouselButtonPressedBg: ladder.surface,
+    carouselSelectedText: hues.accent,
+
+    sectionHeader: hues.accent,
+
+    panelQuestionText: ladder.ink,
+    panelKeyText: ladder.ink,
+    modelText: ladder.ink,
+    effortText: hues.accent,
+    statusSeparator: ladder.text,
+    presetText: ladder.text,
+
+    cwdText: ladder.text,
+    statsText: ladder.text,
+
+    errorText: hues.error,
+    success: hues.success,
+    warning: hues.accent,
+
+    specialFieldText: mode === 'dark' ? '#1a1a1a' : '#3d2800',
+    specialFieldBackground: hues.accent,
+
+    toolLabel: mode === 'dark' ? '#2fc0e0' : '#0092b8',
+    toolBodyText: ladder.text,
+
+    diffAdded: hues.added,
+    diffRemoved: hues.removed,
+    diffAddedBackground: mode === 'dark' ? '#384751' : '#ddf0ea',
+    diffRemovedBackground: mode === 'dark' ? '#4f312c' : '#f5e8e5',
+
+    scrollTrackBackground: ladder.sunken,
+    scrollThumbBackground: ladder.line,
+
+    // The text selection highlight is a fixed saturated blue in both modes:
+    // it must stay high-contrast behind white fg, and it is not the info hue.
+    selectionBg: '#0066ff',
+    selectionFg: '#ffffff',
+
+    mdBold: ladder.ink,
+    mdLink: hues.info,
+    mdInlineCode: hues.added,
+    mdQuoteBar: ladder.line,
+    mdHr: ladder.line,
+    mdList: hues.accent,
+    mdTaskDone: hues.added,
+    mdTaskTodo: ladder.line,
+    mdH1: mode === 'dark' ? '#e0b568' : '#8a6d2f',
+    mdH3: mode === 'dark' ? '#64b5d6' : '#2f6fa8',
+    mdCodePlain: ladder.ink,
+    mdCodeFallback: code.fallback,
+
+    codeComment: code.comment,
+    codeString: code.string,
+    codeNumber: code.number,
+    codeKeyword: code.keyword,
+    codeFunction: code.fn,
+    codeType: code.type,
+    codeVariable: code.variable,
+    codeConstant: code.variable,
+    codeOperator: ladder.ink,
+
+    thinkBold: ladder.text,
+    thinkLink: think(hues.info),
+    thinkInlineCode: think(hues.added),
+    thinkQuoteBar: ladder.line,
+    thinkHr: tint(ladder.line, ladder.base, 0.35),
+    thinkList: ladder.text,
+    thinkTaskDone: think(hues.added),
+    thinkTaskTodo: ladder.line,
+    thinkH1: ladder.text,
+    thinkH3: ladder.text,
+    thinkCodePlain: ladder.text,
+    thinkCodeFallback: thinkCode.fallback,
+    thinkCodeComment: thinkCode.comment,
+    thinkCodeString: thinkCode.string,
+    thinkCodeNumber: thinkCode.number,
+    thinkCodeKeyword: thinkCode.keyword,
+    thinkCodeFunction: thinkCode.fn,
+    thinkCodeType: thinkCode.type,
+    thinkCodeVariable: thinkCode.variable,
+    thinkCodeConstant: thinkCode.variable,
+  }
+}
+
+const darkPalette = buildPalette(DARK_LADDER, DARK_HUES, DARK_CODE, 'dark') as Record<string, string>
+const lightPalette = buildPalette(LIGHT_LADDER, LIGHT_HUES, LIGHT_CODE, 'light') as Record<string, string>
 
 export interface Theme extends Readonly<Record<keyof typeof darkPalette, string>> {}
 
-const lightPalette: Theme = {
-  userBubbleBackground: '#e4e4e4',
-  aiBubbleBackground: '#f2f1f0',
+export const palettes: Record<ThemeMode, Theme> = { dark: darkPalette as Theme, light: lightPalette as Theme }
 
-  permissionBackground: '#ececec',
-  workspaceWriteText: '#0052cc',
-  dangerFullAccessText: '#a86800',
-  readOnlyText: '#2e8b3d',
-
-  dialogBackground: '#ffffff',
-  dialogInputBackground: '#f0f0f0',
-  dialogHintText: '#4a4a4a',
-  carouselCurrentBg: '#efefef',
-  carouselButtonBg: '#e3e3e3',
-  carouselButtonPressedBg: '#d4d4d4',
-  carouselSelectedText: '#a86800',
-
-  sectionHeader: '#a86800',
-  panelQuestionText: '#111111',
-  panelKeyText: '#111111',
-
-  modelText: '#000000',
-  effortText: '#a86800',
-  statusSeparator: '#8a8a8a',
-  presetText: '#3d3d3d',
-
-  cwdText: '#3d3d3d',
-  statsText: '#3d3d3d',
-
-  errorText: '#d44a3a',
-  success: '#2e8b3d',
-  warning: '#a86800',
-
-  specialFieldText: '#3d2800',
-  specialFieldBackground: '#ffae00',
-
-  toolLabel: '#0092b8',
-  toolBodyText: '#4a4a4a',
-
-  diffAdded: '#0a8a2c',
-  diffRemoved: '#c22318',
-  diffAddedBackground: '#ddf0ea',
-  diffRemovedBackground: '#f5e8e5',
-
-  scrollTrackBackground: '#e4e4e4',
-  scrollThumbBackground: '#9a9a9a',
-
-  selectionBg: '#0066ff',
-  selectionFg: '#ffffff',
-
-  mdBold: '#333333',
-  mdLink: '#2f6fd0',
-  mdInlineCode: '#2e8b3d',
-  mdQuoteBar: '#9a9a9a',
-  mdHr: '#c8c8c8',
-  mdList: '#a86800',
-  mdTaskDone: '#2e8b3d',
-  mdTaskTodo: '#9a9a9a',
-  mdH1: '#8a6d2f',
-  mdH2: '#8a6d2f',
-  mdH3: '#2f6fa8',
-  mdH4: '#2f6fa8',
-  mdCodePlain: '#222222',
-  mdCodeFallback: '#647a34',
-
-  thinkBold: '#8a8a8a',
-  thinkLink: '#6a92b5',
-  thinkInlineCode: '#5f9c67',
-  thinkQuoteBar: '#b8b8b8',
-  thinkHr: '#dcdcdc',
-  thinkList: '#767676',
-  thinkTaskDone: '#5f9c67',
-  thinkTaskTodo: '#a8a8a8',
-  thinkH1: '#6a6a6a',
-  thinkH2: '#6a6a6a',
-  thinkH3: '#6a6a6a',
-  thinkH4: '#6a6a6a',
-  thinkCodePlain: '#8a8a8a',
-  thinkCodeFallback: '#8a9a68',
-
-  codeComment: '#4a8a3d',
-  codeString: '#a05f42',
-  codeNumber: '#4a8a44',
-  codeKeyword: '#8f4a88',
-  codeFunction: '#7a7a3d',
-  codeType: '#2a7a6e',
-  codeVariable: '#3a76a8',
-  codeConstant: '#3a76a8',
-  codeOperator: '#333333',
-
-  thinkCodeComment: '#7aa87e',
-  thinkCodeString: '#b07a6a',
-  thinkCodeNumber: '#6a9c8a',
-  thinkCodeKeyword: '#a87ca5',
-  thinkCodeFunction: '#9a8a5e',
-  thinkCodeType: '#5aa396',
-  thinkCodeVariable: '#6a92b5',
-  thinkCodeConstant: '#4a92c0',
-}
-
-export const palettes: Record<ThemeMode, Theme> = { dark: darkPalette, light: lightPalette }
-
-export const COLORS: Theme = { ...darkPalette }
+export const COLORS: Theme = { ...darkPalette } as Theme
 
 let currentMode: ThemeMode = 'dark'
 
@@ -233,12 +263,12 @@ export function themeMode(): ThemeMode {
   return currentMode
 }
 
-function rederivePermissionModes(): void {
-  Object.assign(PERMISSION_MODES, {
+function permissionModes(): Record<PermissionModeId, { color: string; textColor: string; name: string }> {
+  return {
     'workspace-write': { color: COLORS.permissionBackground, textColor: COLORS.workspaceWriteText, name: 'Workspace Write' },
     'danger-full-access': { color: COLORS.permissionBackground, textColor: COLORS.dangerFullAccessText, name: 'Full access' },
     'read-only': { color: COLORS.permissionBackground, textColor: COLORS.readOnlyText, name: 'Read Only' },
-  })
+  }
 }
 
 function effectivePalette(mode: ThemeMode): Theme {
@@ -252,7 +282,7 @@ function effectivePalette(mode: ThemeMode): Theme {
 
 function materialize(mode: ThemeMode): void {
   Object.assign(COLORS, effectivePalette(mode))
-  rederivePermissionModes()
+  Object.assign(PERMISSION_MODES, permissionModes())
 }
 
 /**
@@ -276,11 +306,7 @@ export function replacePalettes(next: Record<ThemeMode, Theme>): void {
   materialize(currentMode)
 }
 
-export const PERMISSION_MODES: Record<PermissionModeId, { color: string; textColor: string; name: string }> = {
-  'workspace-write': { color: COLORS.permissionBackground, textColor: COLORS.workspaceWriteText, name: 'Workspace Write' },
-  'danger-full-access': { color: COLORS.permissionBackground, textColor: COLORS.dangerFullAccessText, name: 'Full access' },
-  'read-only': { color: COLORS.permissionBackground, textColor: COLORS.readOnlyText, name: 'Read Only' },
-} as const
+export const PERMISSION_MODES: Record<PermissionModeId, { color: string; textColor: string; name: string }> = permissionModes()
 
 materialize(currentMode)
 

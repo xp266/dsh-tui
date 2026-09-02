@@ -170,7 +170,8 @@ describe('renderMarkdown code blocks', () => {
   it('continues the code style to the end when the fence is unclosed (streaming)', () => {
     const segments = rows('```js\nconst x = 1')[0]!
     expect(segments[0]).toEqual(seg('const', codeStyles.keyword))
-    expect(segments).toContainEqual(seg('=', codeStyles.operator))
+    // operator shares the body ink, so same-style runs merge into one segment
+    expect(segments[1]).toEqual(seg(' x = ', codeStyles.operator))
     expect(segments).toContainEqual(seg('1', codeStyles.number))
   })
 
