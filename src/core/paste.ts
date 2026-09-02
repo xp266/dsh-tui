@@ -1,8 +1,44 @@
 import { homedir } from 'node:os'
 import { statSync } from 'node:fs'
+import { fieldSlotOf, isFieldChar } from './fields.ts'
 
 export const PASTE_SUMMARY_MIN_LINES = 4
 export const PASTE_SUMMARY_MIN_CHARS = 601
+
+/**
+ * Paste is the one composer ingress without a keystroke-level guard, so every
+ * byte that cannot render predictably is dropped here: C0 controls and DEL
+ * (except the newline and tab the wrap layer understands), the C1 range, BOM
+ * leftovers from clipboard round-trips, and private-use code points. A PUA
+ * char only survives when it names a live field slot - a chip inserted by a
+ * plugin paste handler; anything else in that range is a stray sentinel that
+ * would render as a raw block glyph.
+ */
+export function sanitizePastedText(text: string): string {
+  let out = ''
+  let changed = false
+  for (const char of text) {
+    const code = char.codePointAt(0)!
+    if (code === 0x0a || code === 0x09) {
+      out += char
+      continue
+    }
+    if (code < 0x20 || (code >= 0x7f && code <= 0x9f) || code === 0xfeff) {
+      changed = true
+      continue
+    }
+    if (code >= 0xe000 && code <= 0xf8ff) {
+      if (isFieldChar(char) && fieldSlotOf(char) !== undefined) {
+        out += char
+        continue
+      }
+      changed = true
+      continue
+    }
+    out += char
+  }
+  return changed ? out : text
+}
 
 export type PendingImage =
   | { kind: 'path'; path: string }

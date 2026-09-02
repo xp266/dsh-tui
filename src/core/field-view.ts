@@ -1,4 +1,4 @@
-import { fieldSlotOf, fieldStyleOf, hasFieldChar } from './fields.ts'
+import { fieldSlotOf, fieldStyleOf, hasFieldChar, isFieldChar } from './fields.ts'
 import type { FieldStyle } from './fields.ts'
 import type { MarkStyle, Segment } from './segments.ts'
 
@@ -6,8 +6,14 @@ export function expandFieldChars(text: string): string {
   if (!hasFieldChar(text)) return text
   let out = ''
   for (const char of text) {
+    if (!isFieldChar(char)) {
+      out += char
+      continue
+    }
     const slot = fieldSlotOf(char)
-    out += slot === undefined ? char : slot.label
+    // A slotless field char (reclaimed or foreign sentinel) would render as
+    // a raw block glyph; drop it instead of emitting the code point.
+    out += slot === undefined ? '' : slot.label
   }
   return out
 }
@@ -24,7 +30,9 @@ export function fieldRowSegments(text: string, base?: MarkStyle): Segment[] {
     const char = text[i]!
     const slot = fieldSlotOf(char)
     if (slot === undefined) {
-      plain += char
+      // A slotless field char renders as a raw block glyph; omit it and keep
+      // the surrounding plain run merged.
+      if (!isFieldChar(char)) plain += char
       continue
     }
     flushPlain()

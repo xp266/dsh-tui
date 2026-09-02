@@ -7,6 +7,7 @@ import { moveCaretLine } from '../../core/composer-layout.ts'
 import { editBackspace, editCursorLeft, editCursorRight, editDelete, editInsert } from '../../core/edit.ts'
 import { buildPasteFields, expandComposerValue, insertClipboardImage, insertFieldSpec, reconcileComposerFields } from './composer-fields.ts'
 import type { ComposerFieldMap, ComposerSubmission } from './composer-fields.ts'
+import { sanitizePastedText } from '../../core/paste.ts'
 import { readClipboardImage, readClipboardImageUris, readClipboardText } from '../../terminal/clipboard.ts'
 import { claimPaste } from './composer-paste.ts'
 import { handleComposerKeyBindings } from './composer-keys.ts'
@@ -137,9 +138,10 @@ export function useComposer(
     }
   }
   const insertPaste = (normalized: string): void => {
-    if (normalized === '') return
+    const sanitized = sanitizePastedText(normalized)
+    if (sanitized === '') return
     const { value: current, cursor: at } = { value: valueRef.current, cursor: cursorRef.current }
-    const inserted = buildPasteFields(normalized, fieldsRef.current)
+    const inserted = buildPasteFields(sanitized, fieldsRef.current)
     applyEdit(editInsert({ value: current, cursor: at }, inserted))
     refreshHint()
   }
@@ -193,7 +195,7 @@ export function useComposer(
         return true
       }
       if (spec.text !== undefined && spec.text !== '') {
-        applyEdit(editInsert({ value: valueRef.current, cursor: cursorRef.current }, spec.text))
+        applyEdit(editInsert({ value: valueRef.current, cursor: cursorRef.current }, sanitizePastedText(spec.text)))
         refreshHint()
         return true
       }
