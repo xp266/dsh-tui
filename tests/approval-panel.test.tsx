@@ -65,8 +65,13 @@ describe('approval panel', () => {
     stdin.write('\u001b[C')
     await settle()
     const frame = lastFrame() ?? ''
-    const allowInverse = frame.indexOf('\u001b[7m Allow once')
-    const rejectInverse = frame.indexOf('\u001b[7m Reject')
+    // the inverse block may carry color SGR codes between [7m and the label
+    const inverseIndexOf = (needle: string): number => {
+      const found = frame.match(new RegExp(`\\u001b\\[7m(?:\\u001b\\[[0-9;]*[A-Za-z])*${needle.replace(/[/\\]/g, c => `\\${c}`)}`))
+      return found === null || found.index === undefined ? -1 : found.index
+    }
+    const allowInverse = inverseIndexOf(' Allow once')
+    const rejectInverse = inverseIndexOf(' Reject')
     expect(rejectInverse).toBeGreaterThanOrEqual(0)
     expect(allowInverse).toBe(-1)
     stdin.write('\r')

@@ -9,9 +9,13 @@ function fakeBridge(): ChatBridge {
   return createFakeBridge()
 }
 
+function stripAnsi(text: string): string {
+  return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+}
+
 function focusedSegment(frame: string): string {
-  const match = frame.match(/\x1b\[7m((?:\x1b\[[0-9;]*[A-Za-z])*[^\x1b]*)/)
-  return (match?.[1] ?? '').replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').trim()
+  const after = frame.split('\u001b[7m')[1] ?? ''
+  return (stripAnsi(after).split('\n')[0] ?? '').trim()
 }
 
 async function type(stdin: { write(data: string): void }, data: string) {

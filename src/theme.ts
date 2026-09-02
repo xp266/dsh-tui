@@ -145,12 +145,14 @@ function tint(hue: string, gray: string, t: number): string {
 
 const THINK_DESATURATE = 0.55
 
-function buildPalette(ladder: GrayLadder, hues: SemanticHues, code: CodeHues, mode: 'dark' | 'light'): Theme {
+function buildPalette(ladder: GrayLadder, hues: SemanticHues, code: CodeHues, mode: 'dark' | 'light') {
   const think = (hue: string): string => tint(hue, ladder.text, mode === 'dark' ? THINK_DESATURATE : 0.35)
   const thinkCode = Object.fromEntries(
     Object.entries(code).map(([key, hue]) => [key, think(hue)]),
   ) as Record<keyof CodeHues, string>
   return {
+    ink: ladder.ink,
+
     userBubbleBackground: ladder.surface,
     aiBubbleBackground: ladder.sunken,
 
@@ -248,14 +250,14 @@ function buildPalette(ladder: GrayLadder, hues: SemanticHues, code: CodeHues, mo
   }
 }
 
-const darkPalette = buildPalette(DARK_LADDER, DARK_HUES, DARK_CODE, 'dark') as Record<string, string>
-const lightPalette = buildPalette(LIGHT_LADDER, LIGHT_HUES, LIGHT_CODE, 'light') as Record<string, string>
+const darkPalette = buildPalette(DARK_LADDER, DARK_HUES, DARK_CODE, 'dark')
+const lightPalette = buildPalette(LIGHT_LADDER, LIGHT_HUES, LIGHT_CODE, 'light')
 
 export interface Theme extends Readonly<Record<keyof typeof darkPalette, string>> {}
 
-export const palettes: Record<ThemeMode, Theme> = { dark: darkPalette as Theme, light: lightPalette as Theme }
+export const palettes: Record<ThemeMode, Theme> = { dark: darkPalette, light: lightPalette }
 
-export const COLORS: Theme = { ...darkPalette } as Theme
+export const COLORS: Theme = { ...darkPalette }
 
 let currentMode: ThemeMode = 'dark'
 

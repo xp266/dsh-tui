@@ -45,8 +45,8 @@ function mouse(code: number, x: number, y: number, press: boolean): string {
 }
 
 function focusedSegment(frame: string): string {
-  const match = frame.match(/\x1b\[7m((?:\x1b\[[0-9;]*[A-Za-z])*[^\x1b]*)/)
-  return (match?.[1] ?? '').replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').trim()
+  const after = frame.split('\u001b[7m')[1] ?? ''
+  return (stripAnsi(after).split('\n')[0] ?? '').trim()
 }
 
 function selectionSpan(line: string): { text: string; startCol: number } {

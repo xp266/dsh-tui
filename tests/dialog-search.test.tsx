@@ -24,8 +24,13 @@ function AsyncRows({ loaded }: { loaded: boolean }) {
   )
 }
 
+function stripAnsi(text: string): string {
+  return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+}
+
 function focusedSegment(frame: string): string {
-  return frame.match(/\x1b\[7m([^\x1b]*)/)?.[1] ?? ''
+  const after = frame.split('\u001b[7m')[1] ?? ''
+  return stripAnsi(after).split('\n')[0] ?? ''
 }
 
 function renderSearch(rows: DialogRow[]) {
