@@ -54,7 +54,7 @@ const SelectableContent = memo(function SelectableContent({ content, segments, c
       )
     }
     return (
-      <Text backgroundColor={backgroundColor} inverse={inverse} color={color} bold={bold}>
+      <Text backgroundColor={backgroundColor} inverse={inverse} color={color ?? COLORS.ink} bold={bold}>
         {content.slice(0, sliceStart)}
         {highlight}
         {content.slice(sliceEnd)}
@@ -62,10 +62,10 @@ const SelectableContent = memo(function SelectableContent({ content, segments, c
     )
   }
   if (segments !== undefined) {
-    return <Text backgroundColor={backgroundColor}>{renderSegments(segments, 0, content.length, color)}</Text>
+    return <Text backgroundColor={backgroundColor}>{renderSegments(segments, 0, content.length, color ?? COLORS.ink)}</Text>
   }
   return (
-    <Text backgroundColor={backgroundColor} inverse={inverse} color={color} bold={bold}>
+    <Text backgroundColor={backgroundColor} inverse={inverse} color={color ?? COLORS.ink} bold={bold}>
       {content}
     </Text>
   )
