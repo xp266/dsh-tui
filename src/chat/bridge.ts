@@ -31,17 +31,18 @@ import {
   saveProviderModels,
 } from './models.ts'
 import type { ConfiguredModel, CustomProviderForm, DescribedModel, ModelEntryConfig, OfficialProvider, SettingsPathOp } from './models.ts'
-import { formatDiffDiffs, dedupeTitle, diffLineGroups, formatReadLines, pathFromTitle, pickPrimaryParam, readBodyCol, relativize, remainingArgsJson, summarizeParams, truncateSummary } from './tool-view.ts'
-import { TODO_TOOL_NAME, formatTodoBubble, parseTodoArgs } from './todo-view.ts'
-import { ASK_USER_TOOL_NAME, formatAskQuestions } from './question-view.ts'
+import { formatDiffDiffs, dedupeTitle, diffLineGroups, pathFromTitle, pickPrimaryParam, relativize, remainingArgsJson, truncateSummary, terminalCallBody, genericCallBody, genericCallHeader, recoveryLines, formatSearchView, trimTrailingBlanks } from './tool-view.ts'
+import { TODO_TOOL_NAME } from './todo-view.ts'
+import { ASK_USER_TOOL_NAME } from './question-view.ts'
 import type { DiffLike, ReadLineLike, ToolDiffView } from './tool-view.ts'
+import type { ToolResultPresentation, ToolReadView } from '../contract/index.ts'
+import { ToolCallLedger, createToolViewPresenter, toolViewOf } from './tool-views.ts'
 import { computeSessionList } from './session-list.ts'
 import type { SessionSummary } from './session-list.ts'
 import { builtInPresetName, isBlankSession, presetDisplayName } from './presets.ts'
 import type { PresetSummary } from './presets.ts'
 import type { EffortSummary } from './efforts.ts'
 import { InteractionStore, registerInteractionChannels } from './interactions.ts'
-import { createToolViewPresenter, toolViewOf } from './tool-views.ts'
 import { applyTheme } from '../apply-theme.ts'
 import { THEME_SETTINGS_NAMESPACE } from '../theme-settings.ts'
 import { themeMode } from '../theme.ts'
@@ -158,15 +159,6 @@ export interface ToolResultLike {
   meta?: unknown
 }
 
-export interface ToolResultPresentation {
-  kind: 'replace' | 'append'
-  text: string
-  exitCode?: number
-  signal?: string
-  bodyCol?: number
-  diff?: ToolDiffView
-}
-
 export interface ToolCallPresentation {
   label: string
   body: string
@@ -180,17 +172,18 @@ export interface ChatToolPresenter {
   argsJson(callId: string): string | undefined
 }
 
-interface CallViewLike {
+export interface CallViewLike {
   card: string
   title?: string
   kind?: string
   rawInput?: unknown
   description?: string
   cwd?: string
+  content?: readonly ContentBlock[]
   diffs?: readonly DiffLike[]
 }
 
-interface ResultViewLike {
+export interface ResultViewLike {
   card: string
   output?: string
   exitCode?: number
@@ -208,6 +201,11 @@ interface ResultViewLike {
   statusCode?: number
   sources?: readonly { url: string; title?: string; snippet?: string; publishedAt?: string }[]
   answer?: string
+  title?: string
+  path?: string
+  offset?: number
+  totalLines?: number
+  lang?: string
 }
 
 interface ToolsLike {
@@ -215,6 +213,170 @@ interface ToolsLike {
     presentCall?(args: unknown): CallViewLike | undefined
     presentResult?(args: unknown, result: ToolResultLike): ResultViewLike | undefined
   } | undefined
+}
+
+export interface BuiltinToolPresenterDeps {
+  /** The shared call ledger; a call a contribution took over still resolves here. */
+  ledger: ToolCallLedger
+  presentCall(tool: string, args: unknown): CallViewLike | undefined
+  presentResult(tool: string, args: unknown, result: ToolResultLike): ResultViewLike | undefined
+  cwd(): string
+}
+
+function parseArgumentsRaw(argumentsRaw: string): unknown {
+  try {
+    return JSON.parse(argumentsRaw) as unknown
+  } catch {
+    return argumentsRaw
+  }
+}
+
+function resultTitleLabel(name: string, title: string | undefined): string | undefined {
+  if (title === undefined || title === '') return undefined
+  const suffix = dedupeTitle(name, title)
+  return suffix === '' ? name : `${name} ${suffix}`
+}
+
+/**
+ * The builtin presenter: maps the harness render-intent protocol
+ * (`presentCall`/`presentResult` views) onto the universal tool bubble with
+ * no per-tool branching. Tools the protocol does not describe fall through to
+ * the generic summary (priority-key primary param + args JSON body).
+ */
+export function createBuiltinToolPresenter(deps: BuiltinToolPresenterDeps): ChatToolPresenter {
+  const cwd = (): string => deps.cwd()
+  return {
+    call(name, callId, argumentsRaw) {
+      const remembered = deps.ledger.get(callId)
+      const args = remembered !== undefined ? remembered.args : parseArgumentsRaw(argumentsRaw)
+      const view = deps.presentCall(name, args)
+      if (view !== undefined && view.card === 'diff' && view.diffs !== undefined && view.diffs.length > 0) {
+        const rawPath = view.diffs[0]!.path
+        const path = pathFromTitle(view.title, typeof rawPath === 'string' && rawPath !== '' ? rawPath
+          : String((args as { file_path?: unknown }).file_path ?? (args as { path?: unknown }).path ?? ''))
+        const extra = view.diffs.length > 1 ? ` (+${view.diffs.length - 1})` : ''
+        return {
+          label: `${name} ${truncateSummary(relativize(path, cwd()))}${extra}`,
+          body: '',
+          diff: { path: relativize(path, cwd()), hunks: diffLineGroups(view.diffs) },
+        }
+      }
+      if (view !== undefined && view.card === 'terminal') {
+        return {
+          label: view.description === undefined || view.description === '' ? name : `${name} ${view.description}`,
+          body: terminalCallBody(view.title, view.cwd, cwd()),
+        }
+      }
+      if (view !== undefined && view.kind === 'read') {
+        const rawPath = String((args as { file_path?: unknown }).file_path ?? (args as { path?: unknown }).path ?? '')
+        if (rawPath !== '') {
+          const offset = (args as { offset?: unknown }).offset
+          const limit = (args as { limit?: unknown }).limit
+          const window = [
+            ...(typeof offset === 'number' && offset > 0 ? [`offset=${offset}`] : []),
+            ...(typeof limit === 'number' && limit > 0 ? [`lines=${limit}`] : []),
+          ]
+          const label = `${name} ${truncateSummary(relativize(rawPath, cwd()))}${window.length === 0 ? '' : `[${window.join(',')}]`}`
+          return { label, body: '' }
+        }
+      }
+      if (view !== undefined && (view.kind === 'search' || view.kind === 'fetch')) {
+        const primary = dedupeTitle(name, view.title ?? '')
+        return { label: primary === '' ? name : `${name} ${primary}`, body: '' }
+      }
+      if (view !== undefined) {
+        const contentText = view.content !== undefined ? textFromBlocks(view.content) : ''
+        const suffix = genericCallHeader(name, view, contentText)
+        const label = suffix === '' ? name : `${name} ${suffix}`
+        return { label, body: genericCallBody(view.rawInput, contentText, suffix) }
+      }
+      const primary = pickPrimaryParam(args)
+      return {
+        label: primary === undefined ? name : `${name} ${primary.key}=${primary.value}`,
+        body: remainingArgsJson(args, primary?.key),
+      }
+    },
+    result(callId, result) {
+      const call = deps.ledger.get(callId)
+      if (call === undefined) return undefined
+      const name = call.name
+      const view = deps.presentResult(name, call.args, result)
+      if (view === undefined) return undefined
+      const label = resultTitleLabel(name, view.title)
+      const labelPatch = label === undefined ? {} : { label }
+      if (view.card === 'terminal') {
+        return {
+          kind: 'append',
+          text: view.output ?? '',
+          ...view.exitCode === undefined ? {} : { exitCode: view.exitCode },
+          ...view.signal === undefined ? {} : { signal: view.signal },
+        }
+      }
+      if (view.card === 'read' && view.lines !== undefined) {
+        if (view.lines.length === 0 && view.totalLines === undefined) return undefined
+        const read: ToolReadView = {
+          ...(view.path === undefined || view.path === '' ? {} : { path: relativize(view.path, cwd()) }),
+          lines: view.lines,
+          ...(view.offset === undefined || view.offset <= 0 ? {} : { offset: view.offset }),
+          ...(view.totalLines === undefined ? {} : { totalLines: view.totalLines }),
+          ...(view.lang === undefined || view.lang === '' ? {} : { lang: view.lang }),
+        }
+        return { kind: 'replace', text: '', ...labelPatch, read }
+      }
+      if (view.card === 'diff' && view.diffs !== undefined) {
+        const rawPath = view.diffs[0]!.path
+        const path = typeof rawPath === 'string' && rawPath !== '' ? rawPath : ''
+        return {
+          kind: 'replace',
+          text: formatDiffDiffs(view.diffs),
+          bodyCol: 2,
+          ...labelPatch,
+          diff: { path: relativize(path, cwd()), hunks: diffLineGroups(view.diffs) },
+        }
+      }
+      if (view.card === 'generic' && (view.content !== undefined || label !== undefined)) {
+        return { kind: 'append', text: view.content === undefined ? '' : textFromBlocks(view.content), ...labelPatch }
+      }
+      if (view.card === 'search') {
+        const grouped = formatSearchView(view)
+        // An empty structured result (no paths, no matches) still has a raw
+        // text — "No matches found" — that the card must not blank out.
+        if (grouped === '' && view.truncated !== true) {
+          const raw = textFromBlocks(result.content)
+          if (raw.trim() !== '') return { kind: 'replace', text: raw, ...labelPatch }
+        }
+        const lines: string[] = []
+        if (grouped !== '') lines.push(grouped)
+        if (view.truncated === true) {
+          lines.push(`... ${view.total} total`)
+          lines.push(...recoveryLines(textFromBlocks(result.content)))
+        }
+        return { kind: 'replace', text: lines.length === 0 ? '' : lines.join('\n'), ...labelPatch }
+      }
+      if (view.card === 'web' && view.kind === 'search') {
+        const lines: string[] = []
+        if (view.answer !== undefined && view.answer !== '') lines.push(view.answer)
+        for (const source of view.sources ?? []) {
+          const date = source.publishedAt === undefined || source.publishedAt === ''
+            ? ''
+            : ` (${source.publishedAt.slice(0, 10)})`
+          lines.push(`- ${source.title === undefined ? source.url : `${source.title} · ${source.url}`}${date}`)
+          if (source.snippet !== undefined && source.snippet !== '') {
+            lines.push(`  ${truncateSummary(source.snippet, 160)}`)
+          }
+        }
+        if (view.truncated === true) lines.push('... results truncated')
+        return { kind: 'replace', text: lines.join('\n') }
+      }
+      if (view.card === 'web' && view.kind === 'fetch') {
+        const header = `HTTP ${view.statusCode} ${view.url}`
+        const body = textFromBlocks(result.content)
+        return { kind: 'replace', text: `${header}${view.truncated === true ? ' · ... content truncated' : ''}${body === '' ? '' : `\n\n${body}`}` }
+      }
+      return undefined
+    },
+    argsJson: callId => deps.ledger.argsJson(callId),
+  }
 }
 
 export interface RegistryCommand {
@@ -657,152 +819,17 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   }
 
   const tools = ctx.get('tools') as ToolsLike | undefined
-  const toolCalls = new Map<string, { name: string; args: unknown }>()
-  const MAX_TOOL_CALLS = 1000
-  const rememberToolCall = (callId: string, name: string, args: unknown): void => {
-    if (!toolCalls.has(callId) && toolCalls.size >= MAX_TOOL_CALLS) {
-      const oldest = toolCalls.keys().next()
-      if (!oldest.done) toolCalls.delete(oldest.value)
-    }
-    toolCalls.set(callId, { name, args })
-  }
-  const argsJson = (callId: string): string | undefined => {
-    const call = toolCalls.get(callId)
-    if (call === undefined) return undefined
-    try {
-      return JSON.stringify(call.args, null, 2)
-    } catch {
-      return undefined
-    }
-  }
-const toolPresenter = createToolViewPresenter({
-    call(name, callId, argumentsRaw) {
-      let args: unknown
-      try {
-        args = JSON.parse(argumentsRaw)
-      } catch {
-        return undefined
-      }
-      rememberToolCall(callId, name, args)
-      const view = tools?.get?.(name, activeAgent)?.presentCall?.(args)
-      const cwd = currentCwd
-      if (view !== undefined && view.card === 'diff' && view.diffs !== undefined && view.diffs.length > 0) {
-        const rawPath = view.diffs[0]!.path
-        const path = pathFromTitle(view.title, typeof rawPath === 'string' && rawPath !== '' ? rawPath
-          : String((args as { file_path?: unknown }).file_path ?? (args as { path?: unknown }).path ?? ''))
-        return {
-          label: `${name} ${truncateSummary(relativize(path, cwd))}`,
-          body: '',
-          diff: { path: relativize(path, cwd), hunks: diffLineGroups(view.diffs) },
-        }
-      }
-      if (view !== undefined && view.card === 'terminal') {
-        return {
-          label: view.description === undefined || view.description === '' ? name : `${name} ${view.description}`,
-          body: view.title ?? '',
-        }
-      }
-      if (view !== undefined && view.kind === 'read') {
-        const rawPath = String((args as { file_path?: unknown }).file_path ?? (args as { path?: unknown }).path ?? '')
-        if (rawPath !== '') {
-          const offset = (args as { offset?: unknown }).offset
-          const limit = (args as { limit?: unknown }).limit
-          const window = [
-            ...(typeof offset === 'number' && offset > 0 ? [`offset=${offset}`] : []),
-            ...(typeof limit === 'number' && limit > 0 ? [`lines=${limit}`] : []),
-          ]
-          const label = `${name} ${truncateSummary(relativize(rawPath, cwd))}${window.length === 0 ? '' : `[${window.join(',')}]`}`
-          return { label, body: '' }
-        }
-      }
-      if (view !== undefined && (view.kind === 'search' || view.kind === 'fetch')) {
-        const primary = dedupeTitle(name, view.title ?? '')
-        return {
-          label: primary === '' ? name : `${name} ${primary}`,
-          body: '',
-        }
-      }
-      if (view !== undefined) {
-        const desc = view.description
-        const title = dedupeTitle(name, view.title ?? '')
-        const label = desc !== undefined && desc !== '' && !desc.includes('\n')
-          ? `${name} ${desc}`
-          : title === '' ? name : `${name} ${title}`
-        if (name === TODO_TOOL_NAME) {
-          const items = parseTodoArgs(args)
-          return { label, body: items.length > 0 ? formatTodoBubble(items) : '' }
-        }
-        return { label, body: '' }
-      }
-      if (name === ASK_USER_TOOL_NAME) {
-        return { label: name, body: formatAskQuestions(args) }
-      }
-      const primary = pickPrimaryParam(args)
-      return {
-        label: primary === undefined ? name : `${name} ${primary.key}=${primary.value}`,
-        body: remainingArgsJson(args, primary?.key) ?? '',
-      }
-    },
-    result(callId, result) {
-      const call = toolCalls.get(callId)
-      if (call === undefined) return undefined
-      // ask/todo deliver their outcome through the interaction panel and the
-      // checklist respectively; the echoed result payload adds no information.
-      if (call.name === ASK_USER_TOOL_NAME || call.name === TODO_TOOL_NAME) {
-        return { kind: 'replace', text: '' }
-      }
-      const view = tools?.get?.(call.name, activeAgent)?.presentResult?.(call.args, result)
-      if (view === undefined) return undefined
-      if (view.card === 'terminal') {
-        return {
-          kind: 'append',
-          text: view.output ?? '',
-          ...view.exitCode === undefined ? {} : { exitCode: view.exitCode },
-          ...view.signal === undefined ? {} : { signal: view.signal },
-        }
-      }
-      if (view.card === 'read' && view.lines !== undefined) {
-        return { kind: 'replace', text: formatReadLines(view.lines), bodyCol: readBodyCol(view.lines) }
-      }
-      if (view.card === 'diff' && view.diffs !== undefined) {
-        const rawPath = view.diffs[0]!.path
-        const path = typeof rawPath === 'string' && rawPath !== '' ? rawPath : ''
-        return { kind: 'replace', text: formatDiffDiffs(view.diffs), bodyCol: 2, diff: { path: relativize(path, currentCwd), hunks: diffLineGroups(view.diffs) } }
-      }
-      if (view.card === 'generic' && view.content !== undefined) {
-        return { kind: 'append', text: textFromBlocks(view.content) }
-      }
-      if (view.card === 'search') {
-        const lines: string[] = []
-        if (view.shape === 'paths') {
-          lines.push(...(view.paths ?? []))
-        } else {
-          for (const file of view.files ?? []) {
-            lines.push(file.path)
-            for (const match of file.matches) lines.push(`${match.lineNumber}: ${match.line}`)
-          }
-        }
-        if (view.truncated === true) lines.push(`... ${view.total} total`)
-        return { kind: 'replace', text: lines.length === 0 ? '' : lines.join('\n') }
-      }
-      if (view.card === 'web' && view.kind === 'search') {
-        const lines: string[] = []
-        if (view.answer !== undefined && view.answer !== '') lines.push(view.answer)
-        for (const source of view.sources ?? []) {
-          lines.push(`- ${source.title === undefined ? source.url : `${source.title} · ${source.url}`}`)
-        }
-        if (view.truncated === true) lines.push('... results truncated')
-        return { kind: 'replace', text: lines.join('\n') }
-      }
-      if (view.card === 'web' && view.kind === 'fetch') {
-        const header = `HTTP ${view.statusCode} ${view.url}`
-        const body = textFromBlocks(result.content)
-        return { kind: 'replace', text: `${header}${view.truncated === true ? ' · ... content truncated' : ''}${body === '' ? '' : `\n\n${body}`}` }
-      }
-      return undefined
-    },
-    argsJson,
-  }, { resolve: toolViewOf, cwd: () => currentCwd })
+  const ledger = new ToolCallLedger()
+  const toolPresenter = createToolViewPresenter(
+    createBuiltinToolPresenter({
+      ledger,
+      presentCall: (tool: string, args: unknown) => tools?.get?.(tool, activeAgent)?.presentCall?.(args),
+      presentResult: (tool: string, args: unknown, result: ToolResultLike) =>
+        tools?.get?.(tool, activeAgent)?.presentResult?.(args, result),
+      cwd: () => currentCwd,
+    }),
+    { resolve: toolViewOf, cwd: () => currentCwd, ledger },
+  )
 
   async function selectModel(provider: string, name: string): Promise<void> {
     const resolved = await llm.resolveCallConfig({ provider, model: name })

@@ -23,6 +23,7 @@ export const glyphs = {
   taskUnchecked: unicode ? '☐' : '[ ]',
   headerExpanded: unicode ? '↓' : 'v',
   headerCollapsed: '-',
+  treeBranch: unicode ? '└' : '+',
   separator: unicode ? '·' : '-',
   tokenArrow: unicode ? '→' : '->',
   ellipsis: unicode ? '…' : '...',

@@ -3,12 +3,15 @@ import {
   dedupeTitle,
   formatDiffDiffs,
   formatReadLines,
+  genericCallBody,
+  genericCallHeader,
   pathFromTitle,
   pickPrimaryParam,
   readBodyCol,
+  recoveryLines,
   relativize,
   remainingArgsJson,
-  summarizeParams,
+  terminalCallBody,
   truncateSummary,
 } from '../src/chat/tool-view.ts'
 
@@ -27,22 +30,6 @@ describe('tool-view', () => {
     const capped = truncateSummary(huge)
     expect(capped.length).toBeLessThan(310)
     expect(capped.endsWith('...')).toBe(true)
-  })
-
-  it('summarizes params as name=value pairs joined by commas', () => {
-    expect(summarizeParams({ command: 'ls -la' }, '/w')).toBe('command=ls -la')
-    expect(summarizeParams({ file_path: '/w/src/a.py', offset: 1, limit: 50 }, '/w')).toBe('file_path=src/a.py, offset=1, limit=50')
-    expect(summarizeParams({ plugin: { kind: 'new' }, enabled: true }, '/w')).toBe('plugin={"kind":"new"}, enabled=true')
-    expect(summarizeParams({ a: null, b: undefined, c: '' }, '/w')).toBe('')
-    expect(summarizeParams('plain', '/w')).toBe('plain')
-  })
-
-  it('flattens newlines and tabs in values so the label stays on one line', () => {
-    expect(summarizeParams({ prompt: 'hello\nworld' }, '/w')).toBe('prompt=hello\\nworld')
-    expect(summarizeParams({ prompt: 'a\r\nb' }, '/w')).toBe('prompt=a\\nb')
-    expect(summarizeParams({ code: 'x\ty' }, '/w')).toBe('code=x\\ty')
-    expect(summarizeParams('line1\nline2', '/w')).toBe('line1\\nline2')
-    expect(relativize('/w/a\nb.py', '/w')).toBe('a\\nb.py')
   })
 
   it('formats an edit call diff as removals before additions', () => {
@@ -89,15 +76,20 @@ describe('tool-view', () => {
 })
 
 describe('generic param pickers', () => {
-  it('picks the shortest single-line value', () => {
+  it('prefers the shortest single-line value', () => {
     expect(pickPrimaryParam({ rev: 1, id: 'goal-32d852a3-1fbf-47e6-a8c9-838dbf9e8114', name: 'hello' }))
       .toEqual({ key: 'rev', value: '1' })
+    expect(pickPrimaryParam({ command: 'ls -la src', timeout: 30 })).toEqual({ key: 'timeout', value: '30' })
+    expect(pickPrimaryParam({ file_path: '/w/src/a.py', limit: 50 })).toEqual({ key: 'limit', value: '50' })
+  })
+
+  it('falls back to the first single-line value in argument order', () => {
     expect(pickPrimaryParam({ a: 'bb', b: 'aaa' })).toEqual({ key: 'a', value: 'bb' })
+    expect(pickPrimaryParam({ todos: [{ content: 'x' }], flag: true })).toEqual({ key: 'flag', value: 'true' })
   })
 
   it('ignores multi-line strings, arrays, and objects', () => {
     expect(pickPrimaryParam({ cmd: 'ls\n-rla', todos: [{ content: 'x' }], nested: { deep: 1 } })).toBeUndefined()
-    expect(pickPrimaryParam({ todos: [{ content: 'x' }], flag: true })).toEqual({ key: 'flag', value: 'true' })
   })
 
   it('returns nothing for non-object args', () => {
@@ -131,5 +123,46 @@ describe('generic param pickers', () => {
     expect(dedupeTitle('skill', 'Load skill bash')).toBe('Load skill bash')
     expect(dedupeTitle('get_goal', 'Read current goal')).toBe('Read current goal')
     expect(dedupeTitle('bash', '')).toBe('')
+  })
+})
+
+describe('generic call bodies', () => {
+  it('renders the terminal prompt prefix only for an explicit workdir', () => {
+    expect(terminalCallBody('ls -la', undefined, '/w')).toBe('ls -la')
+    expect(terminalCallBody('ls -la', '/w', '/w')).toBe('ls -la')
+    expect(terminalCallBody('ls -la', 'src', '/w')).toBe('src $ ls -la')
+    expect(terminalCallBody('ls -la', '/w/../w/src', '/w')).toBe('src $ ls -la')
+    expect(terminalCallBody(undefined, 'src', '/w')).toBe('src $ ')
+  })
+
+  it('renders rawInput verbatim or as pretty JSON, then the content text', () => {
+    expect(genericCallBody('job-1', '', '')).toBe('job-1')
+    expect(genericCallBody({ job_id: 'job-1' }, '', '')).toBe('{\n  "job_id": "job-1"\n}')
+    expect(genericCallBody(undefined, 'list the files', '')).toBe('list the files')
+    expect(genericCallBody('sleep 100', 'wait', '')).toBe('sleep 100\n\nwait')
+    expect(genericCallBody(undefined, '', '')).toBe('')
+  })
+
+  it('drops body parts the header already carries', () => {
+    expect(genericCallBody('echo "bg job start"', 'Run a background job to test job tools', 'Run a background job to test job tools'))
+      .toBe('echo "bg job start"')
+    expect(genericCallBody('echo "bg job start"', 'Run a background job to test job tools', 'echo "bg job start"'))
+      .toBe('Run a background job to test job tools')
+    expect(genericCallBody('bash-1', '', 'Read output from background job bash-1')).toBe('')
+  })
+
+  it('prefers the shorter of title and content for the generic header', () => {
+    expect(genericCallHeader('bash', { title: 'echo "bg job start"', description: 'Run a background job' }, ''))
+      .toBe('Run a background job')
+    expect(genericCallHeader('job_output', { title: 'Read output from background job bash-1' }, 'bash-1'))
+      .toBe('bash-1')
+    expect(genericCallHeader('skill', { title: 'Load skill bash' }, 'multi\nline')).toBe('Load skill bash')
+    expect(genericCallHeader('tool', {}, '')).toBe('')
+  })
+
+  it('extracts the spill recovery footer from truncated result text', () => {
+    expect(recoveryLines('a\nb\nFull grep result stored at: /tmp/spill-1. Read it with the read tool.'))
+      .toEqual(['Full grep result stored at: /tmp/spill-1. Read it with the read tool.'])
+    expect(recoveryLines('plain output\nno footer here')).toEqual([])
   })
 })

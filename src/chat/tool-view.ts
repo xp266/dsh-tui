@@ -15,65 +15,40 @@ export function truncateSummary(text: string, max = SUMMARY_SAFETY_MAX): string 
   return cut.length === text.length ? cut : `${cut}...`
 }
 
-export function flattenText(text: string): string {
-  return flat(text)
-}
-
 function flat(text: string): string {
   return text.replace(/\r\n|\r|\n/g, '\\n').replace(/\t/g, '\\t')
 }
 
-function valueText(value: unknown, cwd: string): string {
-  if (typeof value === 'string') return flat(relativize(value, cwd))
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  if (value === null || value === undefined) return ''
-  try {
-    return JSON.stringify(value)
-  } catch {
-    return String(value)
-  }
-}
-
-export function summarizeParams(args: unknown, cwd: string): string {
-  if (typeof args === 'string') return truncateSummary(flat(args))
-  if (typeof args !== 'object' || args === null) return ''
-  const parts: string[] = []
-  for (const [key, value] of Object.entries(args as Record<string, unknown>)) {
-    const text = valueText(value, cwd)
-    if (text === '') continue
-    parts.push(`${key}=${text}`)
-  }
-  return truncateSummary(parts.join(', '))
-}
-
 /**
  * Generic primary-param picker: among single-line values (short strings,
- * numbers, booleans) choose the shortest one. Multi-line text, arrays, and
- * objects never qualify, so a tool whose only arguments are structured shows
- * a bare name header.
+ * numbers, booleans) choose the shortest one, so the header suffix stays as
+ * short as possible — a human summary beats a long payload. Empty and
+ * multi-line strings, arrays, and objects never qualify.
  */
 export function pickPrimaryParam(args: unknown): { key: string; value: string } | undefined {
   if (typeof args !== 'object' || args === null) return undefined
   let best: { key: string; value: string } | undefined
   for (const [key, value] of Object.entries(args as Record<string, unknown>)) {
-    if (value === undefined || value === null) continue
-    let text: string
-    if (typeof value === 'string') {
-      if (value.includes('\n')) continue
-      text = value
-    } else if (typeof value === 'number' || typeof value === 'boolean') {
-      text = String(value)
-    } else {
-      continue
-    }
+    const text = singleLineText(value)
+    if (text === undefined) continue
     if (best === undefined || text.length < best.value.length) best = { key, value: text }
   }
   return best
 }
 
+function singleLineText(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined
+  if (typeof value === 'string') return value === '' || value.includes('\n') ? undefined : value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return undefined
+}
+
 /** JSON of the remaining args after the primary key, or '' when nothing remains. */
 export function remainingArgsJson(args: unknown, excludeKey: string | undefined): string {
-  if (typeof args !== 'object' || args === null) return ''
+  if (typeof args !== 'object' || args === null) {
+    if (typeof args === 'string' && args !== '') return args
+    return ''
+  }
   if (excludeKey !== undefined) {
     const rest = { ...(args as Record<string, unknown>) }
     delete rest[excludeKey]
@@ -88,19 +63,6 @@ export function pathFromTitle(title: string | undefined, fallback: string): stri
   if (title === undefined) return fallback
   const rest = title.trim().split(/\s+/).slice(1).join(' ')
   return rest === '' ? fallback : rest
-}
-
-export function summarizeOthers(args: unknown, skip: readonly string[], cwd: string): string {
-  if (typeof args !== 'object' || args === null) return ''
-  const parts: string[] = []
-  for (const [key, value] of Object.entries(args as Record<string, unknown>)) {
-    if (skip.includes(key)) continue
-    const text = valueText(value, cwd)
-    if (text === '') continue
-    parts.push(`${key}=${text}`)
-  }
-  if (parts.length === 0) return ''
-  return `, ${truncateSummary(parts.join(', '))}`
 }
 
 export interface DiffLike {
@@ -175,6 +137,132 @@ export function diffLineGroups(diffs: readonly DiffLike[]): DiffLine[][] {
 export interface ToolDiffView {
   path: string
   hunks: readonly (readonly DiffLine[])[]
+  /** Override the default "paint backgrounds when a removal exists" rule. */
+  backgrounds?: boolean
+}
+
+/**
+ * Body for a `card: 'generic'` call: the salient `rawInput` (string verbatim,
+ * anything else as pretty JSON) followed by the view's content text. A part
+ * the header already carries is dropped — the background-bash view puts the
+ * command in both `title` and `rawInput`, and `job_output`'s id already rides
+ * the header. Empty when nothing remains.
+ */
+export function genericCallBody(rawInput: unknown, contentText: string, headerSuffix: string): string {
+  const raw =
+    typeof rawInput === 'string' && rawInput !== '' ? rawInput
+    : rawInput !== undefined && rawInput !== null ? stringifyValue(rawInput)
+    : ''
+  const duplicated = (text: string): boolean =>
+    text === headerSuffix || (text.length >= 4 && headerSuffix.includes(text))
+  const parts: string[] = []
+  if (raw !== '' && !duplicated(raw)) parts.push(raw)
+  if (contentText !== '' && !duplicated(contentText) && contentText !== raw) parts.push(contentText)
+  return parts.join('\n\n')
+}
+
+/**
+ * Header suffix for a `card: 'generic'` call: the description wins when the
+ * view carries one; otherwise the shorter of the title and a single-line
+ * content text — a summary title beats a raw-command one.
+ */
+export function genericCallHeader(name: string, view: { title?: string; description?: string }, contentText: string): string {
+  if (view.description !== undefined && view.description !== '' && !view.description.includes('\n')) {
+    return view.description
+  }
+  const title = dedupeTitle(name, view.title ?? '')
+  const contentFirst = contentText.includes('\n') ? '' : contentText.trim()
+  if (contentFirst !== '' && (title === '' || contentFirst.length < title.length)) return contentFirst
+  return title
+}
+
+/** Drop trailing blank lines a result text often ends with. */
+export function trimTrailingBlanks(text: string): string {
+  return text.replace(/[\s]+$/u, '')
+}
+
+/** Collapse `.` and `..` segments so a display path names a real directory. */
+export function collapseDotSegments(path: string): string {
+  if (!/(?:^|[/\\])\.\.?(?:[/\\]|$)/.test(path)) return path
+  const separator = path.includes('\\') && !path.includes('/') ? '\\' : '/'
+  const rooted = path.startsWith('/') || path.startsWith('\\')
+  const kept: string[] = []
+  for (const segment of path.split(/[/\\]/)) {
+    if (segment === '' || segment === '.') continue
+    if (segment === '..') {
+      if (kept.length > 0 && kept[kept.length - 1] !== '..') kept.pop()
+      else if (!rooted) kept.push('..')
+      continue
+    }
+    kept.push(segment)
+  }
+  const body = kept.join(separator)
+  return rooted ? `${separator}${body}` : body
+}
+
+/**
+ * The body line of a terminal call. An explicitly declared workdir renders as
+ * a shell-style prompt prefix (`dir $ cmd`), resolved against the session
+ * workspace and relativized; an omitted cwd IS the session workspace, so the
+ * command renders bare.
+ */
+export function terminalCallBody(title: string | undefined, viewCwd: string | undefined, sessionCwd: string): string {
+  const command = title ?? ''
+  if (viewCwd === undefined || viewCwd === '') return command
+  const absolute = /^(?:[A-Za-z]:)?[/\\]/.test(viewCwd)
+  const resolved = absolute ? viewCwd : `${sessionCwd.replace(/[/\\]+$/, '')}/${viewCwd}`
+  const display = relativize(collapseDotSegments(resolved), sessionCwd)
+  if (display === '.' || display === '') return command
+  return `${display} $ ${command}`
+}
+
+function stringifyValue(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Flatten a settled result's content blocks to display text: text blocks
+ * verbatim, anything else as pretty JSON. Empty when there is no content.
+ */
+export function flattenContentBlocks(content: readonly { type: string; text?: string }[]): string {
+  const parts: string[] = []
+  for (const block of content) {
+    if (block.type === 'text') parts.push(block.text ?? '')
+    else parts.push(stringifyValue(block))
+  }
+  return parts.filter(part => part !== '').join('\n')
+}
+
+/**
+ * The recovery line a truncated result keeps in its raw text: the spill
+ * footer the search tools append (`Full ... stored at ...`). The structured
+ * card replaces the raw body, so this line is surfaced after it to keep the
+ * one path to the dropped rows. Empty when the raw text carries no footer.
+ */
+export function recoveryLines(resultText: string): string[] {
+  const lines = resultText.split('\n')
+  for (let index = lines.length - 1; index >= 0; index--) {
+    if (/stored at|retrieval hint/i.test(lines[index]!)) return [lines[index]!.trimEnd()]
+  }
+  return []
+}
+
+/** A search result as flat lines: paths, or matches grouped under file paths. */
+export function formatSearchView(view: { shape?: 'paths' | 'matches'; paths?: readonly string[]; files?: readonly { path: string; matches: readonly { lineNumber: number; line: string }[] }[] }): string {
+  const lines: string[] = []
+  if (view.shape === 'paths') {
+    lines.push(...(view.paths ?? []))
+  } else {
+    for (const file of view.files ?? []) {
+      lines.push(file.path)
+      for (const match of file.matches) lines.push(`${match.lineNumber}: ${match.line}`)
+    }
+  }
+  return lines.join('\n')
 }
 
 export function diffsFromResultMeta(meta: unknown): DiffLike[] | undefined {
@@ -193,29 +281,21 @@ export function diffsFromResultMeta(meta: unknown): DiffLike[] | undefined {
   return diffs
 }
 
-export function diffCallFromArgs(tool: string, args: unknown): ToolDiffView {
-  const record = typeof args === 'object' && args !== null ? args as Record<string, unknown> : {}
-  const path = typeof record.file_path === 'string' ? record.file_path : ''
-  const oldString = typeof record.old_string === 'string' && record.old_string !== '' ? record.old_string : null
-  const newText = typeof record.content === 'string'
-    ? record.content
-    : typeof record.new_string === 'string' ? record.new_string : ''
-  return { path, hunks: diffLineGroups([{ path, oldText: tool === 'edit' ? oldString : null, newText }]) }
-}
-
 const DIFF_CELL_CAP = 4_000_000
 
-function alignedOps(oldText: string | null, newText: string): DiffOp[] {
-  const additionsOnly = (): DiffOp[] => alignDiff([], newText === '' ? [] : newText.split('\n'))
-  if (oldText === null || oldText === '') return additionsOnly()
-  const oldLines = oldText.split('\n')
-  const newLines = newText === '' ? [] : newText.split('\n')
-  if (oldLines.length * Math.max(1, newLines.length) > DIFF_CELL_CAP) return additionsOnly()
-  return alignDiff(oldLines, newLines)
+/** Split on newlines where a trailing `\n` terminates the last line instead of opening an empty one. */
+export function splitLines(text: string): string[] {
+  if (text === '') return []
+  return text.endsWith('\n') ? text.slice(0, -1).split('\n') : text.split('\n')
 }
 
-export function diffGroupsFromTexts(oldText: string | null, newText: string): DiffLine[][] {
-  return [alignedOps(oldText, newText).map(op => ({ kind: op.kind, text: op.text }))]
+function alignedOps(oldText: string | null, newText: string): DiffOp[] {
+  const additionsOnly = (): DiffOp[] => alignDiff([], splitLines(newText))
+  if (oldText === null || oldText === '') return additionsOnly()
+  const oldLines = splitLines(oldText)
+  const newLines = splitLines(newText)
+  if (oldLines.length * Math.max(1, newLines.length) > DIFF_CELL_CAP) return additionsOnly()
+  return alignDiff(oldLines, newLines)
 }
 
 export interface ReadLineLike {

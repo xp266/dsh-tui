@@ -168,23 +168,6 @@ export function wrapLines(text: string, width: number): string[] {
   return lines
 }
 
-export function wrapIndented(text: string, width: number, hang: number): string[] {
-  if (hang <= 0) return wrapLines(text, width)
-  const lines: string[] = []
-  for (const rawLine of normalizeWrapText(text).split('\n')) {
-    if (rawLine === '') {
-      lines.push('')
-      continue
-    }
-    const parts = wrapLines(rawLine, Math.max(4, width - hang))
-    lines.push(parts[0] ?? '')
-    for (let i = 1; i < parts.length; i++) {
-      lines.push(' '.repeat(hang) + parts[i]!)
-    }
-  }
-  return lines
-}
-
 export interface LineBreak {
   start: number
   end: number

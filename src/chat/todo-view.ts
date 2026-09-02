@@ -1,4 +1,3 @@
-import { textWidth } from '../core/text.ts'
 import { glyphs } from '../terminal/glyphs.ts'
 
 export const TODO_TOOL_NAME = 'todo_write'
@@ -15,8 +14,6 @@ const TODO_SYMBOLS: Record<TodoStatus, string> = {
   in_progress: glyphs.todoInProgress,
   completed: glyphs.todoDone,
 }
-
-export const TODO_HANG_COLS = textWidth(`${TODO_SYMBOLS.in_progress} `)
 
 export function todoSymbol(status: TodoStatus | undefined): string {
   return status === undefined ? TODO_SYMBOLS.pending : TODO_SYMBOLS[status] ?? TODO_SYMBOLS.pending

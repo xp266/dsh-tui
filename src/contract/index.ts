@@ -336,6 +336,12 @@ export type DiffHunk = readonly DiffLine[]
 export interface ToolViewDiff {
   path: string
   hunks: readonly DiffHunk[]
+  /**
+   * Paint whole-line red/green backgrounds behind removed and added lines.
+   * Defaults to true when any line is a removal, false for pure additions.
+   * Set it explicitly to override that heuristic.
+   */
+  backgrounds?: boolean
 }
 
 export interface ToolResultView {
@@ -370,10 +376,32 @@ export interface ToolCallPresentation {
 export interface ToolResultPresentation {
   kind: 'replace' | 'append'
   text: string
+  /** Header replacement applied when kind is 'replace' ('' clears the suffix). */
+  label?: string
   exitCode?: number
   signal?: string
   bodyCol?: number
   diff?: ToolViewDiff
+  /** Structured read window; rendered as a numbered code card. */
+  read?: ToolReadView
+}
+
+/** One numbered line of a structured read result. */
+export interface ToolReadLine {
+  number: number
+  text: string
+}
+
+/** The `card: 'read'` projection: a numbered file window plus its totals. */
+export interface ToolReadView {
+  path?: string
+  lines: readonly ToolReadLine[]
+  /** 1-based first line of the window when it carries no lines. */
+  offset?: number
+  /** Total lines in the file, for a "lines N of M" footer. */
+  totalLines?: number
+  /** Syntax highlighting hint (e.g. `ts`). */
+  lang?: string
 }
 
 export interface ToolViewContribution {

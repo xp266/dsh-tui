@@ -253,8 +253,10 @@ tui.tools.register({
 
 - 按工具名键控；优先于 harness 工具自身展示，贡献返回 `undefined` 时回退。
 - `call` 上下文：`{ tool, callId, args, argumentsRaw, cwd }`；`result` 增加 `result: { content, isError, meta? }`。
-- 结果形态：`{ kind: 'replace' | 'append', text, bodyCol?, exitCode?, signal?, diff? }`；`diff` 仅对 diff 类工具生效。
-- `write`/`edit` 的 diff 视图与 `ask_user_question`/`todo`/plan-mode 外壳为内置，绕过本注册表。
+- 结果形态：`{ kind: 'replace' | 'append', text, label?, bodyCol?, exitCode?, signal?, diff?, read? }`；`diff` 渲染为内联 diff 块，`read` 渲染为带行号与语法高亮的读卡，均取代文本主体。`label` 在结算时替换卡片标题。
+- 没有任何工具被豁免：`write`、`edit`、`read`、`bash`、`todo_write`、`ask_user_question`、`exit_plan_mode` 及所有其他内置视图均可在此覆盖。内置呈现器仅在该工具无注册贡献、或你的处理器返回 `undefined` 时执行。
+- `takeover: true` 关闭回退：用于你想整体替换内置展示的工具，此时处理器返回 `undefined` 会渲染空卡片，而不再落到协议呈现。
+- diff 行的背景色由 diff 数据本身决定（见下文），与工具名无关，因此插件贡献的 `diff` 也能获得与内置 `edit` 相同的红/绿底色。
 
 ### tui.content.nodes.register
 

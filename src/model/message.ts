@@ -1,14 +1,9 @@
-export type BubbleVariant = 'ask-user' | 'todo'
-
 export interface BubbleMessage {
   kind: 'bubble'
   id: string
   role: 'user' | 'assistant' | 'error'
   content: string
-  variant?: BubbleVariant
-  hang?: number
   streaming?: boolean
-  pending?: boolean
   origin?: 'command'
 }
 
@@ -32,23 +27,11 @@ export interface DiffLine {
   text: string
 }
 
-export interface ToolDiffMessage {
-  kind: 'tool-diff'
-  id: string
-  tool: string
-  path: string
-  hunks: readonly (readonly DiffLine[])[]
-  error?: string
-  streaming?: boolean
-  running?: boolean
-  streamText?: string
-}
-
 /**
  * Generic tool card: every tool shares one bubble shape. The header carries
  * the tool name plus a parameter summary; the body shows the full arguments
- * and result (or a diff when the tool protocol produced one). No per-tool
- * customization exists at this layer.
+ * and result (or a diff / read window when the tool protocol produced one).
+ * No per-tool customization exists at this layer.
  */
 export interface ToolCardMessage {
   kind: 'tool-card'
@@ -61,7 +44,13 @@ export interface ToolCardMessage {
   /** Full settled result text from the tool protocol. */
   resultBody?: string
   bodyCol?: number
-  diff?: { path: string; hunks: readonly (readonly DiffLine[])[] }
+  diff?: { path: string; hunks: readonly (readonly DiffLine[])[]; backgrounds?: boolean }
+  /** Structured read window replacing the text result body. */
+  read?: ToolReadView
+  /** True when the settled result reported isError without a structured error; the result text renders as the error. */
+  failed?: boolean
+  /** Sub-calls dispatched under this call (code mode); rendered as a child list. */
+  nested?: readonly ToolCardMessage[]
   error?: string
   exitCode?: number
   signal?: string
@@ -79,19 +68,10 @@ export interface CompactionMessage {
   error?: string
 }
 
-export interface PlanMessage {
-  kind: 'plan'
-  id: string
-  body: string
-  running?: boolean
-  streaming?: boolean
-  error?: string
-}
+import type { CustomMessage, ToolReadView } from '../contract/index.ts'
 
-import type { CustomMessage } from '../contract/index.ts'
+export type { CustomMessage, ToolReadView } from '../contract/index.ts'
 
-export type { CustomMessage } from '../contract/index.ts'
+export type MessageKind = 'bubble' | 'collapsible' | 'tool-card' | 'compaction' | 'custom'
 
-export type MessageKind = 'bubble' | 'collapsible' | 'tool-diff' | 'tool-card' | 'compaction' | 'plan' | 'custom'
-
-export type Message = BubbleMessage | CollapsibleMessage | ToolDiffMessage | ToolCardMessage | CompactionMessage | PlanMessage | CustomMessage
+export type Message = BubbleMessage | CollapsibleMessage | ToolCardMessage | CompactionMessage | CustomMessage

@@ -1,19 +1,19 @@
-import type { Message, ToolCardMessage, ToolDiffMessage } from '../../model/message.ts'
+import type { Message, ToolCardMessage } from '../../model/message.ts'
 import type { CustomMessage } from '../../contract/index.ts'
-import { colToCharIndex, textWidth, truncate, wrapIndented, wrapLines } from '../../core/text.ts'
+import { colToCharIndex, textWidth, truncate, wrapLines } from '../../core/text.ts'
 import { hasFieldChar } from '../../core/fields.ts'
 import { expandFieldChars, fieldRowSegments } from '../../core/field-view.ts'
 import { selectedRange } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
 import { sliceByColumns } from '../selection-registry.ts'
 import { renderMarkdown } from './md/index.ts'
-import { renderToolDiffBody, toolDiffHeader } from './tool-diff.ts'
+import { renderToolDiffBody, renderToolReadBody } from './tool-diff.ts'
+import { trimTrailingBlanks } from '../../chat/tool-view.ts'
 import { messageViewOf } from './message-views.ts'
 import { segmentsKey } from '../../core/segments.ts'
 import type { Segment } from '../../core/segments.ts'
 import { COLORS } from '../../theme.ts'
 import { glyphs } from '../../terminal/glyphs.ts'
-import { PLAN_TOOL_NAME } from '../../chat/store.ts'
 import { BUBBLE_WIDTH_OFFSET, HEADER_LABEL_COL } from '../../core/metrics.ts'
 import { messageBackgroundWidth } from '../layout-service.ts'
 import { messageRendererOf } from './renderers.ts'
@@ -118,10 +118,6 @@ function renderBody(message: Message, width: number): BodyRendered {
   }
   switch (message.kind) {
     case 'bubble': {
-      if (message.role !== 'user' && message.variant !== undefined) {
-        const lines = wrapIndented(message.content, inner, message.hang ?? 0)
-        return { lines, rows: null, bgs: null }
-      }
       if (message.role !== 'user' && message.origin === 'command') {
         const lines = wrapLines(message.content, inner)
         return { lines, rows: null, bgs: null }
@@ -148,14 +144,6 @@ function renderBody(message: Message, width: number): BodyRendered {
       const lines = wrapLines(message.body, inner)
       return { lines, rows: null, bgs: null }
     }
-    case 'tool-diff': {
-      if (message.hunks.length === 0 && message.tool === 'write' && message.streaming === true && message.streamText !== undefined && message.streamText !== '') {
-        const lines = wrapLines(message.streamText, Math.max(4, inner - 2))
-        return { lines, rows: null, bgs: null }
-      }
-      const rendered = renderToolDiffBody(message, inner)
-      return { lines: rendered.lines, rows: rendered.rows, bgs: rendered.bgs }
-    }
     case 'tool-card': {
       if (message.diff !== undefined && message.diff.hunks.length > 0) {
         const rendered = renderToolDiffBody({
@@ -163,38 +151,83 @@ function renderBody(message: Message, width: number): BodyRendered {
           path: message.diff.path,
           hunks: message.diff.hunks,
           error: message.error,
+          ...(message.diff.backgrounds === undefined ? {} : { backgrounds: message.diff.backgrounds }),
+        }, inner)
+        return { lines: rendered.lines, rows: rendered.rows, bgs: rendered.bgs }
+      }
+      if (message.read !== undefined) {
+        const rendered = renderToolReadBody({
+          ...(message.read.path === undefined ? {} : { path: message.read.path }),
+          lines: message.read.lines,
+          ...(message.read.offset === undefined ? {} : { offset: message.read.offset }),
+          ...(message.read.totalLines === undefined ? {} : { totalLines: message.read.totalLines }),
+          ...(message.read.lang === undefined ? {} : { lang: message.read.lang }),
         }, inner)
         return { lines: rendered.lines, rows: rendered.rows, bgs: rendered.bgs }
       }
       const lines: string[] = []
       const rows: Segment[][] = []
-      const parts: string[] = []
-      if (message.argsBody !== '') parts.push(message.argsBody)
-      if (message.resultBody !== undefined && message.resultBody !== '') parts.push(message.resultBody)
-      if (message.exitCode !== undefined) parts.push(`[exit code: ${message.exitCode}]`)
-      else if (message.signal !== undefined) parts.push(`[killed by signal: ${message.signal}]`)
-      if (parts.length === 0 && (message.error === undefined || message.error === '')) {
+      // A styled line is pushed together with its segments AT ITS OWN INDEX:
+      // rows is sparse, and a plain rows.push would attach the segment to an
+      // earlier body line (segments replace the row's text for display while
+      // selection reads the plain text, so a misaligned row shows one string
+      // and copies another).
+      const push = (text: string, segments?: Segment[]): void => {
+        lines.push(text)
+        if (segments !== undefined) rows[lines.length - 1] = segments
+      }
+      const hasError = message.error !== undefined && message.error !== ''
+      // `failed` is a render state, not content: the result text of an
+      // errored call IS the error message, so it renders in red instead of
+      // gaining a synthetic "failed" line next to it.
+      const failed = message.failed === true && !hasError
+      const resultBody = message.resultBody !== undefined && message.resultBody.trimEnd() !== ''
+        ? trimTrailingBlanks(message.resultBody)
+        : undefined
+      const pill = message.exitCode !== undefined
+        ? `[exit code: ${message.exitCode}]`
+        : message.signal !== undefined ? `[killed by signal: ${message.signal}]` : undefined
+      const hasArgs = message.argsBody !== ''
+      const hasNested = (message.nested?.length ?? 0) > 0
+      if (!hasArgs && resultBody === undefined && pill === undefined && !hasNested && !hasError && !failed) {
         return { lines: [], rows: null, bgs: null }
       }
-      lines.push(...wrapLines(parts.join('\n\n'), inner))
-      if (message.error !== undefined && message.error !== '') {
-        const text = truncate(message.error, Math.max(8, inner))
-        lines.push(text)
-        rows.push([{ text, style: { color: COLORS.errorText } }])
+      if (hasArgs) {
+        for (const line of wrapLines(message.argsBody, inner)) push(line)
+      }
+      if (resultBody !== undefined) {
+        if (hasArgs) push('')
+        for (const line of wrapLines(resultBody, inner)) {
+          push(line, failed ? [{ text: line, style: { color: COLORS.errorText } }] : undefined)
+        }
+      } else if (failed) {
+        if (hasArgs) push('')
+        push('failed', [{ text: 'failed', style: { color: COLORS.errorText } }])
+      }
+      if (pill !== undefined) push(pill)
+      if (hasNested) {
+        const prefix = `${glyphs.treeBranch} `
+        for (const child of message.nested!) {
+          const state = child.running
+            ? ''
+            : child.error !== undefined
+              ? ` ${glyphs.separator} error`
+              : child.resultBody === undefined || child.resultBody === '' ? '' : ` ${glyphs.separator} ${firstLine(child.resultBody)}`
+          const label = truncate(child.label, Math.max(4, inner - 6))
+          push(
+            `${prefix}${label}${state}`,
+            [
+              { text: prefix, style: { color: COLORS.toolBodyText } },
+              { text: `${label}${state}`, style: {} },
+            ],
+          )
+        }
+      }
+      if (hasError) {
+        const text = truncate(message.error!, Math.max(8, inner))
+        push(text, [{ text, style: { color: COLORS.errorText } }])
       }
       return { lines, rows: rows.length === 0 ? null : rows, bgs: null }
-    }
-    case 'plan': {
-      if (message.body === '' && message.error === undefined) return { lines: [], rows: null, bgs: null }
-      const rendered = message.body === '' ? { lines: [], rows: [] } : renderMarkdown(message.body, inner, false, `plan:${message.id}`)
-      const lines = [...rendered.lines]
-      const rows = [...rendered.rows]
-      if (message.error !== undefined && message.error !== '') {
-        const text = truncate(`error: ${message.error}`, Math.max(8, inner))
-        lines.push(text)
-        rows.push([{ text, style: { color: COLORS.errorText } }])
-      }
-      return { lines, rows, bgs: null }
     }
     case 'compaction': {
       if (message.summary === '' && message.error === undefined) return { lines: [], rows: null, bgs: null }
@@ -237,22 +270,24 @@ function describeCustomData(data: unknown): string {
   }
 }
 
+function firstLine(text: string): string {
+  const at = text.indexOf('\n')
+  return at === -1 ? text : text.slice(0, at)
+}
+
 function planFor(message: Message, body: BodyRendered): PlanRow[] {
   switch (message.kind) {
     case 'bubble': {
-      const floating = message.role === 'error' || message.origin === 'command'
-        || (message.role === 'assistant' && message.variant === undefined)
+      // User bubbles sit inside the background box; assistant, error, and
+      // command output float without it.
+      const floating = message.role === 'error' || message.role === 'assistant' || message.origin === 'command'
       const texts = bodyRows(body.lines.length, {
         colStart: 4,
         bg: !floating,
-        muted: !floating && message.variant !== undefined,
+        muted: false,
         selectable: true,
         role: message.role,
       })
-      const first = texts[0]
-      if (!floating && message.variant !== undefined && (message.streaming === true || message.pending === true) && first?.type === 'body') {
-        texts[0] = { ...first, wave: true }
-      }
       return floating ? [...texts, blankRow()] : [padRow(message.role), ...texts, padRow(message.role), blankRow()]
     }
     case 'collapsible': {
@@ -267,30 +302,6 @@ function planFor(message: Message, body: BodyRendered): PlanRow[] {
         header,
         blankRow(),
         ...bodyRows(body.lines.length, { colStart: HEADER_LABEL_COL, bg: false, muted: true, selectable: true, role: 'assistant' }),
-        blankRow(),
-      ]
-    }
-    case 'tool-diff': {
-      const header: PlanRow = {
-        type: 'lit',
-        text: toolDiffHeader(message),
-        colStart: 4,
-        bg: true,
-        muted: true,
-        selectable: true,
-        role: 'assistant',
-        ...(message.streaming === true || message.running === true ? { wave: true } : {}),
-      }
-      const streamingShell = message.hunks.length === 0 && message.streaming === true
-      if (streamingShell && body.lines.length === 0) {
-        return [padRow('assistant'), header, padRow('assistant'), blankRow()]
-      }
-      return [
-        padRow('assistant'),
-        header,
-        padRow('assistant'),
-        ...bodyRows(body.lines.length, { colStart: 4, bg: true, muted: streamingShell, selectable: !streamingShell, role: 'assistant' }),
-        padRow('assistant'),
         blankRow(),
       ]
     }
@@ -341,29 +352,6 @@ function planFor(message: Message, body: BodyRendered): PlanRow[] {
         blankRow(),
       ]
     }
-    case 'plan': {
-      const header: PlanRow = {
-        type: 'lit',
-        text: PLAN_TOOL_NAME,
-        colStart: 4,
-        bg: true,
-        muted: true,
-        selectable: true,
-        role: 'assistant',
-        ...(message.streaming === true || message.running === true ? { wave: true } : {}),
-      }
-      if (message.streaming === true && body.lines.length === 0) {
-        return [padRow('assistant'), header, padRow('assistant'), blankRow()]
-      }
-      return [
-        padRow('assistant'),
-        header,
-        padRow('assistant'),
-        ...bodyRows(body.lines.length, { colStart: 4, bg: true, muted: false, selectable: true, role: 'assistant' }),
-        padRow('assistant'),
-        blankRow(),
-      ]
-    }
     case 'custom': {
       const header: PlanRow = {
         type: 'header',
@@ -388,11 +376,9 @@ function planFor(message: Message, body: BodyRendered): PlanRow[] {
 }
 
 type RenderFingerprint =
-  | { kind: 'bubble'; content: string; variant: string | undefined; role: string | undefined; origin: string | undefined; hang: number | undefined; pending: boolean | undefined; streaming: boolean | undefined }
+  | { kind: 'bubble'; content: string; role: string | undefined; origin: string | undefined; streaming: boolean | undefined }
   | { kind: 'collapsible'; body: string; label: string; collapsed: boolean; running: boolean; thinking: boolean | undefined; streaming: boolean | undefined }
-  | { kind: 'tool-diff'; tool: string; path: string; error: string | undefined; hunks: ToolDiffMessage['hunks']; running: boolean | undefined; streaming: boolean | undefined; streamText: string | undefined }
-  | { kind: 'tool-card'; tool: string; label: string; argsBody: string; resultBody: string | undefined; diff: ToolCardMessage['diff']; error: string | undefined; exitCode: number | undefined; signal: string | undefined; bodyCol: number | undefined; running: boolean; streaming: boolean | undefined }
-  | { kind: 'plan'; body: string; running: boolean | undefined; streaming: boolean | undefined; error: string | undefined }
+  | { kind: 'tool-card'; tool: string; label: string; argsBody: string; resultBody: string | undefined; diff: ToolCardMessage['diff']; read: ToolCardMessage['read']; nested: ToolCardMessage['nested']; error: string | undefined; failed: boolean | undefined; exitCode: number | undefined; signal: string | undefined; bodyCol: number | undefined; running: boolean; streaming: boolean | undefined }
   | { kind: 'compaction'; summary: string; running: boolean; error: string | undefined }
   | { kind: 'custom'; view: string; data: unknown; running: boolean | undefined; streaming: boolean | undefined }
 
@@ -411,11 +397,8 @@ function fingerprintOf(message: Message): RenderFingerprint {
       return {
         kind: 'bubble',
         content: message.content,
-        variant: message.variant,
         role: message.role,
         origin: message.origin,
-        hang: message.hang,
-        pending: message.pending,
         streaming: message.streaming,
       }
     case 'collapsible':
@@ -428,17 +411,6 @@ function fingerprintOf(message: Message): RenderFingerprint {
         thinking: message.thinking,
         streaming: message.streaming,
       }
-    case 'tool-diff':
-      return {
-        kind: 'tool-diff',
-        tool: message.tool,
-        path: message.path,
-        error: message.error,
-        hunks: message.hunks,
-        running: message.running,
-        streaming: message.streaming,
-        streamText: message.streamText,
-      }
     case 'tool-card':
       return {
         kind: 'tool-card',
@@ -447,20 +419,15 @@ function fingerprintOf(message: Message): RenderFingerprint {
         argsBody: message.argsBody,
         resultBody: message.resultBody,
         diff: message.diff,
+        read: message.read,
+        nested: message.nested,
         error: message.error,
+        failed: message.failed,
         exitCode: message.exitCode,
         signal: message.signal,
         bodyCol: message.bodyCol,
         running: message.running,
         streaming: message.streaming,
-      }
-    case 'plan':
-      return {
-        kind: 'plan',
-        body: message.body,
-        running: message.running,
-        streaming: message.streaming,
-        error: message.error,
       }
     case 'compaction':
       return {
@@ -485,11 +452,8 @@ function fingerprintMatches(entry: RenderFingerprint, message: Message): boolean
     case 'bubble':
       return message.kind === 'bubble'
         && entry.content === message.content
-        && entry.variant === message.variant
         && entry.role === message.role
         && entry.origin === message.origin
-        && entry.hang === message.hang
-        && entry.pending === message.pending
         && entry.streaming === message.streaming
     case 'collapsible':
       return message.kind === 'collapsible'
@@ -499,15 +463,6 @@ function fingerprintMatches(entry: RenderFingerprint, message: Message): boolean
         && entry.running === message.running
         && entry.thinking === message.thinking
         && entry.streaming === message.streaming
-    case 'tool-diff':
-      return message.kind === 'tool-diff'
-        && entry.tool === message.tool
-        && entry.path === message.path
-        && entry.error === message.error
-        && entry.hunks === message.hunks
-        && entry.running === message.running
-        && entry.streaming === message.streaming
-        && entry.streamText === message.streamText
     case 'tool-card':
       return message.kind === 'tool-card'
         && entry.tool === message.tool
@@ -515,18 +470,15 @@ function fingerprintMatches(entry: RenderFingerprint, message: Message): boolean
         && entry.argsBody === message.argsBody
         && entry.resultBody === message.resultBody
         && entry.diff === message.diff
+        && entry.read === message.read
+        && entry.nested === message.nested
         && entry.error === message.error
+        && entry.failed === message.failed
         && entry.exitCode === message.exitCode
         && entry.signal === message.signal
         && entry.bodyCol === message.bodyCol
         && entry.running === message.running
         && entry.streaming === message.streaming
-    case 'plan':
-      return message.kind === 'plan'
-        && entry.body === message.body
-        && entry.running === message.running
-        && entry.streaming === message.streaming
-        && entry.error === message.error
     case 'compaction':
       return message.kind === 'compaction'
         && entry.summary === message.summary

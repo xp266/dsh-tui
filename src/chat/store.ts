@@ -82,8 +82,6 @@ function nextId(prefix: string): string {
   return `${prefix}-${messageCounter}`
 }
 
-export const PLAN_TOOL_NAME = 'exit_plan_mode'
-
 const CHROME_EVENTS = new Set(['permission/preset', 'sandbox/mode', 'approval/policy'])
 
 function dropStepMessages(messages: Message[], turn: TurnState, step: number): boolean {
@@ -168,7 +166,13 @@ export function reduceChatEvent(
       const presentation = presenter?.result(callId, result)
       let text = presentation?.text
       if (text === undefined) text = textFromBlocks(event.data.message.content)
-      if (text.trim() === '' && card.argsBody === '' && presenter !== undefined) {
+      // The args JSON is a last-resort body: it only helps when the header
+      // carries no summary of its own (a bare tool name), otherwise it just
+      // repeats what the header already says.
+      if (
+        text.trim() === '' && card.argsBody === '' && presentation?.read === undefined
+        && card.label === card.tool && presenter !== undefined
+      ) {
         const fallback = presenter.argsJson(callId)
         if (fallback !== undefined && fallback.trim() !== '') text = fallback
       }
@@ -180,17 +184,27 @@ export function reduceChatEvent(
             hunks: diffLineGroups(metaDiffs),
           })
       turn.toolIds.delete(callId)
-      updateById(messages, id, message => ({
-        ...message,
-        ...(text === '' ? {} : { resultBody: text }),
-        ...(diff === undefined ? {} : { diff }),
-        ...(presentation?.exitCode === undefined ? {} : { exitCode: presentation.exitCode }),
-        ...(presentation?.signal === undefined ? {} : { signal: presentation.signal }),
-        running: false,
-        ...(error === undefined
-          ? (presentation?.bodyCol === undefined ? {} : { bodyCol: presentation.bodyCol })
-          : { error: errorSummary(error), bodyCol: undefined }),
-      }))
+      const label = presentation?.label
+      const read = presentation?.read
+      const failed = result.isError === true && error === undefined
+      updateById(messages, id, message => {
+        if (message.kind !== 'tool-card') return message
+        const nextLabel = label === undefined || label === '' || label === message.tool ? message.label : label
+        return {
+          ...message,
+          ...(text === '' ? {} : { resultBody: text }),
+          ...(diff === undefined ? {} : { diff }),
+          ...(read === undefined ? {} : { read }),
+          ...(presentation?.exitCode === undefined ? {} : { exitCode: presentation.exitCode }),
+          ...(presentation?.signal === undefined ? {} : { signal: presentation.signal }),
+          ...(nextLabel === message.label ? {} : { label: nextLabel }),
+          ...(failed ? { failed } : {}),
+          running: false,
+          ...(error === undefined
+            ? (presentation?.bodyCol === undefined ? {} : { bodyCol: presentation.bodyCol })
+            : { error: errorSummary(error), bodyCol: undefined }),
+        }
+      })
       markPhase(turn, 'awaiting-request')
       return { messages, turn, changed: true }
     }
@@ -270,6 +284,17 @@ export function reduceChatEvent(
           if (message.resultBody === undefined && message.argsBody.trim() === '') message.argsBody = '(no result)'
           continue
         }
+        if (message.kind === 'tool-card' && message.nested !== undefined && message.nested.some(child => child.running)) {
+          changed = true
+          message.nested = message.nested.map(child => !child.running
+            ? child
+            : {
+                ...child,
+                running: false,
+                ...(child.resultBody === undefined && child.argsBody.trim() === '' ? { argsBody: '(no result)' } : {}),
+              })
+          continue
+        }
         if ((message.kind === 'custom') && message.running) {
           changed = true
           message.running = false
@@ -288,11 +313,6 @@ export function reduceChatEvent(
         changed = true
         message.streaming = false
       }
-      for (const message of messages) {
-        if (message.kind !== 'bubble' || !message.pending) continue
-        changed = true
-        message.pending = false
-      }
       const reason = event.data.reason
       if (reason.kind === 'error') {
         changed = true
@@ -301,6 +321,12 @@ export function reduceChatEvent(
       return { messages, turn: { ...initialTurnState(), compactions: turn.compactions, compacting: turn.compacting }, changed }
     }
     default: {
+      if ((event.type as string) === 'tool/code-dispatch-start') {
+        return reduceCodeDispatch(messages, turn, event, false, presenter)
+      }
+      if ((event.type as string) === 'tool/code-dispatch') {
+        return reduceCodeDispatch(messages, turn, event, true, presenter)
+      }
       if ((event.type as string) === 'command/run') {
         const data = (event.data as unknown as { commandId: string; name: string })
         turn.commandNames.set(data.commandId, data.name)
@@ -497,4 +523,103 @@ function finalizeThinking(messages: Message[], turn: TurnState, step: number, en
 function updateById(messages: Message[], id: string, update: (message: Message) => Message): void {
   const index = messages.findIndex(m => m.id === id)
   if (index >= 0) messages[index] = update(messages[index]!)
+}
+
+interface CodeDispatchData {
+  rootCallId: string
+  parentCallId: string
+  subCallId: string
+  name: string
+  arguments: unknown
+  isError?: boolean
+  content?: Array<{ type: string; text?: string }>
+}
+
+/**
+ * Code-mode sub-dispatches render as child cards under the root `run_code`
+ * bubble: the start event commits a running placeholder, the settle event
+ * pairs with it by `subCallId`. The root card is the render anchor, so a
+ * settle whose start fell outside the turn still attaches to it.
+ */
+function reduceCodeDispatch(
+  messages: Message[],
+  turn: TurnState,
+  event: SessionEvent,
+  settled: boolean,
+  presenter?: ChatToolPresenter,
+): { messages: Message[]; turn: TurnState; changed: boolean } {
+  const data = (event.data as unknown as CodeDispatchData)
+  const rootId = turn.toolIds.get(String(data.rootCallId))
+  const argsText = stringifyDispatchArgs(data.arguments)
+  if (!settled) {
+    const view = presenter?.call(data.name, String(data.subCallId), argsText)
+    const child: ToolCardMessage = {
+      kind: 'tool-card',
+      id: nextId('tool'),
+      tool: data.name,
+      label: view?.label ?? data.name,
+      argsBody: view?.body ?? '',
+      running: true,
+      ...view?.bodyCol === undefined ? {} : { bodyCol: view.bodyCol },
+      ...view?.diff === undefined ? {} : { diff: view.diff },
+    }
+    if (rootId !== undefined) {
+      updateById(messages, rootId, message => message.kind === 'tool-card'
+        ? { ...message, nested: [...message.nested ?? [], child] }
+        : message)
+    } else {
+      messages.push(child)
+    }
+    turn.toolIds.set(String(data.subCallId), child.id)
+    markRunning(turn, true)
+    return { messages, turn, changed: true }
+  }
+  const childId = turn.toolIds.get(String(data.subCallId))
+  turn.toolIds.delete(String(data.subCallId))
+  const childResult = textFromBlocks((data.content ?? []) as Parameters<typeof textFromBlocks>[0])
+  const settle = (card: ToolCardMessage): ToolCardMessage => ({
+    ...card,
+    running: false,
+    ...(childResult === '' ? {} : { resultBody: childResult }),
+    ...(data.isError === true ? { failed: true } : {}),
+  })
+  let changed = false
+  if (childId !== undefined) {
+    const at = messages.findIndex(message => message.id === childId)
+    if (at >= 0 && messages[at]!.kind === 'tool-card') {
+      messages[at] = settle(messages[at] as ToolCardMessage)
+    } else if (rootId !== undefined) {
+      updateById(messages, rootId, message => message.kind === 'tool-card'
+        ? { ...message, nested: (message.nested ?? []).map(child => child.id === childId ? settle(child) : child) }
+        : message)
+    }
+    changed = true
+  } else {
+    const child = settle({
+      kind: 'tool-card',
+      id: nextId('tool'),
+      tool: data.name,
+      label: data.name,
+      argsBody: '',
+      running: false,
+    })
+    if (rootId !== undefined) {
+      updateById(messages, rootId, message => message.kind === 'tool-card'
+        ? { ...message, nested: [...message.nested ?? [], child] }
+        : message)
+    } else {
+      messages.push(child)
+    }
+    changed = true
+  }
+  return { messages, turn, changed }
+}
+
+function stringifyDispatchArgs(args: unknown): string {
+  if (args === undefined || args === null) return ''
+  try {
+    return JSON.stringify(args) ?? ''
+  } catch {
+    return ''
+  }
 }

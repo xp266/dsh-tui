@@ -18,6 +18,7 @@ import { clearMarkdownBlockCache } from './ui/message/md/engine.ts'
 import { clearLayoutCache } from './ui/message/layout.ts'
 import { warmRenderPipeline } from './ui/message/warmup.ts'
 import { createTuiExtensionPoint, exposeRuntimeFaces } from './ui/extension-point.ts'
+import { registerBuiltinToolViews } from './chat/builtin-tool-views.ts'
 import { closeBootLog, emitBootLine, openBootLog } from './boot-log.ts'
 
 export const name = 'dsh-tui'
@@ -69,6 +70,7 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
     // NOTE: the extension object must come from createTuiExtensionPoint itself;
     // ctx.get('tui') here would run before provide() and stay undefined forever.
     const { extension: extensionPoint, dispose: disposeExtensionPoint } = createTuiExtensionPoint(ctx, { onContributionsChanged: rerender })
+    const disposeBuiltinToolViews = registerBuiltinToolViews()
     warmLanguages()
     onLanguagesWarm(() => {
       clearHighlightCache()
@@ -144,6 +146,7 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
     return () => {
       disposed = true
       exposeFaces?.()
+      disposeBuiltinToolViews()
       disposeExtensionPoint()
       stopSizePoll?.()
       hotTheme?.stop()

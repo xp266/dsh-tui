@@ -31,7 +31,7 @@ export function warmRenderPipeline(): void {
     { kind: 'bubble', id: 'warm-user', role: 'user', content: 'warm up the render pipeline' },
     { kind: 'bubble', id: 'warm-ai', role: 'assistant', content: MARKDOWN_FIXTURE },
     { kind: 'collapsible', id: 'warm-think', label: 'Thinking', body: 'thinking fixture body', running: false, collapsed: false, thinking: true },
-    { kind: 'tool-diff', id: 'warm-diff', tool: 'edit', path: 'src/warm.ts', hunks: [[{ kind: 'ctx', text: 'const keep = 1' }, { kind: 'add', text: 'const added = 2' }]] },
+    { kind: 'tool-card', id: 'warm-diff', tool: 'edit', label: 'edit src/warm.ts', argsBody: '', diff: { path: 'src/warm.ts', hunks: [[{ kind: 'ctx', text: 'const keep = 1' }, { kind: 'add', text: 'const added = 2' }]] }, running: false },
     { kind: 'tool-card', id: 'warm-card', tool: 'bash', label: 'bash[ls]', argsBody: '{\n  "command": "ls"\n}', resultBody: 'src\ntests', running: false },
     { kind: 'bubble', id: 'warm-cmd', role: 'assistant', content: 'command output', origin: 'command' },
   ]

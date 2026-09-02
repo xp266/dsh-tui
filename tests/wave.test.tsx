@@ -75,16 +75,10 @@ describe('comet wave segments', () => {
 })
 
 describe('wave on pending tool bubbles', () => {
-  it('marks the first line of a pending ask-user bubble only', () => {
-    const ask: Message = { kind: 'bubble', id: 'a', role: 'assistant', content: 'ask_user_question\n\n1. q', variant: 'ask-user', pending: true }
-    expect(rowInfoAt([ask], 80, 1)).toMatchObject({ kind: 'text', text: 'ask_user_question', wave: true })
-    expect(rowInfoAt([ask], 80, 2)?.wave).toBeUndefined()
-  })
-
-  it('marks the first line of a streaming variant bubble and clears it once settled', () => {
-    const streaming: Message = { kind: 'bubble', id: 'a', role: 'assistant', content: 'todo_write', variant: 'todo', streaming: true }
-    expect(rowInfoAt([streaming], 80, 1)).toMatchObject({ kind: 'text', wave: true })
-    const settled: Message = { kind: 'bubble', id: 'a', role: 'assistant', content: 'todo_write', variant: 'todo' }
+  it('marks the tool-card header while streaming and clears it once settled', () => {
+    const streaming: Message = { kind: 'tool-card', id: 'a', tool: 'ask_user_question', label: 'ask_user_question', argsBody: '', streaming: true, running: true }
+    expect(rowInfoAt([streaming], 80, 1)).toMatchObject({ kind: 'text', text: 'ask_user_question', wave: true })
+    const settled: Message = { kind: 'tool-card', id: 'a', tool: 'ask_user_question', label: 'ask_user_question', argsBody: '', running: false }
     expect(rowInfoAt([settled], 80, 1)?.wave).toBeUndefined()
   })
 
@@ -94,13 +88,13 @@ describe('wave on pending tool bubbles', () => {
   })
 })
 
-describe('wave on tool-diff, compaction, and plan headers', () => {
-  it('marks the write bubble header while streaming or running', () => {
-    const streaming: Message = { kind: 'tool-diff', id: 'w', tool: 'write', path: 'a.ts', hunks: [], streaming: true }
+describe('wave on tool-card, compaction headers', () => {
+  it('marks the tool-card header while streaming or running', () => {
+    const streaming: Message = { kind: 'tool-card', id: 'w', tool: 'write', label: 'write a.ts', argsBody: '', streaming: true, running: true }
     expect(rowInfoAt([streaming], 80, 1)).toMatchObject({ kind: 'text', wave: true })
-    const running: Message = { kind: 'tool-diff', id: 'w', tool: 'write', path: 'a.ts', hunks: [[{ kind: 'add', text: 'x' }]], running: true }
+    const running: Message = { kind: 'tool-card', id: 'w', tool: 'write', label: 'write a.ts', argsBody: '', running: true }
     expect(rowInfoAt([running], 80, 1)).toMatchObject({ kind: 'text', wave: true })
-    const done: Message = { kind: 'tool-diff', id: 'w', tool: 'write', path: 'a.ts', hunks: [[{ kind: 'add', text: 'x' }]], running: false }
+    const done: Message = { kind: 'tool-card', id: 'w', tool: 'write', label: 'write a.ts', argsBody: '', running: false }
     expect(rowInfoAt([done], 80, 1)?.wave).toBeUndefined()
   })
 
@@ -108,15 +102,6 @@ describe('wave on tool-diff, compaction, and plan headers', () => {
     const running: Message = { kind: 'compaction', id: 'c', compactionId: 'c1', running: true, summary: '' }
     expect(rowInfoAt([running], 80, 1)).toMatchObject({ kind: 'text', text: 'Compact', wave: true })
     const done: Message = { kind: 'compaction', id: 'c', compactionId: 'c1', running: false, summary: 'done' }
-    expect(rowInfoAt([done], 80, 1)?.wave).toBeUndefined()
-  })
-
-  it('marks the plan header while streaming or running', () => {
-    const streaming: Message = { kind: 'plan', id: 'p', body: '', streaming: true }
-    expect(rowInfoAt([streaming], 80, 1)).toMatchObject({ kind: 'text', wave: true })
-    const running: Message = { kind: 'plan', id: 'p', body: 'steps', running: true }
-    expect(rowInfoAt([running], 80, 1)).toMatchObject({ kind: 'text', wave: true })
-    const done: Message = { kind: 'plan', id: 'p', body: 'steps', running: false }
     expect(rowInfoAt([done], 80, 1)?.wave).toBeUndefined()
   })
 
@@ -128,16 +113,16 @@ describe('wave on tool-diff, compaction, and plan headers', () => {
 })
 
 describe('wave rendering', () => {
-  it('keeps the bubble text while the wave animates', () => {
-    const ask: Message = { kind: 'bubble', id: 'a', role: 'assistant', content: 'ask_user_question', variant: 'ask-user', pending: true }
+  it('keeps the tool-card text while the wave animates', () => {
+    const ask: Message = { kind: 'tool-card', id: 'a', tool: 'ask_user_question', label: 'ask_user_question', argsBody: '', streaming: true, running: true }
     const { lastFrame } = render(
       <MessageList messages={[ask]} height={10} width={80} scrollTop={0} onScroll={() => {}} spinnerTick={3} />,
     )
     expect((lastFrame() ?? '').replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')).toContain('ask_user_question')
   })
 
-  it('renders more than one foreground color while a bubble wave is active', () => {
-    const ask: Message = { kind: 'bubble', id: 'a', role: 'assistant', content: 'ask_user_question', variant: 'ask-user', pending: true }
+  it('renders more than one foreground color while a tool-card wave is active', () => {
+    const ask: Message = { kind: 'tool-card', id: 'a', tool: 'ask_user_question', label: 'ask_user_question', argsBody: '', streaming: true, running: true }
     const { lastFrame } = render(
       <MessageList messages={[ask]} height={10} width={80} scrollTop={0} onScroll={() => {}} spinnerTick={2} />,
     )
@@ -145,8 +130,8 @@ describe('wave rendering', () => {
     expect(colors.size).toBeGreaterThan(1)
   })
 
-  it('renders a single foreground color once the bubble settles', () => {
-    const ask: Message = { kind: 'bubble', id: 'a', role: 'assistant', content: 'ask_user_question', variant: 'ask-user' }
+  it('renders a single foreground color once the tool-card settles', () => {
+    const ask: Message = { kind: 'tool-card', id: 'a', tool: 'ask_user_question', label: 'ask_user_question', argsBody: '', running: false }
     const { lastFrame } = render(
       <MessageList messages={[ask]} height={10} width={80} scrollTop={0} onScroll={() => {}} spinnerTick={2} />,
     )

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { initialTurnState, reduceChatEvent } from '../src/chat/store.ts'
-import { createToolViewPresenter, registerToolView, toolViewOf } from '../src/chat/tool-views.ts'
+import { createToolViewPresenter, registerToolView, toolViewOf, ToolCallLedger } from '../src/chat/tool-views.ts'
 import { registerChatNode } from '../src/chat/chat-nodes.ts'
 import type { ChatNodeDefinition, CustomMessage, TuiKey, ToolViewContribution } from '../src/contract/index.ts'
 import type { ChatToolPresenter } from '../src/chat/bridge.ts'
@@ -49,7 +49,7 @@ describe('tool view contributions', () => {
       },
       argsJson: () => '{}',
     }
-    const presenter = createToolViewPresenter(inner, { resolve: toolViewOf, cwd: () => '/cwd' })
+    const presenter = createToolViewPresenter(inner, { resolve: toolViewOf, cwd: () => '/cwd', ledger: new ToolCallLedger() })
     const call = presenter.call('ext-tool', 'c1', '{"path":"a.ts"}')
     expect(call).toEqual({ label: 'ext[a.ts]', body: 'args' })
     expect(presenter.result('c1', { content: [], isError: false })).toEqual({ kind: 'replace', text: 'replaced' })
@@ -60,6 +60,38 @@ describe('tool view contributions', () => {
     expect(presenter.argsJson('c2')).toBe('{}')
     off()
     expect(toolViewOf('ext-tool')).toBeUndefined()
+  })
+
+  it('keeps the arguments resolvable when a call contribution takes over', () => {
+    const contribution: ToolViewContribution = {
+      tool: 'owner-tool',
+      call: ({ tool }) => ({ label: tool, body: 'mine' }),
+    }
+    const off = registerToolView(contribution)
+    const inner: ChatToolPresenter = {
+      call: () => {
+        throw new Error('builtin must not run for a contribution hit')
+      },
+      result: () => ({ kind: 'append', text: 'builtin result' }),
+      argsJson: () => undefined,
+    }
+    const ledger = new ToolCallLedger()
+    const presenter = createToolViewPresenter(inner, { resolve: toolViewOf, cwd: () => '/cwd', ledger })
+    expect(presenter.call('owner-tool', 'c9', '{"n":1}')).toEqual({ label: 'owner-tool', body: 'mine' })
+    expect(presenter.argsJson('c9')).toBe('{\n  "n": 1\n}')
+    off()
+  })
+
+  it('echoes non-JSON arguments verbatim instead of double-encoding them', () => {
+    const ledger = new ToolCallLedger()
+    const inner: ChatToolPresenter = {
+      call: () => ({ label: 't', body: '' }),
+      result: () => ({ kind: 'append', text: '' }),
+      argsJson: () => undefined,
+    }
+    const presenter = createToolViewPresenter(inner, { resolve: toolViewOf, cwd: () => '/cwd', ledger })
+    presenter.call('t', 'c1', 'not json at all')
+    expect(presenter.argsJson('c1')).toBe('not json at all')
   })
 })
 

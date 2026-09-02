@@ -261,8 +261,10 @@ tui.tools.register({
 
 - Keyed by tool name; takes precedence over the harness tool's own presentation, falls back when the contribution returns `undefined`.
 - `call` context: `{ tool, callId, args, argumentsRaw, cwd }`; `result` adds `result: { content, isError, meta? }`.
-- Result shape: `{ kind: 'replace' | 'append', text, bodyCol?, exitCode?, signal?, diff? }`; `diff` only takes effect for diff-class tools.
-- The `write`/`edit` diff views and the `ask_user_question`/`todo`/plan-mode chrome are built in and bypass this registry.
+- Result shape: `{ kind: 'replace' | 'append', text, label?, bodyCol?, exitCode?, signal?, diff?, read? }`; `diff` renders as an inline diff block and `read` as a numbered, syntax-highlighted read card, each instead of the text body. `label` replaces the card header at settle time.
+- No tool is exempt: `write`, `edit`, `read`, `bash`, `todo_write`, `ask_user_question`, `exit_plan_mode` and every other builtin view can be overridden here. The builtin presenter only runs when no contribution is registered for that tool, or when your handler returns `undefined`.
+- `takeover: true` stops the fallback for tools whose builtin presentation you want to replace outright: a handler returning `undefined` then renders a bare card instead of falling through to the protocol presentation.
+- Diff-line backgrounds come from the diff payload itself (see below), not from the tool name, so a contributed `diff` gets the same red/green treatment as a builtin `edit`.
 
 ### tui.content.nodes.register
 
