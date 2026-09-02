@@ -82,7 +82,7 @@ const DARK_HUES: SemanticHues = {
   info: '#4da0e8',
   success: '#4caf50',
   error: '#ff6753',
-  added: '#33b84d',
+  added: '#5d9e50',
   removed: '#d25044',
 }
 
