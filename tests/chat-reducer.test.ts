@@ -3,10 +3,21 @@ import { CallId, createAssistantMessage, createToolResultMessage, createUserMess
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { formatThinkingDuration, initialTurnState, reduceChatEvent } from '../src/chat/store.ts'
 import type { ChatToolPresenter } from '../src/chat/bridge.ts'
+import { createBuiltinToolPresenter } from '../src/chat/bridge.ts'
+import { ToolCallLedger, createToolViewPresenter, toolViewOf } from '../src/chat/tool-views.ts'
+import { registerBuiltinToolViews } from '../src/chat/builtin-tool-views.ts'
 import type { Message } from '../src/model/message.ts'
 import { rowInfoAt, rowIndexFor } from '../src/ui/message/layout.ts'
 
 const WIDTH = 80
+
+function realPresenter(): ChatToolPresenter {
+  const ledger = new ToolCallLedger()
+  return createToolViewPresenter(
+    createBuiltinToolPresenter({ ledger, presentCall: () => undefined, presentResult: () => undefined, cwd: () => '/w' }),
+    { resolve: toolViewOf, cwd: () => '/w', ledger },
+  )
+}
 
 function userEvent(text: string): SessionEvent {
   return {
@@ -601,6 +612,15 @@ describe('ask_user_question tool card', () => {
   it('falls back to the event error identity when no result text exists', () => {
     const state = apply([], [askCall(), askResult('a1', { text: '', error: { name: 'AbortError', code: 'E_ABORT' } })])
     expect(state.messages[0]).toMatchObject({ kind: 'tool-card', error: 'error: AbortError' })
+  })
+
+  it('rewrites the settled card into question plus chosen answers', () => {
+    registerBuiltinToolViews()
+    const presenter = realPresenter()
+    const first = reduceChatEvent([], askCall(), initialTurnState(), presenter)
+    const settled = reduceChatEvent(first.messages, askResult(), first.turn, presenter)
+    const card = settled.messages[0]
+    expect(card).toMatchObject({ kind: 'tool-card', argsBody: '', resultBody: '1. 第一个问题\n   A\n2. 第二个问题\n   自定义' })
   })
 })
 

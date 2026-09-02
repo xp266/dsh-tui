@@ -190,6 +190,7 @@ export function reduceChatEvent(
       updateById(messages, id, message => {
         if (message.kind !== 'tool-card') return message
         const nextLabel = label === undefined || label === '' || label === message.tool ? message.label : label
+        const nextArgs = presentation?.argsBody
         return {
           ...message,
           ...(text === '' ? {} : { resultBody: text }),
@@ -197,6 +198,7 @@ export function reduceChatEvent(
           ...(read === undefined ? {} : { read }),
           ...(presentation?.exitCode === undefined ? {} : { exitCode: presentation.exitCode }),
           ...(presentation?.signal === undefined ? {} : { signal: presentation.signal }),
+          ...(nextArgs === undefined || nextArgs === message.argsBody ? {} : { argsBody: nextArgs }),
           ...(nextLabel === message.label ? {} : { label: nextLabel }),
           ...(failed ? { failed } : {}),
           running: false,

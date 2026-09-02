@@ -378,6 +378,8 @@ export interface ToolResultPresentation {
   text: string
   /** Header replacement applied when kind is 'replace' ('' clears the suffix). */
   label?: string
+  /** Call-side body replacement ('' clears it), for settled views that supersede the args. */
+  argsBody?: string
   exitCode?: number
   signal?: string
   bodyCol?: number

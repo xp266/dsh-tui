@@ -100,3 +100,14 @@ export function formatAskQuestions(raw: unknown): string {
     return lines.join('\n')
   }).join('\n')
 }
+
+/** The settled ask card: each question followed by the user's choice. */
+export function formatAskAnswered(
+  questions: readonly AskQuestionItemLike[],
+  answers: readonly AskUserQuestionAnswerItemLike[],
+): string {
+  return questions.map((question, index) => {
+    const answer = answers.find(entry => entry.id === question.id)
+    return `${index + 1}. ${question.question}\n${' '.repeat(ANSWER_INDENT)}${answerTextOf(question, answer)}`
+  }).join('\n')
+}
