@@ -6,9 +6,9 @@ import { useComposer } from '../src/ui/input/use-composer.ts'
 import type { ComposerSubmission } from '../src/ui/input/composer-fields.ts'
 
 function Harness({ onSend }: { onSend: (submission: ComposerSubmission) => void }) {
-  const { value, cursor } = useComposer(onSend, true, 80)
+  const { value, cursor, hintOpen } = useComposer(onSend, true, 80)
   const rendered = value.slice(0, cursor) + '|' + value.slice(cursor)
-  return <Text>{rendered.length === 1 ? '<empty>' : rendered}</Text>
+  return <Text>{rendered.length === 1 ? '<empty>' : rendered}{hintOpen ? ' [HINT]' : ''}</Text>
 }
 
 async function type(stdin: { write(data: string): void }, data: string) {
@@ -113,5 +113,28 @@ describe('composer send history', () => {
     expect(lastFrame() ?? '').toContain('abc|')
     await type(stdin, '\x1b[B')
     expect(lastFrame() ?? '').toContain('abc|')
+  })
+
+  it('does not open the command hint while scrolling history', async () => {
+    const { lastFrame, stdin } = render(<Harness onSend={noop} />)
+    await type(stdin, 'normal')
+    await type(stdin, '\r')
+    await type(stdin, '/new')
+    await type(stdin, '\r')
+
+    await type(stdin, '\x1b[A')
+    expect(lastFrame() ?? '').toContain('/new|')
+    expect(lastFrame() ?? '').not.toContain('[HINT]')
+
+    await type(stdin, '\x1b[A')
+    expect(lastFrame() ?? '').toContain('normal|')
+
+    await type(stdin, '\x1b[B')
+    expect(lastFrame() ?? '').toContain('/new|')
+    expect(lastFrame() ?? '').not.toContain('[HINT]')
+
+    await type(stdin, '\x08')
+    expect(lastFrame() ?? '').toContain('/ne|')
+    expect(lastFrame() ?? '').toContain('[HINT]')
   })
 })

@@ -127,7 +127,7 @@ export function useComposer(
     }
     const entry = history[history.length - 1 - historyIndexRef.current]!
     applySnapshot({ value: entry, cursor: entry.length })
-    refreshHint()
+    closeHint()
   }
   const historyNewer = (): void => {
     if (historyIndexRef.current === -1) return
@@ -135,13 +135,13 @@ export function useComposer(
       const draft = historyDraftRef.current
       resetHistoryBrowse()
       applySnapshot(draft ?? { value: '', cursor: 0 })
-      refreshHint()
+      closeHint()
       return
     }
     historyIndexRef.current -= 1
     const entry = historyRef.current[historyRef.current.length - 1 - historyIndexRef.current]!
     applySnapshot({ value: entry, cursor: entry.length })
-    refreshHint()
+    closeHint()
   }
   const recordHistoryEntry = (text: string): void => {
     resetHistoryBrowse()
