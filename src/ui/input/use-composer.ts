@@ -73,6 +73,7 @@ export function useComposer(
   const undoStackRef = useRef<EditState[]>([])
   const redoStackRef = useRef<EditState[]>([])
   const pushUndoSnapshot = (): void => {
+    resetHistoryBrowse()
     undoStackRef.current.push({ value: valueRef.current, cursor: cursorRef.current })
     if (undoStackRef.current.length > UNDO_LIMIT) undoStackRef.current.shift()
     redoStackRef.current.length = 0
@@ -104,6 +105,51 @@ export function useComposer(
     if (undoStackRef.current.length > UNDO_LIMIT) undoStackRef.current.shift()
     applySnapshot(snapshot)
     refreshHint()
+  }
+  const HISTORY_LIMIT = 50
+  const historyRef = useRef<string[]>([])
+  const historyIndexRef = useRef(-1)
+  const historyDraftRef = useRef<EditState | null>(null)
+  const resetHistoryBrowse = (): void => {
+    historyIndexRef.current = -1
+    historyDraftRef.current = null
+  }
+  const historyOlder = (): void => {
+    const history = historyRef.current
+    if (history.length === 0) return
+    if (historyIndexRef.current === -1) {
+      historyDraftRef.current = { value: valueRef.current, cursor: cursorRef.current }
+      historyIndexRef.current = 0
+    } else if (historyIndexRef.current >= history.length - 1) {
+      return
+    } else {
+      historyIndexRef.current += 1
+    }
+    const entry = history[history.length - 1 - historyIndexRef.current]!
+    applySnapshot({ value: entry, cursor: entry.length })
+    refreshHint()
+  }
+  const historyNewer = (): void => {
+    if (historyIndexRef.current === -1) return
+    if (historyIndexRef.current === 0) {
+      const draft = historyDraftRef.current
+      resetHistoryBrowse()
+      applySnapshot(draft ?? { value: '', cursor: 0 })
+      refreshHint()
+      return
+    }
+    historyIndexRef.current -= 1
+    const entry = historyRef.current[historyRef.current.length - 1 - historyIndexRef.current]!
+    applySnapshot({ value: entry, cursor: entry.length })
+    refreshHint()
+  }
+  const recordHistoryEntry = (text: string): void => {
+    resetHistoryBrowse()
+    if (text === '') return
+    const history = historyRef.current
+    if (history[history.length - 1] === text) return
+    history.push(text)
+    if (history.length > HISTORY_LIMIT) history.shift()
   }
   const closeHint = (): void => {
     setHintOpen(false)
@@ -340,6 +386,7 @@ export function useComposer(
     if (key.return && !key.shift) {
       const submission = expandComposerValue(v, fieldsRef.current)
       if (submission.text !== '' || submission.images.length > 0) onSend(submission)
+      recordHistoryEntry(submission.text)
       fieldsRef.current = new Map()
       valueRef.current = ''
       cursorRef.current = 0
@@ -404,15 +451,23 @@ export function useComposer(
       return
     }
     if (key.upArrow) {
-      const next = moveCaretLine(v, c, contentWidth, -1)
-      cursorRef.current = next
-      setCursor(next)
+      const moved = moveCaretLine(v, c, contentWidth, -1)
+      if (moved !== c) {
+        cursorRef.current = moved
+        setCursor(moved)
+      } else {
+        historyOlder()
+      }
       return
     }
     if (key.downArrow) {
-      const next = moveCaretLine(v, c, contentWidth, 1)
-      cursorRef.current = next
-      setCursor(next)
+      const moved = moveCaretLine(v, c, contentWidth, 1)
+      if (moved !== c) {
+        cursorRef.current = moved
+        setCursor(moved)
+      } else {
+        historyNewer()
+      }
       return
     }
     if (key.home) {
