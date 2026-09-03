@@ -245,6 +245,9 @@ function buildPalette(ladder: GrayLadder, hues: SemanticHues, code: CodeHues, mo
     thinkCodeType: thinkCode.type,
     thinkCodeVariable: thinkCode.variable,
     thinkCodeConstant: thinkCode.variable,
+
+    homeLogoTop: mode === 'dark' ? '#2181ff' : '#0381ff',
+    homeLogoBottom: mode === 'dark' ? '#3a9aa0' : '#97c4ff',
   }
 }
 

@@ -6,6 +6,7 @@ import { registerWidget } from './widgets/registry.ts'
 import { registerCommand } from './input/commands.ts'
 import { registerKeyBinding } from './keymap.ts'
 import { registerInputStatus } from './chrome/input-status.ts'
+import { registerHomeLogo, subscribeHomeLogo } from './home-logo.ts'
 import { registerHintArgsProvider, registerHintMatcher } from './chrome/hint-service.ts'
 import { registerPalette, subscribePalettes } from '../theme.ts'
 import { paletteColor } from '../theme.ts'
@@ -39,8 +40,8 @@ export type {
   TuiChromeFace,
   TuiCommandsFace,
   TuiContentFace,
-  TuiExtensionPoint,
   TuiFieldsFace,
+  TuiHomeLogoFace,
   TuiInteractionsFace,
   TuiKeymapFace,
   TuiPaletteFace,
@@ -75,6 +76,7 @@ export function createTuiExtensionPoint(ctx: Context, hooks: TuiExtensionPointHo
       palette: { register: registerPalette, color: paletteColor },
       keys: { register: registerKeyBinding },
       inputStatus: { register: registerInputStatus },
+      logo: { register: registerHomeLogo },
     },
     commands: { register: registerCommand },
     tools: { register: registerToolView },
@@ -153,6 +155,7 @@ export function createTuiExtensionPoint(ctx: Context, hooks: TuiExtensionPointHo
   const offPalettes = subscribePalettes(surfaceChanged)
   const offMessageRenderers = subscribeMessageRenderers(surfaceChanged)
   const offChatNodes = subscribeChatNodes(surfaceChanged)
+  const offHomeLogo = subscribeHomeLogo(surfaceChanged)
   const contentChanged = (): void => {
     surfaceChanged()
   }
@@ -165,6 +168,7 @@ export function createTuiExtensionPoint(ctx: Context, hooks: TuiExtensionPointHo
       offPalettes()
       offMessageRenderers()
       offChatNodes()
+      offHomeLogo()
       disposeService()
     },
   }

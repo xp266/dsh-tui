@@ -65,8 +65,21 @@ describe('App layout', () => {
     expect(frame).not.toContain('glm-4.7-flash')
   })
 
-  it('renders no box-drawing or block characters other than half-block edges', () => {
-    const { lastFrame } = render(<App bridge={fakeBridge()} />)
+  it('renders no box-drawing or block characters other than half-block edges', async () => {
+    let handler: ((event: SessionEvent) => void) | undefined
+    const bridge = fakeBridge()
+    bridge.subscribe = cb => {
+      handler = cb
+      return () => {}
+    }
+    const { lastFrame } = render(<App bridge={bridge} />)
+    handler?.({
+      type: 'user/message',
+      seq: 1,
+      time: 0,
+      data: createUserMessage({ content: [{ type: 'text', text: 'hello tui' }], source: { kind: 'user' } }),
+    })
+    await new Promise(resolve => setTimeout(resolve, 100))
     const frame = lastFrame() ?? ''
     expect(frame).not.toMatch(/[┌┐└┘─│█]/)
   })

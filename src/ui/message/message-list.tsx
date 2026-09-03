@@ -1,4 +1,4 @@
-import { Box, useInput } from 'ink'
+import { Box, Text, useInput } from 'ink'
 import { isKeyConsumed } from '../key-arbiter.ts'
 import type { Message } from '../../model/message.ts'
 import { rowIndexFor, scrollbarGeometry } from './layout.ts'
@@ -6,6 +6,7 @@ import { MessageRow } from './message-row.tsx'
 import { COLORS } from '../../theme.ts'
 import { scrollbarColumn } from '../layout-service.ts'
 import { Region } from '../region.tsx'
+import { homeLogoLineColors, homeLogoMetrics, useHomeLogo } from '../home-logo.ts'
 
 interface MessageListProps {
   messages: Message[]
@@ -33,6 +34,20 @@ export function MessageList({ messages, height, width, scrollTop, onScroll, inte
     if (key.ctrl && input === 'u') scroll(-halfPage)
     if (key.ctrl && input === 'd') scroll(halfPage)
   })
+  const logo = useHomeLogo()
+  if (messages.length === 0) {
+    const clean = logo?.lines.map(line => line.trimEnd()) ?? []
+    const metrics = homeLogoMetrics(clean)
+    const fits = logo !== undefined && width >= metrics.columns && height >= metrics.rows
+    const colors = homeLogoLineColors(clean, COLORS.homeLogoTop, COLORS.homeLogoBottom)
+    return (
+      <Box width={width} height={height} flexDirection="column" alignItems="center" justifyContent="center" overflow="hidden">
+        {fits && colors.map((color, i) => (
+          <Text key={i} color={color}>{clean[i]!.padEnd(metrics.columns)}</Text>
+        ))}
+      </Box>
+    )
+  }
   const rows = []
   const endRow = Math.min(scrollTop + height, total)
   for (let row = scrollTop; row < endRow; row++) {

@@ -301,6 +301,17 @@ export interface InputStatusContribution {
   render(context: InputStatusContext): InputStatusPart | InputStatusPart[] | null
 }
 
+export interface HomeLogoContribution {
+  id: string
+  order?: number
+  /** Logo artwork shown as a background on the empty home page, one string per terminal row. */
+  lines: readonly string[]
+}
+
+export interface TuiHomeLogoFace {
+  register(contribution: HomeLogoContribution): () => void
+}
+
 export interface TuiChromeFace {
   statusLine: { register(contribution: StatusLineContribution): () => void }
   overlays: { register(contribution: OverlayContribution): () => void }
@@ -308,6 +319,7 @@ export interface TuiChromeFace {
   palette: TuiPaletteFace
   keys: TuiKeymapFace
   inputStatus: { register(contribution: InputStatusContribution): () => void }
+  logo: TuiHomeLogoFace
 }
 
 export interface CommandDef {
