@@ -21,6 +21,9 @@ import { warmRenderPipeline } from './ui/message/warmup.ts'
 import { createTuiExtensionPoint, exposeRuntimeFaces } from './ui/extension-point.ts'
 import { registerBuiltinToolViews } from './chat/builtin-tool-views.ts'
 import { closeBootLog, emitBootLine, openBootLog } from './boot-log.ts'
+import { configureLogs, error as logError, installCrashHandlers, warn } from './log.ts'
+import { env } from './env.ts'
+import { upstreamDriftSummary, UPSTREAM_SUPPORTED_RANGE } from './contract/upstream.ts'
 
 export const name = 'dsh-tui'
 
@@ -59,6 +62,12 @@ export const inject = ['agentLoop', 'agents', 'sessions', 'workspaceRegistry', '
 
 export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
   ctx.effect(() => {
+    configureLogs({ stderr: env.debug, file: env.logFile, dir: env.logDir, level: env.logLevel, maxFileBytes: env.logMaxBytes })
+    const disposeCrashHandlers = installCrashHandlers({ exit: env.crashExit })
+    const drift = upstreamDriftSummary()
+    if (drift !== undefined) {
+      warn('upstream', `upstream version drift (supported: ${UPSTREAM_SUPPORTED_RANGE}): ${drift.kind} ${drift.versions.join(', ')}`)
+    }
     const capture = createScreenCapture()
     let bridge: ChatBridge | undefined
     let app: ReturnType<typeof render> | undefined
@@ -126,6 +135,9 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
     }
     const themeScope = registerThemeSettings(ctx)
     openBootLog()
+    if (drift !== undefined) {
+      emitBootLine(`warning: upstream version drift (${drift.kind})`)
+    }
     emitBootLine('terminal: probing color support')
     void (async () => {
       const probed = await probeColorLevel()
@@ -146,7 +158,10 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
       closeBootLog()
     })()
       .catch(error => {
-        console.error('chat bridge init failed', error)
+        logError('boot', 'chat bridge init failed', {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        })
         closeBootLog()
       })
       .finally(() => start())
@@ -160,6 +175,7 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
       writeCursorShape('reset')
       bridge?.dispose()
       app?.unmount()
+      disposeCrashHandlers()
     }
   })
 }
