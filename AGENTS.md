@@ -1,32 +1,39 @@
 # AGENTS.md
 
-`dsh-tui` is a standalone TUI plugin for deepseek-harness, built with TypeScript + ink.
-- The plugin mounts to the harness as a bundle plugin (`dsh.bundle` + `cordis.patch.yml`), declares service dependencies via `inject`, and fetches optional services with `ctx.get()`, keeping it composable across providers.
-- The plugin does only two things: the entry point and the ink UI. All backend capability comes from the harness's Cordis services and events.
+## Code Style
 
-## Paths
+- Erasable TypeScript syntax only (no enum, namespace, or parameter properties); imports always carry the `.ts` extension.
+- Exported functions declare explicit return types; internal functions rely on inference.
+- No import aliases, no star imports; import the module itself and access members with dot notation for namespace semantics.
+- Prefer `const`; use ternaries or early returns instead of reassignment; never write `else`.
+- Avoid unnecessary destructuring; dot notation preserves context.
+- Inline values used only once; inline single-line helpers with a single call site; place helpers directly below the main function.
+- No `any`; prefer map/filter/flatMap over loops; use type guards in filter to preserve downstream inference.
+- Comments only for non-obvious constraints and surprising behavior, never restating code, never casually.
+- `try`/`catch` only at I/O boundaries; every catch block must carry a comment stating why the error is swallowed.
 
-| Path | Purpose |
-|---|---|
-| `/home/xp266/ts/dsh-tui` | This plugin project (development project) |
-| `/home/xp266/ts/dsh-tui/docs/` | Plugin development |
-| `/home/xp266/github/deepseek-harness` | harness source (read-only, for reference) |
-| `/home/xp266/github/deepseek-harness/packages/bundle/web-app/` | official web bundle (read-only, for reference) |
+## Commit Style
 
-## Commands
+- Conventional commits: `type(scope): summary`; type is one of feat/fix/docs/chore/refactor/test; scope optional, the affected area.
+- English, imperative mood, lowercase start, no trailing period.
+- No emojis, no AI attribution footers ("Generated with…" and the like).
+- Branches: `type/topic` short names, topic hyphen-separated, at most three words.
 
-```sh
-pnpm install       # install dependencies
-pnpm typecheck     # tsc --noEmit
-pnpm test          # vitest run
-pnpm build         # tsdown -> lib/
-```
+## Hard Constraints
 
-## Rules
+- Never commit, push, or open PRs proactively; only when the user explicitly asks.
+- Never create README.md or new documentation files; never modify this document unless necessary.
+- Never use ink patches; stock ink only.
+- Never store temporary files in the repository; throwaway scripts go to `/tmp`.
+- Upstream version comparison lives only in `src/contract/upstream.ts`; adjusting the floor/ceiling must land in the same commit as the package.json peer branches.
+- Stage explicit paths only; never `git add -A` or `git add .`.
 
-- No comments in code unless strictly necessary; no emojis or pictographs.
-- Never write a README.md file.
-- Keep `tests/` for concise, general-purpose tests only; throwaway or scratch tests go to a temporary directory (e.g. `/tmp`).
-- After completing a feature or fix, always run `pnpm build`.
-- Never commit proactively; only check and commit when the user explicitly asks.
-- Do not modify this document unless necessary.
+## General Constraints
+
+- Before the first action of a session, review the codebase structure and the contents of `docs/`.
+- Answer questions before touching code; read files in full before wide-ranging changes, do not rely on search snippets.
+- After completing a feature or fix, run `pnpm typecheck`, `pnpm build`, and `pnpm verify` in order.
+- Verify behavior with throwaway probe scripts (tsx against source), never by creating test files.
+- Keep replies short, technical, and direct; no pleasantries, no emojis; state agreement or disagreement before describing changes.
+- When unrelated changes appear before committing, ask the user how to handle them.
+- When user instructions conflict with this document, confirm with the user first.
