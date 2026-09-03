@@ -533,8 +533,9 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   const presets = ctx.get('agentPresets')
   const selections = new WeakMap<Agent, ModelSelectionRef>()
   const effortNames = new Map<string, string>()
-  let currentCwd = process.cwd()
-  void registerWorkspace(ctx, currentCwd)
+  const defaultCwd = process.cwd()
+  let currentCwd = defaultCwd
+  void registerWorkspace(ctx, defaultCwd)
   const sessionList = cachedList(
     () => computeSessionList(ctx),
     SESSION_LIST_TTL_MS,
@@ -755,6 +756,8 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   }
 
   async function newSession(): Promise<void> {
+    currentCwd = defaultCwd
+    void registerWorkspace(ctx, currentCwd)
     const handle = await createAgent(currentCwd)
     await activateAgent(handle, handle.agent)
     refreshAgentState()
