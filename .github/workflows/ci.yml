@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Docs-only PRs skip the build but keep the required ci-gate green.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/github-script@v9
+        id: filter
+        with:
+          script: |
+            if (context.eventName !== 'pull_request') {
+              core.setOutput('code', 'true')
+              return
+            }
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page: 100,
+            })
+            const DOCS_ONLY = [
+              /^docs\//,
+              /\.md$/,
+              /^\.github\/PULL_REQUEST_TEMPLATE\.md$/,
+              /^\.github\/dependabot\.yml$/,
+              /^LICENSE$/,
+            ]
+            const paths = files.map(f => f.filename)
+            const code = paths.length === 0 || paths.some(p => !DOCS_ONLY.some(re => re.test(p)))
+            core.setOutput('code', String(code))
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # engines: ^22.19.0 || >=24.0.0
+        node: ['22.19.0', '24']
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm verify:contract
+
+      - run: pnpm verify:manifest
+
+      - run: pnpm typecheck
+
+      - run: pnpm build
+
+      - name: Verify clean compile output
+        run: |
+          test -f lib/index.mjs
+          test -f lib/contract/index.mjs
+          test -f lib/vendor.mjs
+          test -f lib/dialog.mjs
+
+      - run: pnpm verify:package
+
+  ci-gate:
+    needs: [changes, build]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require build to have succeeded
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          CODE: ${{ needs.changes.outputs.code }}
+          BUILD: ${{ needs.build.result }}
+        run: |
+          if [ "${CODE}" = "false" ]; then expected=skipped; else expected=success; fi
+          status=0
+          if [ "${CHANGES}" != "success" ]; then
+            echo "::error title=CI gate::changes finished as ${CHANGES} (expected success)"
+            status=1
+          fi
+          if [ "${BUILD}" != "${expected}" ]; then
+            echo "::error title=CI gate::build finished as ${BUILD} (expected ${expected})"
+            status=1
+          fi
+          exit "${status}"
