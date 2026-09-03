@@ -10,7 +10,7 @@ export interface MouseEventData {
 }
 
 const MOUSE_ENABLE_SEQUENCES = '\x1b[?1003l\x1b[?1000h\x1b[?1002h\x1b[?1006h'
-const MOUSE_DISABLE_SEQUENCES = '\x1b[?1000l\x1b[?1002l\x1b[?1006l'
+const MOUSE_DISABLE_SEQUENCES = '\x1b[?1003l\x1b[?1000l\x1b[?1002l\x1b[?1006l'
 
 export function writeMouseEnable(): void {
   process.stdout.write(MOUSE_ENABLE_SEQUENCES)

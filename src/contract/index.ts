@@ -481,7 +481,7 @@ export interface MessageRendererResult {
 }
 
 export interface MessageRendererContribution {
-  /** Message kind to take over: 'bubble' | 'collapsible' | 'tool-diff' | 'compaction' | 'plan' | 'custom'. */
+  /** Message kind to take over: 'bubble' | 'collapsible' | 'tool-card' | 'compaction' | 'custom'. */
   kind: string
   order?: number
   /** Return undefined to fall through to the builtin rendering. */

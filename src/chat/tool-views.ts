@@ -41,6 +41,7 @@ export class ToolCallLedger {
       args = JSON.parse(argumentsRaw) as unknown
       json = JSON.stringify(args, null, 2) ?? ''
     } catch {
+      // Non-JSON arguments survive verbatim as the raw string instead of being dropped.
       args = argumentsRaw
       json = argumentsRaw
     }

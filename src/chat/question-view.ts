@@ -31,29 +31,13 @@ export function parseAskAnswers(resultText: string): AskUserQuestionAnswerItemLi
   try {
     parsed = JSON.parse(resultText)
   } catch {
+    // A non-JSON result text simply carries no answers.
     return []
   }
   if (typeof parsed !== 'object' || parsed === null) return []
   const answers = (parsed as { answers?: unknown }).answers
   if (!Array.isArray(answers)) return []
   return answers.map(answerFromJson).filter(answer => answer !== undefined)
-}
-
-export function formatAskUserBubble(
-  questions: readonly AskQuestionItemLike[],
-  answers: readonly AskUserQuestionAnswerItemLike[],
-): string {
-  const lines = [ASK_USER_TOOL_NAME, '']
-  for (const [index, question] of questions.entries()) {
-    const answer = answers.find(entry => entry.id === question.id)
-    lines.push(`${index + 1}. ${question.question}`)
-    lines.push(`${' '.repeat(ANSWER_INDENT)}${answerTextOf(question, answer)}`)
-  }
-  return lines.join('\n')
-}
-
-export function formatAskUserError(errorText: string): string {
-  return `${ASK_USER_TOOL_NAME}\n\n${errorText}`
 }
 
 function answerTextOf(question: AskQuestionItemLike, answer: AskUserQuestionAnswerItemLike | undefined): string {
@@ -104,8 +88,8 @@ export function formatAskQuestions(raw: unknown): string {
   if (questions.length === 0) return ''
   return questions.map((question, index) => {
     const lines = [`${index + 1}. ${question.question}`]
-    if (question.detail !== undefined && question.detail !== '') lines.push(`${' '.repeat(3)}${question.detail}`)
-    for (const option of question.options ?? []) lines.push(`${' '.repeat(3)}${option.label}`)
+    if (question.detail !== undefined && question.detail !== '') lines.push(`${' '.repeat(ANSWER_INDENT)}${question.detail}`)
+    for (const option of question.options ?? []) lines.push(`${' '.repeat(ANSWER_INDENT)}${option.label}`)
     return lines.join('\n')
   }).join('\n')
 }

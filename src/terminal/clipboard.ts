@@ -50,7 +50,9 @@ async function firstCapture(attempts: Array<{ command: string; args: string[]; m
     try {
       const data = new Uint8Array(await capture(attempt.command, attempt.args))
       return { data, mediaType: attempt.mediaType }
-    } catch {}
+    } catch {
+      // The helper is missing or returned nothing; try the next backend.
+    }
   }
   return undefined
 }
@@ -60,7 +62,9 @@ async function firstText(attempts: Array<{ command: string; args: string[] }>): 
     try {
       const data = await capture(attempt.command, attempt.args)
       return data.toString('utf8')
-    } catch {}
+    } catch {
+      // The helper is missing or returned nothing; try the next backend.
+    }
   }
   return undefined
 }
@@ -68,9 +72,10 @@ async function firstText(attempts: Array<{ command: string; args: string[] }>): 
 async function readClipboardImageBuiltin(): Promise<ClipboardImage | undefined> {
   if (platform() === 'darwin') {
     const file = join(tmpdir(), 'dsh-tui-clipboard.png')
+    const escaped = file.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
     const script = [
       'set imageData to the clipboard as "PNGf"',
-      `set fileRef to open for access POSIX file "${file}" with write permission`,
+      `set fileRef to open for access POSIX file "${escaped}" with write permission`,
       'set eof fileRef to 0',
       'write imageData to fileRef',
       'close access fileRef',
@@ -82,6 +87,7 @@ async function readClipboardImageBuiltin(): Promise<ClipboardImage | undefined> 
       const data = new Uint8Array(await readFile(file))
       return { data, mediaType: 'image/png' }
     } catch {
+      // No image on the clipboard (or osascript missing); report undefined.
       return undefined
     } finally {
       await rm(file, { force: true }).catch(() => {})
@@ -101,6 +107,7 @@ async function readClipboardImageBuiltin(): Promise<ClipboardImage | undefined> 
       if (base64 === '') return undefined
       return { data: new Uint8Array(Buffer.from(base64, 'base64')), mediaType: 'image/png' }
     } catch {
+      // No image on the clipboard (or powershell missing); report undefined.
       return undefined
     }
   }

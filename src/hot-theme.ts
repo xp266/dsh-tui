@@ -31,6 +31,7 @@ export function startHotTheme(onChange: () => void): HotThemeHandle | undefined 
     try {
       source = readFileSync(themeUrl, 'utf8')
     } catch {
+      // The theme file vanished mid-session; keep the last applied palette.
       return
     }
     if (source === lastSource) return
@@ -43,7 +44,7 @@ export function startHotTheme(onChange: () => void): HotThemeHandle | undefined 
       bumpSurface()
       onChange()
     } catch {
-      // theme file is mid-edit or temporarily broken; retry on the next tick
+      // The theme file is mid-edit or temporarily broken; retry on the next tick.
     }
   }, REFRESH_MS)
   timer.unref()

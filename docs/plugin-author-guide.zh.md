@@ -533,10 +533,13 @@ assistant 气泡）。返回 `undefined` 回落到内置渲染；卸载即还原
 
 ```ts
 tui.content.renderers.register({
-  kind: 'tool-diff',
+  kind: 'tool-card',
   render: (message, width) => ({ lines: renderFancyDiff(message, width) }),
 })
 ```
+
+键是 `MessageKind`（`'bubble' | 'collapsible' | 'tool-card' |
+'compaction' | 'custom'`）；diff 主体属于 `tool-card` 类型。
 
 ## 配置
 

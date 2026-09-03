@@ -4,7 +4,6 @@ import { clearLayoutCache } from '../ui/message/layout.ts'
 
 type Listener = () => void
 
-let version = 0
 const listeners = new Set<Listener>()
 
 /**
@@ -14,7 +13,6 @@ const listeners = new Set<Listener>()
  * no cache can be missed when the surface changes.
  */
 export function bumpSurface(): void {
-  version += 1
   clearLayoutCache()
   clearHighlightCache()
   clearMarkdownBlockCache()
@@ -25,10 +23,6 @@ export function bumpSurface(): void {
       // isolated: one broken subscriber must not block the others
     }
   }
-}
-
-export function surfaceVersion(): number {
-  return version
 }
 
 export function onSurfaceChanged(listener: Listener): () => void {

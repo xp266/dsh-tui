@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, renameSync, statSync, unlinkSync } from 'node:fs'
+import { appendFileSync, chmodSync, mkdirSync, renameSync, statSync, unlinkSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { resolveDshHome } from './harness-home.ts'
 
@@ -108,6 +108,11 @@ function fileSinkFor(logFile: string): LogSink {
       if (!state.fileEnabled) return
       try {
         rotateIfNeeded(logFile)
+        try {
+          chmodSync(logFile, 0o600)
+        } catch {
+          // The log may not exist yet; the create mode below still guards it.
+        }
         appendFileSync(logFile, formatLine(entry), { mode: 0o600 })
       } catch {
         // Diagnostics must never take the UI down.
@@ -121,6 +126,11 @@ function fileSinkFor(logFile: string): LogSink {
       const line = formatCrash(report)
       try {
         rotateIfNeeded(logFile)
+        try {
+          chmodSync(logFile, 0o600)
+        } catch {
+          // The log may not exist yet; the create mode below still guards it.
+        }
         appendFileSync(logFile, line, { mode: 0o600 })
       } catch {
         // Diagnostics must never take the UI down.

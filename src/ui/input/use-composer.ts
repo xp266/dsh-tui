@@ -242,7 +242,9 @@ export function useComposer(
     try {
       const uris = await readClipboardImageUris()
       if (uris.length > 1) field.images = uris.map(path => ({ kind: 'path' as const, path }))
-    } catch {}
+    } catch {
+      // Clipboard URI lists are best-effort; a single pasted path stays as-is.
+    }
   }
   const pasteFromClipboard = async (allowText: boolean): Promise<void> => {
     try {
@@ -254,7 +256,9 @@ export function useComposer(
       if (!allowText) return
       const text = await readClipboardText()
       if (text !== undefined && text !== '') insertPaste(text.replace(/\r\n?/g, '\n'))
-    } catch {}
+    } catch {
+      // A clipboard backend failure is ignored: the paste simply does not insert.
+    }
   }
   usePaste(text => {
     if (!interactive) return
@@ -304,6 +308,7 @@ export function useComposer(
       try {
         candidates = await listCommandArgsRef.current?.(entry.command.slice(1)) ?? []
       } catch {
+        // An argument provider failure abandons the completion quietly.
         return
       }
       if (candidates.length === 0) candidates = literalHintArgs(entry.hint)

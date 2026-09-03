@@ -31,7 +31,7 @@ import {
   saveProviderModels,
 } from './models.ts'
 import type { ConfiguredModel, CustomProviderForm, DescribedModel, ModelEntryConfig, OfficialProvider, SettingsPathOp } from './models.ts'
-import { formatDiffDiffs, dedupeTitle, diffLineGroups, pathFromTitle, pickPrimaryParam, relativize, remainingArgsJson, truncateSummary, terminalCallBody, genericCallBody, genericCallHeader, recoveryLines, formatSearchView, trimTrailingBlanks } from './tool-view.ts'
+import { formatDiffDiffs, dedupeTitle, diffLineGroups, pathFromTitle, pickPrimaryParam, relativize, remainingArgsJson, truncateSummary, terminalCallBody, genericCallBody, genericCallHeader, recoveryLines, formatSearchView } from './tool-view.ts'
 import { TODO_TOOL_NAME } from './todo-view.ts'
 import { ASK_USER_TOOL_NAME } from './question-view.ts'
 import type { DiffLike, ReadLineLike, ToolDiffView } from './tool-view.ts'
@@ -47,6 +47,7 @@ import { applyTheme } from '../apply-theme.ts'
 import { THEME_SETTINGS_NAMESPACE } from '../theme-settings.ts'
 import { themeMode } from '../theme.ts'
 import type { ThemeMode } from '../theme.ts'
+import { warn } from '../log.ts'
 
 interface AttachmentsServiceLike {
   saveImage(input: { data: Uint8Array; mediaType: string; name?: string }): Promise<ImageAttachmentRef>
@@ -523,7 +524,12 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   let interactionChannels: (() => void) | undefined
   try {
     interactionChannels = registerInteractionChannels(ctx as never, interactions)
-  } catch {}
+  } catch (cause) {
+    // Without the interaction channels, approvals and questions stay unanswered.
+    warn('bridge', 'interaction channels are unavailable', {
+      message: cause instanceof Error ? cause.message : String(cause),
+    })
+  }
   const agentOptions = (): AgentOptions => {
     const selection = ctx.get('agentDefaultModel')?.currentSelection()
     if (selection === undefined) return {}
@@ -562,7 +568,12 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   }
   try {
     ;(ctx as unknown as { on(name: string, listener: () => void): void }).on('commands/change', () => syncRegistry())
-  } catch {}
+  } catch (cause) {
+    // The commands service does not emit change events on this host; the sync stays one-shot.
+    warn('bridge', 'commands/change subscription failed', {
+      message: cause instanceof Error ? cause.message : String(cause),
+    })
+  }
   syncRegistry()
   const llm = ctx.llm
   const efforts = cachedList(() => resolveEffortSummaries(currentSelection()), EFFORT_LIST_TTL_MS)
@@ -782,6 +793,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       efforts.invalidate()
       return
     } catch {
+      // The configured effort is unsupported; fall through to the plain call config below.
     }
     try {
       const resolved = await llm.resolveCallConfig({ provider: selection.provider, model: selection.model })
@@ -789,6 +801,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       efforts.invalidate()
       return
     } catch {
+      // Even the plain config is unreachable; fall back to the default model selection.
     }
     const fallback = ctx.get('agentDefaultModel')?.currentSelection()
     if (fallback !== undefined) selectionFor(activeAgent).current = fallback
@@ -839,7 +852,11 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     selectionFor(activeAgent).current = selectionWithEffort(resolved)
     try {
       await ctx.agentDefaultModel.saveSelection(resolved)
-    } catch {}
+    } catch (cause) {
+      warn('model', 'failed to persist the default model selection', {
+        message: cause instanceof Error ? cause.message : String(cause),
+      })
+    }
     efforts.invalidate()
     void refreshEffortNames()
   }
@@ -870,7 +887,11 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     selectionFor(activeAgent).current = selectionWithEffort(resolved)
     try {
       await ctx.agentDefaultModel.saveSelection(resolved)
-    } catch {}
+    } catch (cause) {
+      warn('model', 'failed to persist the default effort selection', {
+        message: cause instanceof Error ? cause.message : String(cause),
+      })
+    }
     efforts.invalidate()
     void refreshEffortNames()
   }
@@ -886,7 +907,9 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
         const values = projections.snapshot?.(activeAgent.session)?.values
         usage = values?.tokenUsage as typeof usage
         pressure = values?.contextPressure as typeof pressure
-      } catch {}
+      } catch {
+        // Projection snapshots may throw for sessions without token rows; stats fall back to zeros.
+      }
     }
     const input = (usage?.uncachedInputTokens ?? 0) + (usage?.cacheReadTokens ?? 0) + (usage?.cacheWriteTokens ?? 0)
     const output = usage?.outputTokens ?? 0
@@ -937,7 +960,9 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       const controller = new AbortController()
       try {
         await commandsService.execute(activeAgent, line, [], controller.signal)
-      } catch {}
+      } catch {
+        // Command failures already surface as session events; nothing further to report here.
+      }
     },
     listSessions,
     onSessionListChanged: listener => sessionList.onRefresh(listener),
@@ -1041,5 +1066,11 @@ async function registerWorkspace(ctx: Context, path: string): Promise<void> {
   const workspace = ctx.get('workspaceRegistry') as { create?(path: string): Promise<unknown> } | undefined
   try {
     await workspace?.create?.(path)
-  } catch {}
+  } catch (cause) {
+    // A session without a registered workspace still runs; the picker labels it ungrouped.
+    warn('workspace', 'failed to register the session workspace', {
+      path,
+      message: cause instanceof Error ? cause.message : String(cause),
+    })
+  }
 }

@@ -92,6 +92,7 @@ function isImagePath(line: string): boolean {
   try {
     return statSync(path).isFile()
   } catch {
+    // A path that does not exist (or is unreadable) is not a pasteable image.
     return false
   }
 }

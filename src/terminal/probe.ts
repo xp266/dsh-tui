@@ -36,7 +36,9 @@ export function probeColorLevel(): Promise<ColorLevel | undefined> {
       stdin.off('data', onData)
       try {
         stdin.setRawMode(false)
-      } catch {}
+      } catch {
+        // The stream may have closed while the probe was in flight; nothing to restore.
+      }
       process.stdout.write('\x1b[0m')
       resolve(result)
     }
@@ -48,6 +50,7 @@ export function probeColorLevel(): Promise<ColorLevel | undefined> {
     try {
       stdin.setRawMode(true)
     } catch {
+      // Raw mode is unavailable (piped stdin or non-TTY); the probe quietly gives up.
       resolve(undefined)
       return
     }

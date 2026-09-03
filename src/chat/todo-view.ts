@@ -42,6 +42,7 @@ export function parseTodoResult(resultText: string): TodoItemLike[] {
   try {
     parsed = JSON.parse(resultText)
   } catch {
+    // A non-JSON result text simply carries no todos.
     return []
   }
   if (typeof parsed !== 'object' || parsed === null) return []

@@ -32,7 +32,9 @@ function queryOsc11Background(): Promise<ThemeMode | undefined> {
       stdin.off('data', onData)
       try {
         stdin.setRawMode(false)
-      } catch {}
+      } catch {
+        // The stream may have closed while the probe was in flight; nothing to restore.
+      }
       resolve(result)
     }
     const onData = (chunk: Buffer | string): void => {
@@ -46,6 +48,7 @@ function queryOsc11Background(): Promise<ThemeMode | undefined> {
     try {
       stdin.setRawMode(true)
     } catch {
+      // Raw mode is unavailable (piped stdin or non-TTY); default to dark.
       resolve(undefined)
       return
     }

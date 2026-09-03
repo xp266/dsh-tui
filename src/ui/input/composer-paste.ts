@@ -12,7 +12,9 @@ export function claimPaste(text: string, cursor: number): PasteResult | undefine
     try {
       const result = handler.handle({ text, cursor })
       if (result !== undefined) return result
-    } catch {}
+    } catch {
+      // One broken paste handler must not block the remaining handlers.
+    }
   }
   return undefined
 }

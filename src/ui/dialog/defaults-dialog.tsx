@@ -70,6 +70,7 @@ export function DefaultsDialog({ api, onClose, ref }: DefaultsDialogProps) {
       if (permissionChoice.value !== original.permission) await api.setDefaultPermission(original.permission)
       if (themeChoice.value !== original.theme) await api.setThemeMode(original.theme)
     } catch {
+      // A failed revert still closes the dialog; the values were already applied live.
     }
     onClose()
   }

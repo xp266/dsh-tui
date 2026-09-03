@@ -253,7 +253,7 @@ export function InputBar({
           {statusReady ? (
             <Box flexDirection="row">
               {(() => {
-                let col = 4
+                let col = CHROME_TEXT_X
                 return statusSegments.map((segment, index) => {
                   const node = <SelectableText key={index} y={statusLocalY} col={col} text={segment.text} color={segment.color} bold={segment.bold} />
                   col += textWidth(segment.text)

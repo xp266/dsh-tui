@@ -220,21 +220,9 @@ function stringifyValue(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2) ?? ''
   } catch {
+    // Cyclic or unserializable values degrade to an empty body.
     return ''
   }
-}
-
-/**
- * Flatten a settled result's content blocks to display text: text blocks
- * verbatim, anything else as pretty JSON. Empty when there is no content.
- */
-export function flattenContentBlocks(content: readonly { type: string; text?: string }[]): string {
-  const parts: string[] = []
-  for (const block of content) {
-    if (block.type === 'text') parts.push(block.text ?? '')
-    else parts.push(stringifyValue(block))
-  }
-  return parts.filter(part => part !== '').join('\n')
 }
 
 /**
@@ -303,15 +291,6 @@ export interface ReadLineLike {
   text: string
 }
 
-export function formatReadLines(lines: readonly ReadLineLike[]): string {
-  const maxDigits = lines.reduce((max, line) => Math.max(max, String(line.number).length), 0)
-  return lines.map(line => `${String(line.number).padStart(maxDigits)} ${line.text}`).join('\n')
-}
-
-export function readBodyCol(lines: readonly ReadLineLike[]): number {
-  const maxDigits = lines.reduce((max, line) => Math.max(max, String(line.number).length), 0)
-  return Math.max(0, 3 - maxDigits)
-}
 /** Generic title dedup against the tool name, applied to every protocol:
  *  1. title === name (case-insensitive)            -> '' (ralph / ralph)
  *  2. title starts with "name:"                    -> strip prefix (workflow: x -> x)

@@ -9,11 +9,6 @@ import { applyChatNodes } from './chat-nodes.ts'
 
 export type AgentPhase = 'awaiting-request' | 'thinking' | 'working'
 
-export interface ReduceOptions {
-  /** Reserved for future protocol needs; today the reducer is protocol-driven. */
-  readFile?(path: string): string | null
-}
-
 function errorSummary(cause: { name?: string; code?: string } | undefined): string {
   return `error: ${cause?.name ?? cause?.code ?? 'unknown'}`
 }
@@ -105,7 +100,6 @@ export function reduceChatEvent(
   event: SessionEvent,
   turn: TurnState,
   presenter?: ChatToolPresenter,
-  options: ReduceOptions = {},
 ): { messages: Message[]; turn: TurnState; changed: boolean } {
   if (applyChatNodes(messages, event, turn)) return { messages, turn, changed: true }
   switch (event.type) {
@@ -622,6 +616,7 @@ function stringifyDispatchArgs(args: unknown): string {
   try {
     return JSON.stringify(args) ?? ''
   } catch {
+    // Cyclic or unserializable dispatch args degrade to an empty body.
     return ''
   }
 }

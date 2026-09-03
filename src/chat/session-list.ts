@@ -98,6 +98,7 @@ async function attachModifiedTimes(ctx: Context, summaries: SessionSummary[]): P
       const info = await stat(location.path)
       summary.modifiedAt = Math.floor(info.mtimeMs)
     } catch {
+      // A missing or unreadable session artifact keeps the updatedAt timestamp.
     }
   }))
 }
@@ -125,6 +126,7 @@ function collectWorkspacePaths(ctx: Context): Set<string> {
     const paths = new Set(workspace?.list?.().map(entry => entry.path) ?? [])
     return paths.size > 0 ? paths : new Set([process.cwd()])
   } catch {
+    // Without a readable workspace list every session is treated as ungrouped.
     return new Set([process.cwd()])
   }
 }
@@ -134,6 +136,7 @@ function collectArchivedIds(ctx: Context): Set<string> {
   try {
     return new Set((workspace?.archivedSessionIds ?? []).map(String))
   } catch {
+    // Without a readable archive list no session is hidden.
     return new Set()
   }
 }
@@ -204,7 +207,9 @@ async function resolveColdMeta(cache: ProjectionCacheLike | undefined, persisten
     const values = cache?.cachedSnapshot?.(header)?.values ?? {}
     if (typeof values.title === 'string' && values.title !== '') titleHint = values.title
     metadata = listMetadataHint(values)
-  } catch {}
+  } catch {
+    // A broken projection cache must not block the session picker; fall back to probing.
+  }
   if (metadata?.blank === false) {
     return { title: await coldTitle(cache, header, titleHint), blank: false, promptAt: metadata.lastPromptAt ?? 0 }
   }
@@ -222,6 +227,7 @@ async function coldTitle(cache: ProjectionCacheLike | undefined, header: ColdHea
     const title = snapshot?.values?.title
     return typeof title === 'string' && title !== '' ? title : undefined
   } catch {
+    // A failed cold-snapshot read leaves the session without a title.
     return undefined
   }
 }
@@ -236,6 +242,7 @@ async function probeSmallArtifact(persistence: PersistenceLike, header: ColdHead
     const { events } = await persistence.readFrom(String(header.id), 0)
     return { blank: isBlankSession(events), title: titleFromEvents(events) ?? firstUserText(events), promptAt: lastPromptAt(events) }
   } catch {
+    // An unreadable artifact is treated as a blank session (skipped in the list).
     return undefined
   }
 }

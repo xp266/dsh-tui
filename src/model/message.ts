@@ -1,3 +1,7 @@
+import type { CustomMessage, ToolReadView } from '../contract/index.ts'
+
+export type { CustomMessage, ToolReadView } from '../contract/index.ts'
+
 export interface BubbleMessage {
   kind: 'bubble'
   id: string
@@ -67,10 +71,6 @@ export interface CompactionMessage {
   summary: string
   error?: string
 }
-
-import type { CustomMessage, ToolReadView } from '../contract/index.ts'
-
-export type { CustomMessage, ToolReadView } from '../contract/index.ts'
 
 export type MessageKind = 'bubble' | 'collapsible' | 'tool-card' | 'compaction' | 'custom'
 

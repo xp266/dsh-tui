@@ -587,10 +587,13 @@ to fall through to the builtin rendering; disposal restores it.
 
 ```ts
 tui.content.renderers.register({
-  kind: 'tool-diff',
+  kind: 'tool-card',
   render: (message, width) => ({ lines: renderFancyDiff(message, width) }),
 })
 ```
+
+The key is a `MessageKind` (`'bubble' | 'collapsible' | 'tool-card' |
+'compaction' | 'custom'`); diff bodies belong to the `tool-card` kind.
 
 ## Configuration
 

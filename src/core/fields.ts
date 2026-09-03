@@ -165,20 +165,6 @@ export function releaseFields(owner: FieldOwner): void {
   }
 }
 
-export function releaseAllFields(): void {
-  slots.clear()
-  cursor = 0
-}
-
-export function fieldCharsIn(text: string): string[] {
-  const out: string[] = []
-  for (let i = 0; i < text.length; i++) {
-    const code = text.charCodeAt(i)
-    if (isFieldCode(code)) out.push(text[i]!)
-  }
-  return out
-}
-
 export function imageChipLabel(count: number): string {
   return `[${count} images]`
 }

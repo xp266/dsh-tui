@@ -6,9 +6,9 @@
  * Run via `node --import tsx/esm scripts/verify-contract.ts`.
  */
 import assert from 'node:assert/strict'
-import { compareVersions, installedUpstreamLines, isCompatibleUpstreamVersion, parseUpstreamVersion, upstreamDrift, upstreamDriftSummary, UPSTREAM_BLESSED_PACKAGES, UPSTREAM_FRAMEWORK_MAJORS, UPSTREAM_SUPPORTED_RANGE } from '../src/contract/upstream.ts'
+import { compareVersions, installedUpstreamLines, isCompatibleUpstreamVersion, parseUpstreamVersion, upstreamDrift, upstreamDriftSummary, UPSTREAM_BLESSED_PACKAGES, UPSTREAM_FLOOR_VERSION, UPSTREAM_FRAMEWORK_MAJORS, UPSTREAM_SUPPORTED_RANGE } from '../src/contract/upstream.ts'
 
-const floor = parseUpstreamVersion('0.1.0-rc.6')!
+const floor = parseUpstreamVersion(UPSTREAM_FLOOR_VERSION)!
 assert.ok(compareVersions(floor, parseUpstreamVersion('0.1.0-rc.7')!) < 0)
 assert.deepEqual(parseUpstreamVersion('1.2.3'), [1, 2, 3, 'stable', 0])
 assert.equal(parseUpstreamVersion('garbage'), undefined)

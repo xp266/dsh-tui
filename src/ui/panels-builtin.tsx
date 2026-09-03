@@ -80,6 +80,7 @@ function commandForCall(bridge: ChatBridge, callId: string): string | undefined 
     const args = JSON.parse(bridge.toolPresenter.argsJson(callId) ?? 'null') as { command?: unknown } | null
     return typeof args?.command === 'string' && args.command !== '' ? args.command : undefined
   } catch {
+    // Unparsable or missing args simply carry no command preview.
     return undefined
   }
 }

@@ -68,6 +68,7 @@ function resolvePackageJson(packageName: string): string | undefined {
     const path = import.meta.resolve(`${packageName}/package.json`)
     return path.startsWith('file:') ? fileURLToPath(path) : path
   } catch {
+    // The package is not installed in this profile; it counts as missing.
     return undefined
   }
 }
@@ -84,6 +85,7 @@ export function installedUpstreamVersions(): Record<string, string | undefined> 
       try {
         version = (JSON.parse(readFileSync(path, 'utf8')) as { version?: string }).version
       } catch {
+        // An unreadable package.json counts as an unknown version.
         version = undefined
       }
     }

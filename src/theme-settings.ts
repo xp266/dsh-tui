@@ -25,6 +25,7 @@ export function registerThemeSettings(ctx: Context): ThemeSettingsScope | undefi
   try {
     return settings?.register(THEME_SETTINGS_NAMESPACE, ThemeSettingsSchema)
   } catch {
+    // Without a settings service the theme mode is simply not persisted.
     return undefined
   }
 }

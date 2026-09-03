@@ -396,9 +396,13 @@ export function ensureGrammars(): void {
     for (const name of LANGUAGE_COMPONENTS) {
       try {
         req(`prismjs/components/prism-${name}.js`)
-      } catch {}
+      } catch {
+        // A grammar that is not shipped in this prismjs build is skipped silently.
+      }
     }
-  } catch {}
+  } catch {
+    // Bundled prismjs without component files: highlighting falls back to plain text.
+  }
 }
 
 const WARM_SLICE_MS = 6
@@ -414,7 +418,9 @@ function loadNext(names: string[]): void {
     const name = names.shift()!
     try {
       createRequireOnce()(loadSpec(name))
-    } catch {}
+    } catch {
+      // A grammar that is not shipped in this prismjs build is skipped silently.
+    }
     warmState.remaining = names.length
     if (performance.now() - t0 >= WARM_SLICE_MS) break
   }

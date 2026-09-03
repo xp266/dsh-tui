@@ -3,10 +3,6 @@ import { colToCharIndex, lineBreaks, locToPoint, textWidth, wrapLines } from './
 
 export const INPUT_MAX_CONTENT_ROWS = 8
 
-function wrapLine(line: string, width: number): string[] {
-  return wrapLines(line, width)
-}
-
 export interface InputLayout {
   lines: string[]
   cursorRow: number
@@ -22,7 +18,7 @@ export function inputLayout(value: string, cursor: number, width: number): Input
   const segmentStarts: number[] = []
   let charOffset = 0
   for (const raw of value.split('\n')) {
-    const wrapped = wrapLine(raw, contentWidth)
+    const wrapped = wrapLines(raw, contentWidth)
     let offset = 0
     for (const segment of wrapped) {
       lines.push(segment)

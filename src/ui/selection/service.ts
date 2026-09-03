@@ -1,4 +1,5 @@
 import { keyedRegistry } from '../../kernel/registry.ts'
+import { writeClipboardText } from '../../terminal/clipboard.ts'
 import type {
   LineSelection,
   SelectionClipboardContribution,
@@ -43,7 +44,7 @@ function installBuiltins(): void {
   const clipboardProvider: SelectionClipboardContribution = {
     id: 'builtin.clipboard',
     copy: text => {
-      void import('../../terminal/clipboard.ts').then(({ writeClipboardText }) => writeClipboardText(text))
+      writeClipboardText(text)
       return true
     },
   }
