@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { isMouseResidue } from '../../terminal/mouse.ts'
 import { colToCharIndex } from '../../core/text.ts'
 import { moveCaretLine } from '../../core/composer-layout.ts'
-import { editBackspace, editCursorLeft, editCursorRight, editDelete, editInsert } from '../../core/edit.ts'
+import { editBackspace, editCursorLeft, editCursorRight, editCursorWordLeft, editCursorWordRight, editDelete, editDeleteWordLeft, editDeleteWordRight, editInsert } from '../../core/edit.ts'
+import type { EditState } from '../../core/edit.ts'
 import { buildPasteFields, expandComposerValue, insertClipboardImage, insertFieldSpec, reconcileComposerFields } from './composer-fields.ts'
 import type { ComposerFieldMap, ComposerSubmission } from './composer-fields.ts'
 import { sanitizePastedText } from '../../core/paste.ts'
@@ -37,6 +38,8 @@ function opensHint(text: string): boolean {
   return text.startsWith('/') && !/\s/.test(text)
 }
 
+const UNDO_LIMIT = 200
+
 export function useComposer(
   onSend: (submission: ComposerSubmission) => void,
   interactive: boolean,
@@ -67,13 +70,40 @@ export function useComposer(
   hintOpenRef.current = hintOpen
   commandIndexRef.current = commandIndex
   const visibleFor = (text: string) => filterHintEntries(entriesRef.current ?? COMMANDS, text)
-  const applyEdit = (next: { value: string; cursor: number } | null): void => {
-    if (next === null) return
+  const undoStackRef = useRef<EditState[]>([])
+  const redoStackRef = useRef<EditState[]>([])
+  const pushUndoSnapshot = (): void => {
+    undoStackRef.current.push({ value: valueRef.current, cursor: cursorRef.current })
+    if (undoStackRef.current.length > UNDO_LIMIT) undoStackRef.current.shift()
+    redoStackRef.current.length = 0
+  }
+  const applySnapshot = (next: EditState): void => {
     valueRef.current = next.value
     cursorRef.current = next.cursor
     setValue(next.value)
     setCursor(next.cursor)
     reconcileComposerFields(next.value, fieldsRef.current)
+  }
+  const applyEdit = (next: EditState | null): void => {
+    if (next === null) return
+    pushUndoSnapshot()
+    applySnapshot(next)
+  }
+  const undoEdit = (): void => {
+    const snapshot = undoStackRef.current.pop()
+    if (snapshot === undefined) return
+    redoStackRef.current.push({ value: valueRef.current, cursor: cursorRef.current })
+    if (redoStackRef.current.length > UNDO_LIMIT) redoStackRef.current.shift()
+    applySnapshot(snapshot)
+    refreshHint()
+  }
+  const redoEdit = (): void => {
+    const snapshot = redoStackRef.current.pop()
+    if (snapshot === undefined) return
+    undoStackRef.current.push({ value: valueRef.current, cursor: cursorRef.current })
+    if (undoStackRef.current.length > UNDO_LIMIT) undoStackRef.current.shift()
+    applySnapshot(snapshot)
+    refreshHint()
   }
   const closeHint = (): void => {
     setHintOpen(false)
@@ -120,6 +150,7 @@ export function useComposer(
       const command = commands[Math.min(commandIndexRef.current, commands.length - 1)]?.command
       if (command === undefined) return
       const completed = `${command} `
+      pushUndoSnapshot()
       valueRef.current = completed
       cursorRef.current = completed.length
       setValue(completed)
@@ -239,6 +270,7 @@ export function useComposer(
         next = candidates.find(candidate => candidate.startsWith(currentArg)) ?? candidates[0]!
       }
       const completed = `${commandToken} ${next}${rest === undefined ? '' : ` ${rest}`}`
+      pushUndoSnapshot()
       valueRef.current = completed
       cursorRef.current = completed.length
       setValue(completed)
@@ -313,6 +345,8 @@ export function useComposer(
       cursorRef.current = 0
       setValue('')
       setCursor(0)
+      undoStackRef.current.length = 0
+      redoStackRef.current.length = 0
       closeHint()
       return
     }
@@ -322,6 +356,33 @@ export function useComposer(
     }
     if (key.ctrl && input === 'v') {
       void pasteFromClipboard(true)
+      return
+    }
+    if (key.ctrl && input === 'z') {
+      if (key.shift) redoEdit()
+      else undoEdit()
+      return
+    }
+    if (key.ctrl && input === 'y') {
+      redoEdit()
+      return
+    }
+    if (key.meta && key.backspace && applyEditAndRefreshHint(editDeleteWordLeft({ value: v, cursor: c }))) {
+      return
+    }
+    if (key.meta && key.delete && applyEditAndRefreshHint(editDeleteWordRight({ value: v, cursor: c }))) {
+      return
+    }
+    if (key.meta && key.leftArrow && c > 0) {
+      const moved = editCursorWordLeft({ value: v, cursor: c })
+      cursorRef.current = moved.cursor
+      setCursor(moved.cursor)
+      return
+    }
+    if (key.meta && key.rightArrow && c < v.length) {
+      const moved = editCursorWordRight({ value: v, cursor: c })
+      cursorRef.current = moved.cursor
+      setCursor(moved.cursor)
       return
     }
     if (key.backspace && applyEditAndRefreshHint(editBackspace({ value: v, cursor: c }))) {
