@@ -1,3 +1,4 @@
+import './runtime/prod-react.ts'
 /**
  * Shared react/ink runtime for third-party TUI plugins.
  *

@@ -1,3 +1,4 @@
+import './runtime/prod-react.ts'
 import { setColorLevel } from './terminal/capabilities.ts'
 import { probeColorLevel } from './terminal/probe.ts'
 import { render } from 'ink'

@@ -1,3 +1,5 @@
+import './runtime/prod-react.ts'
+
 export { Dialog, CloseGuardContext } from './ui/dialog/dialog.tsx'
 export type { DialogProps, DialogHandle } from './ui/dialog/dialog.tsx'
 export type { DialogRow, DialogItem, DialogFocus, TextItem } from './ui/dialog/items.ts'
