@@ -1,6 +1,7 @@
 import { setColorLevel } from './terminal/capabilities.ts'
 import { probeColorLevel } from './terminal/probe.ts'
 import { render } from 'ink'
+import { startPerformanceGuard } from './performance-guard.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { App } from './ui/app.tsx'
@@ -63,6 +64,7 @@ export const inject = ['agentLoop', 'agents', 'sessions', 'workspaceRegistry', '
 export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
   ctx.effect(() => {
     configureLogs({ stderr: env.debug, file: env.logFile, dir: env.logDir, level: env.logLevel, maxFileBytes: env.logMaxBytes })
+    const restorePerformance = startPerformanceGuard()
     const disposeCrashHandlers = installCrashHandlers({ exit: env.crashExit })
     const drift = upstreamDriftSummary()
     if (drift !== undefined) {
@@ -167,6 +169,7 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
       .finally(() => start())
     return () => {
       disposed = true
+      restorePerformance()
       exposeFaces?.()
       disposeBuiltinToolViews()
       disposeExtensionPoint()
