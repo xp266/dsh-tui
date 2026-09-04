@@ -151,6 +151,13 @@ export function pinField(char: string): (() => void) | undefined {
   }
 }
 
+export function hasFieldSlots(owner: FieldOwner): boolean {
+  for (const slot of slots.values()) {
+    if (slot.owner === owner) return true
+  }
+  return false
+}
+
 export function releaseUnreferenced(owner: FieldOwner, keepText: string): void {
   for (const [index, slot] of slots) {
     if (slot.owner !== owner || slot.pins > 0) continue

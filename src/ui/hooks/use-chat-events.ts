@@ -8,7 +8,7 @@ import type { AgentActivity } from '../../chat/store.ts'
 import { normalizeTodos } from '../../chat/todo-view.ts'
 import type { TodoItemLike } from '../../chat/todo-view.ts'
 import type { Message } from '../../model/message.ts'
-import { releaseFields, releaseUnreferenced } from '../../core/fields.ts'
+import { releaseFields, hasFieldSlots, releaseUnreferenced } from '../../core/fields.ts'
 
 const FRAME_MS = 33
 
@@ -98,7 +98,7 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
         state = { messages: next.messages, turn: next.turn }
       }
       chatStateRef.current = state
-      if (dirty) {
+      if (dirty && hasFieldSlots('message')) {
         let keep = ''
         for (const message of state.messages) {
           if (message.kind === 'bubble') keep += message.content

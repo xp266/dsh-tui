@@ -214,8 +214,10 @@ export function reduceChatEvent(
       if (aiId !== undefined) {
         if (text !== '') {
           updateById(messages, aiId, message =>
-            message.kind === 'bubble' ? { ...message, content: text } : message,
+            message.kind === 'bubble' ? { ...message, content: text, streaming: false } : message,
           )
+        } else {
+          clearStreamingById(messages, aiId)
         }
       } else if (text !== '') {
         const fresh = nextId('ai')
@@ -228,12 +230,13 @@ export function reduceChatEvent(
         updateById(messages, thinkId, message => {
           if (message.kind !== 'collapsible') return message
           const updates = reasoning === '' ? {} : { body: reasoning }
-          if (!message.running) return { ...message, ...updates }
+          if (!message.running) return { ...message, ...updates, streaming: false }
           const duration = message.startedAt === undefined ? Number.NaN : event.time - message.startedAt
           return {
             ...message,
             ...updates,
             running: false,
+            streaming: false,
             ...(Number.isFinite(duration) && duration >= 0
               ? { label: `Thought: ${formatThinkingDuration(duration)}` }
               : {}),
@@ -413,7 +416,7 @@ function appendChunk(
       turn.pendingText.delete(step)
       const fresh = nextId('ai')
       ids.set(step, fresh)
-      messages.push({ kind: 'bubble', id: fresh, role: 'assistant', content: pending })
+      messages.push({ kind: 'bubble', id: fresh, role: 'assistant', content: pending, streaming: true })
       return { messages, turn, changed: true }
     }
     const fresh = nextId('think')
@@ -436,6 +439,9 @@ function appendChunk(
       changed = true
     } else if (kind === 'assistant' && target.kind === 'bubble') {
       target.content += text
+      // The streaming flag routes the render through the incremental markdown
+      // path; it is cleared by the assistant/message and turn/end handlers.
+      target.streaming = true
       changed = true
     }
   }
@@ -519,6 +525,14 @@ function finalizeThinking(messages: Message[], turn: TurnState, step: number, en
 function updateById(messages: Message[], id: string, update: (message: Message) => Message): void {
   const index = messages.findIndex(m => m.id === id)
   if (index >= 0) messages[index] = update(messages[index]!)
+}
+
+function clearStreamingById(messages: Message[], id: string): void {
+  const index = messages.findIndex(m => m.id === id)
+  if (index >= 0) {
+    const message = messages[index]!
+    if (message.streaming === true) messages[index] = { ...message, streaming: false }
+  }
 }
 
 interface CodeDispatchData {

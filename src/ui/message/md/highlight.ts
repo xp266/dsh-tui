@@ -457,18 +457,63 @@ export function onLanguagesWarm(cb: () => void): void {
   else warmListeners.push(cb)
 }
 
-const highlightCache = new Map<string, Segment[] | null>()
+const HIGHLIGHT_CACHE_MAX = 4000
+const HIGHLIGHT_CACHE_MAX_BYTES = 16 * 1024 * 1024
+// Segment objects cost far more heap than their text; the constant keeps the
+// byte accounting within ~2x of actual heap usage.
+const SEGMENT_HEAP_BYTES = 128
+
+function segmentsHeapBytes(segments: Segment[] | null): number {
+  if (segments === null) return 0
+  let bytes = 0
+  for (const segment of segments) bytes += SEGMENT_HEAP_BYTES + segment.text.length
+  return bytes
+}
+
+interface HighlightCacheEntry {
+  segments: Segment[] | null
+  bytes: number
+}
+
+const highlightCache = new Map<string, HighlightCacheEntry>()
+let highlightCacheBytes = 0
+
+// Streaming states retain the full source plus one segment per token, so a
+// long session would otherwise pin every streamed code block forever. Both
+// caps evict oldest-first; the entry count keeps small states from pinning
+// slots indefinitely.
+const STREAM_STATE_MAX = 64
+const STREAM_STATE_MAX_BYTES = 8 * 1024 * 1024
 
 interface StreamState {
   source: string
   segments: Segment[]
+  bytes: number
 }
 
 const streamStates = new Map<string, StreamState>()
+let streamStateBytes = 0
 
 export function clearHighlightCache(): void {
   highlightCache.clear()
+  highlightCacheBytes = 0
   streamStates.clear()
+  streamStateBytes = 0
+}
+
+function trackStreamState(stateKey: string, state: StreamState): void {
+  const existing = streamStates.get(stateKey)
+  if (existing !== undefined) streamStateBytes -= existing.bytes
+  streamStates.delete(stateKey)
+  streamStates.set(stateKey, state)
+  streamStateBytes += state.bytes
+  while (streamStates.size > 1 && (streamStates.size > STREAM_STATE_MAX || streamStateBytes > STREAM_STATE_MAX_BYTES)) {
+    const oldest = streamStates.keys().next()
+    if (oldest.done) break
+    const evicted = streamStates.get(oldest.value)
+    if (evicted !== undefined) streamStateBytes -= evicted.bytes
+    streamStates.delete(oldest.value)
+  }
 }
 
 function resolveGrammar(lang: string): Prism.Grammar | undefined {
@@ -482,19 +527,20 @@ export function highlightCodeBlock(text: string, lang: string, thinking = false,
   if (text === '') return []
   const key = `${thinking ? 'd' : 'l'}\x00${lang}\x00${streamId}\x00${text}`
   const cached = highlightCache.get(key)
-  if (cached !== undefined) return cached
+  if (cached !== undefined) return cached.segments
   let grammar = resolveGrammar(lang)
   if (grammar === undefined && lang !== '') {
     ensureGrammars()
     grammar = resolveGrammar(lang)
   }
   let result: Segment[] | null
+  let incremental = false
   if (grammar === undefined) {
     result = null
   } else {
     const stateKey = `${thinking ? 'd' : 'l'}\x00${streamId}\x00${lang}`
     const state = streamStates.get(stateKey)
-    const incremental = state !== undefined
+    incremental = state !== undefined
       && text.length > state.source.length
       && text.startsWith(state.source)
       && state.source.endsWith('\n')
@@ -502,33 +548,40 @@ export function highlightCodeBlock(text: string, lang: string, thinking = false,
       const styles = thinking ? codeStylesThinking : codeStyles
       const plain: MarkStyle = { color: thinking ? COLORS.thinkCodePlain : COLORS.mdCodePlain }
       if (incremental) {
-        const delta = text.slice(state!.source.length)
-        const segments = state!.segments.slice()
-        appendTokens(segments, Prism.tokenize(delta, grammar!), styles, plain)
-        streamStates.set(stateKey, { source: text, segments })
+        // The state's segment array is appended in place and shared with the
+        // current frame's render result; per-frame cache entries for every
+        // snapshot would retain the whole history, so incremental frames
+        // skip the cache and only the stream state holds the segments.
+        const segments = state!.segments
+        appendTokens(segments, Prism.tokenize(text.slice(state!.source.length), grammar!), styles, plain)
+        trackStreamState(stateKey, { source: text, segments, bytes: text.length + segmentsHeapBytes(segments) })
         result = segments
       } else {
         const segments: Segment[] = []
         appendTokens(segments, Prism.tokenize(text, grammar!), styles, plain)
-        streamStates.set(stateKey, { source: text, segments })
+        trackStreamState(stateKey, { source: text, segments, bytes: text.length + segmentsHeapBytes(segments) })
         result = segments
       }
     } catch {
-      streamStates.delete(stateKey!)
+      const existing = streamStates.get(stateKey)
+      if (existing !== undefined) streamStateBytes -= existing.bytes
+      streamStates.delete(stateKey)
       result = null
     }
   }
+  const bytes = key.length + segmentsHeapBytes(result)
   evictHighlightCacheIfNeeded()
-  highlightCache.set(key, result)
+  highlightCache.set(key, { segments: result, bytes })
+  highlightCacheBytes += bytes
   return result
 }
 
-const HIGHLIGHT_CACHE_MAX = 4000
-
 function evictHighlightCacheIfNeeded(): void {
-  while (highlightCache.size >= HIGHLIGHT_CACHE_MAX) {
+  while (highlightCache.size > 0 && (highlightCache.size >= HIGHLIGHT_CACHE_MAX || highlightCacheBytes >= HIGHLIGHT_CACHE_MAX_BYTES)) {
     const oldest = highlightCache.keys().next()
     if (oldest.done) return
+    const entry = highlightCache.get(oldest.value)
+    if (entry !== undefined) highlightCacheBytes -= entry.bytes
     highlightCache.delete(oldest.value)
   }
 }

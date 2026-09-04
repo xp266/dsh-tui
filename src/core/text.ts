@@ -161,11 +161,39 @@ export function normalizeWrapText(text: string): string {
 
 export function wrapLines(text: string, width: number): string[] {
   if (width <= 0) return ['']
+  const cacheKey = `${width}\u0000${text}`
+  const hit = wrapCache.get(cacheKey)
+  if (hit !== undefined) return hit.lines
   const lines: string[] = []
   for (const rawLine of normalizeWrapText(text).split('\n')) {
     pushWrapped(rawLine, width, lines)
   }
+  evictWrapCacheIfNeeded()
+  wrapCache.set(cacheKey, { lines, bytes: text.length })
   return lines
+}
+
+// The memo entry keeps the result lines; the key keeps the source text, so a
+// cap of ~4MB of source bounds the cache without hurting the streaming case
+// where every frame re-wraps a growing body.
+const WRAP_CACHE_MAX_BYTES = 4 * 1024 * 1024
+
+interface WrapCacheEntry {
+  lines: string[]
+  bytes: number
+}
+
+const wrapCache = new Map<string, WrapCacheEntry>()
+let wrapCacheBytes = 0
+
+function evictWrapCacheIfNeeded(): void {
+  while (wrapCache.size > 0 && wrapCacheBytes >= WRAP_CACHE_MAX_BYTES) {
+    const oldest = wrapCache.keys().next()
+    if (oldest.done) return
+    const entry = wrapCache.get(oldest.value)
+    if (entry !== undefined) wrapCacheBytes -= entry.bytes
+    wrapCache.delete(oldest.value)
+  }
 }
 
 export interface LineBreak {

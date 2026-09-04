@@ -70,6 +70,7 @@ export interface CompactionMessage {
   running: boolean
   summary: string
   error?: string
+  streaming?: boolean
 }
 
 export type MessageKind = 'bubble' | 'collapsible' | 'tool-card' | 'compaction' | 'custom'

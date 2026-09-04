@@ -6,7 +6,7 @@ import { expandFieldChars, fieldRowSegments } from '../../core/field-view.ts'
 import { selectedRange } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
 import { sliceByColumns } from '../selection-registry.ts'
-import { renderMarkdown } from './md/index.ts'
+import { renderMarkdown, renderMarkdownStreaming, clearMarkdownStreamStates } from './md/index.ts'
 import { renderToolDiffBody, renderToolReadBody } from './tool-diff.ts'
 import { trimTrailingBlanks } from '../../chat/tool-view.ts'
 import { messageViewOf } from './message-views.ts'
@@ -88,6 +88,7 @@ let layoutEpoch = 0
 
 export function clearLayoutCache(): void {
   layoutEpoch += 1
+  clearMarkdownStreamStates()
 }
 
 const padRow = (role: RowInfo['role']): PlanRow => ({ type: 'pad', role })
@@ -123,7 +124,9 @@ function renderBody(message: Message, width: number): BodyRendered {
         return { lines, rows: null, bgs: null }
       }
       if (message.role === 'assistant') {
-        const rendered = renderMarkdown(message.content, inner, false, `bubble:${message.id}`)
+        const rendered = message.streaming === true
+          ? renderMarkdownStreaming(message.content, inner, false, `bubble:${message.id}`)
+          : renderMarkdown(message.content, inner, false, `bubble:${message.id}`)
         return { lines: rendered.lines, rows: rendered.rows, bgs: null }
       }
       const lines = wrapLines(message.content, inner)
@@ -138,7 +141,10 @@ function renderBody(message: Message, width: number): BodyRendered {
     }
     case 'collapsible': {
       if (message.thinking === true && !message.collapsed) {
-        const rendered = renderMarkdown(message.body, inner, true, `thinking:${message.id}`)
+        const streaming = message.running === true || message.streaming === true
+        const rendered = streaming
+          ? renderMarkdownStreaming(message.body, inner, true, `thinking:${message.id}`)
+          : renderMarkdown(message.body, inner, true, `thinking:${message.id}`)
         return { lines: rendered.lines, rows: rendered.rows, bgs: null }
       }
       const lines = wrapLines(message.body, inner)
@@ -227,7 +233,12 @@ function renderBody(message: Message, width: number): BodyRendered {
     }
     case 'compaction': {
       if (message.summary === '' && message.error === undefined) return { lines: [], rows: null, bgs: null }
-      const rendered = message.summary === '' ? { lines: [], rows: [] } : renderMarkdown(message.summary, inner, false, `compaction:${message.id}`)
+      const streaming = message.running === true && message.summary !== ''
+      const rendered = message.summary === ''
+        ? { lines: [], rows: [] }
+        : streaming
+          ? renderMarkdownStreaming(message.summary, inner, false, `compaction:${message.id}`)
+          : renderMarkdown(message.summary, inner, false, `compaction:${message.id}`)
       const lines = [...rendered.lines]
       const rows = [...rendered.rows]
       if (message.error !== undefined && message.error !== '') {
