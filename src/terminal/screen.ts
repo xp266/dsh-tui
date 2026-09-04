@@ -26,6 +26,30 @@ export function createScreenCapture(): ScreenCapture {
   let pending = ''
   let regionTop = 0
   let regionBottom = -1
+  // Every ink frame flows through write(); parsing it into the grid eagerly
+  // costs ~1ms per frame even when nothing ever queries the grid. Chunks are
+  // buffered and parsed on first query instead — pointer events and copy
+  // actions are the only readers, and they are rare relative to frames.
+  const buffered: string[] = []
+  let bufferedBytes = 0
+  const BUFFER_MAX_BYTES = 1024 * 1024
+
+  function flushBuffer(): void {
+    for (const chunk of buffered) feed(chunk)
+    buffered.length = 0
+    bufferedBytes = 0
+  }
+
+  function bufferChunk(chunk: string): void {
+    buffered.push(chunk)
+    bufferedBytes += chunk.length
+    if (bufferedBytes > BUFFER_MAX_BYTES) {
+      // A reader that never queries keeps the grid stale beyond this point;
+      // pointer queries still parse the most recent megabyte.
+      buffered.splice(0, buffered.length - 1)
+      bufferedBytes = buffered[0]?.length ?? 0
+    }
+  }
 
   function ensureRow(y: number): void {
     while (grid.length <= y) grid.push([])
@@ -223,6 +247,7 @@ export function createScreenCapture(): ScreenCapture {
   }
 
   function extract(rect: ScreenRect): string {
+    flushBuffer()
     const top = Math.max(0, Math.min(rect.top, grid.length - 1))
     const bottom = Math.max(0, Math.min(rect.bottom, grid.length - 1))
     const left = Math.max(0, rect.left)
@@ -240,6 +265,7 @@ export function createScreenCapture(): ScreenCapture {
   }
 
   function extractSelection(selection: LineSelection): string {
+    flushBuffer()
     const top = Math.max(0, Math.min(selection.anchorRow, selection.focusRow))
     const bottom = Math.min(Math.max(selection.anchorRow, selection.focusRow), grid.length - 1)
     const lines: string[] = []
@@ -260,6 +286,7 @@ export function createScreenCapture(): ScreenCapture {
   }
 
   function rowHasText(y: number): boolean {
+    flushBuffer()
     if (y < 0 || y >= grid.length) return false
     const row = (grid[y] ?? []).join('')
     return !isBlockOnly(row) && row.trim() !== ''
@@ -275,7 +302,7 @@ export function createScreenCapture(): ScreenCapture {
       })
     }
     write(chunk: string | Buffer): boolean {
-      feed(typeof chunk === 'string' ? chunk : chunk.toString('utf8'))
+      bufferChunk(typeof chunk === 'string' ? chunk : chunk.toString('utf8'))
       return real.write(chunk)
     }
     get isTTY(): boolean {

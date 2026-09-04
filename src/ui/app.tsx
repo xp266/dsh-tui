@@ -30,6 +30,7 @@ import { useComposer } from './input/use-composer.ts'
 import type { ComposerSubmission } from './input/composer-fields.ts'
 import { Region } from './region.tsx'
 import { MessageList } from './message/message-list.tsx'
+import { SpinnerTickProvider } from './spinner-tick.tsx'
 import { CloseGuardContext } from './dialog/dialog.tsx'
 import type { DialogHandle } from './dialog/dialog.tsx'
 import { registerBuiltinWindows } from './windows-builtin.tsx'
@@ -112,14 +113,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     command => command.id !== 'todo' || todoActive,
     [todoActive],
   )
-  const [uiTick, setUiTick] = useState(0)
   const busy = running || activity.compacting
-  useEffect(() => {
-    if (!busy) return
-    setUiTick(0)
-    const timer = setInterval(() => setUiTick(tick => tick + 1), 100)
-    return () => clearInterval(timer)
-  }, [busy])
   const [escArmed, setEscArmed] = useState(false)
   const escAtRef = useRef(0)
   const escTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -191,7 +185,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const inputHeight = bottomHeight
   const messageHeight = Math.max(1, rows - inputHeight - MESSAGE_INPUT_GAP_ROWS)
   const total = rowIndexFor(messages, columns).total
-  const { scrollTop, applyScroll, getScroll } = useScroll(total, messageHeight, messages)
+  const { scrollTop, applyScroll, getScroll } = useScroll(total, messageHeight)
   const startNewSession = () => {
     if (!bridge) return
     resetChat()
@@ -344,111 +338,111 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     }
   })
   return (
-    <SelectionContext.Provider value={messageAreaSelection}>
-      <Box flexDirection="column" width={columns} height={rows}>
-        <KeymapGate />
-        <MessageList
-          messages={messages}
-          height={messageHeight}
-          width={columns}
-          scrollTop={scrollTop}
-          onScroll={applyScroll}
-          interactive={dialog === null}
-          themeTick={themeTick}
-          spinnerTick={busy ? uiTick : 0}
-        />
-        <SelectionContext.Provider value={chromeSelection}>
-          {panel === null && (
-            <InputBar
-              ref={inputRef}
-              width={columns}
-              columns={columns}
-              rows={rows}
-              value={value}
-              cursor={cursor}
-              api={api}
-              statusReady={bridge !== undefined}
-              modelName={bridge?.modelName() ?? modelName}
-              permissionMode={permissionMode}
-              effortName={bridge?.effortName()}
-              presetName={bridge?.presetName()}
-              interactive={composerInteractive}
-              hint={hintState}
-            />
-          )}
-          {panel !== null && bridge !== undefined && (() => {
-            const contribution = bridge.interactions.panels.of(panel.kind)
-            if (contribution === undefined) return null
-            const Panel = contribution.component
-            const request = panel.kind === 'approval'
-              ? { approval: panel.approval }
-              : panel.kind === 'question'
-                ? { question: panel.question }
-                : panel.request
-            const key = panel.kind === 'approval'
-              ? `approval-${panel.approval?.id ?? ''}`
-              : panel.kind === 'question'
-                ? `question-${panel.question?.id ?? ''}`
-                : panel.kind
-            return (
-              <Panel
-                key={key}
-                request={request}
-                resolve={value => {
-                  if (panel.kind === 'approval') panel.settle?.(value)
-                  else panel.resolve?.(value)
-                }}
-                reject={cause => {
-                  if (panel.kind === 'approval') panel.settle?.('cancelled')
-                  else panel.reject?.(cause)
-                }}
-                active={dialog === null}
+    <SpinnerTickProvider busy={busy}>
+      <SelectionContext.Provider value={messageAreaSelection}>
+        <Box flexDirection="column" width={columns} height={rows}>
+          <KeymapGate />
+          <MessageList
+            messages={messages}
+            height={messageHeight}
+            width={columns}
+            scrollTop={scrollTop}
+            onScroll={applyScroll}
+            interactive={dialog === null}
+            themeTick={themeTick}
+          />
+          <SelectionContext.Provider value={chromeSelection}>
+            {panel === null && (
+              <InputBar
+                ref={inputRef}
+                width={columns}
                 columns={columns}
                 rows={rows}
-                innerWidth={contentWidth}
-                blockWidth={contentWidth + 4}
-                background={permissionChrome.color}
-                handleRef={panelHandleRef}
-                onResize={setPanelHeight}
+                value={value}
+                cursor={cursor}
+                api={api}
+                statusReady={bridge !== undefined}
+                modelName={bridge?.modelName() ?? modelName}
+                permissionMode={permissionMode}
+                effortName={bridge?.effortName()}
+                presetName={bridge?.presetName()}
+                interactive={composerInteractive}
+                hint={hintState}
               />
-            )
+            )}
+            {panel !== null && bridge !== undefined && (() => {
+              const contribution = bridge.interactions.panels.of(panel.kind)
+              if (contribution === undefined) return null
+              const Panel = contribution.component
+              const request = panel.kind === 'approval'
+                ? { approval: panel.approval }
+                : panel.kind === 'question'
+                  ? { question: panel.question }
+                  : panel.request
+              const key = panel.kind === 'approval'
+                ? `approval-${panel.approval?.id ?? ''}`
+                : panel.kind === 'question'
+                  ? `question-${panel.question?.id ?? ''}`
+                  : panel.kind
+              return (
+                <Panel
+                  key={key}
+                  request={request}
+                  resolve={value => {
+                    if (panel.kind === 'approval') panel.settle?.(value)
+                    else panel.resolve?.(value)
+                  }}
+                  reject={cause => {
+                    if (panel.kind === 'approval') panel.settle?.('cancelled')
+                    else panel.reject?.(cause)
+                  }}
+                  active={dialog === null}
+                  columns={columns}
+                  rows={rows}
+                  innerWidth={contentWidth}
+                  blockWidth={contentWidth + 4}
+                  background={permissionChrome.color}
+                  handleRef={panelHandleRef}
+                  onResize={setPanelHeight}
+                />
+              )
+            })()}
+            {bridge !== undefined && (
+              <StatusBar
+                bridge={bridge}
+                columns={columns}
+                top={rows - 1}
+                busy={busy}
+                running={running}
+                todoBadge={todoBadge}
+                activity={activity}
+                panel={panel}
+                retryStatus={retryStatus}
+                escArmed={escArmed}
+                streamedChars={streamedChars}
+              />
+            )}
+          </SelectionContext.Provider>
+          {dialog !== null && (() => {
+            const entry = windows.find(candidate => candidate.id === dialog)
+            if (entry !== undefined && bridge !== undefined) {
+              const Window = entry.component
+              return (
+                <CloseGuardContext.Provider value={selection !== null}>
+                  <SelectionContext.Provider value={chromeSelection}>
+                    <Window open handleRef={dialogRef} onClose={() => overlays.pop()} />
+                  </SelectionContext.Provider>
+                </CloseGuardContext.Provider>
+              )
+            }
+            const overlay = overlayContribution
+            if (overlay !== undefined) {
+              return <Region>{overlay.render({ onClose: () => overlays.pop() })}</Region>
+            }
+            return null
           })()}
-          {bridge !== undefined && (
-            <StatusBar
-              bridge={bridge}
-              columns={columns}
-              top={rows - 1}
-              busy={busy}
-              running={running}
-              todoBadge={todoBadge}
-              activity={activity}
-              panel={panel}
-              retryStatus={retryStatus}
-              escArmed={escArmed}
-              uiTick={uiTick}
-              streamedChars={streamedChars}
-            />
-          )}
-        </SelectionContext.Provider>
-      {dialog !== null && (() => {
-        const entry = windows.find(candidate => candidate.id === dialog)
-        if (entry !== undefined && bridge !== undefined) {
-          const Window = entry.component
-          return (
-            <CloseGuardContext.Provider value={selection !== null}>
-              <SelectionContext.Provider value={chromeSelection}>
-                <Window open handleRef={dialogRef} onClose={() => overlays.pop()} />
-              </SelectionContext.Provider>
-            </CloseGuardContext.Provider>
-          )
-        }
-        const overlay = overlayContribution
-        if (overlay !== undefined) {
-          return <Region>{overlay.render({ onClose: () => overlays.pop() })}</Region>
-        }
-        return null
-      })()}
-      </Box>
-    </SelectionContext.Provider>
+        </Box>
+      </SelectionContext.Provider>
+    </SpinnerTickProvider>
   )
 }

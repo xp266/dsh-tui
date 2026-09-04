@@ -1,5 +1,4 @@
-import { useCallback, useLayoutEffect, useReducer, useRef } from 'react'
-import type { Message } from '../../model/message.ts'
+import { useCallback, useReducer, useRef } from 'react'
 
 export interface ScrollSnapshot {
   top: number
@@ -12,13 +11,26 @@ export interface ScrollState {
   applyScroll(next: number): void
 }
 
-export function useScroll(total: number, messageHeight: number, messages: Message[]): ScrollState {
+/**
+ * The effective scroll offset is derived during render: when pinned to the
+ * bottom the offset is simply maxScroll, so incoming messages shift the view
+ * without a second render pass (the previous layout-effect bump rendered the
+ * whole App twice per streaming frame). Only explicit scroll commands commit
+ * and re-render.
+ */
+export function useScroll(total: number, messageHeight: number): ScrollState {
   const maxScroll = Math.max(0, total - messageHeight)
   const [, bump] = useReducer((count: number) => count + 1, 0)
   const scrollTopRef = useRef(0)
   const stickToBottomRef = useRef(true)
   const maxScrollRef = useRef(maxScroll)
   maxScrollRef.current = maxScroll
+  if (stickToBottomRef.current) {
+    scrollTopRef.current = maxScroll
+  } else if (scrollTopRef.current > maxScroll) {
+    scrollTopRef.current = maxScroll
+    stickToBottomRef.current = scrollTopRef.current >= maxScroll
+  }
 
   const commit = useCallback((next: number, rerender: boolean): void => {
     const clamped = Math.max(0, Math.min(maxScrollRef.current, next))
@@ -32,18 +44,6 @@ export function useScroll(total: number, messageHeight: number, messages: Messag
   }, [commit])
 
   const getScroll = useCallback((): ScrollSnapshot => ({ top: scrollTopRef.current, maxScroll: maxScrollRef.current }), [])
-
-  useLayoutEffect(() => {
-    if (stickToBottomRef.current) {
-      applyScroll(Infinity)
-    } else if (scrollTopRef.current > maxScroll) {
-      applyScroll(maxScroll)
-    }
-  }, [maxScroll])
-
-  useLayoutEffect(() => {
-    if (stickToBottomRef.current) applyScroll(Infinity)
-  }, [messages])
 
   return { scrollTop: scrollTopRef.current, getScroll, applyScroll }
 }

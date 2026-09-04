@@ -5,9 +5,11 @@ import { glyphs } from '../../terminal/glyphs.ts'
 import { headerSymbol, HEADER_LABEL_COL } from './layout.ts'
 import type { RowInfo } from './layout.ts'
 import { SelectableText } from '../selection.tsx'
+import { useSpinnerTick } from '../spinner-tick.tsx'
 import { wavePalette, waveSegments } from './wave.ts'
 
-function TickGlyph({ y, col, color, tick }: { y: number; col: number; color?: string; tick: number }): ReturnType<typeof SelectableText> {
+function TickGlyph({ y, col, color }: { y: number; col: number; color?: string }): ReturnType<typeof SelectableText> {
+  const tick = useSpinnerTick()
   return (
     <SelectableText
       y={y}
@@ -19,15 +21,31 @@ function TickGlyph({ y, col, color, tick }: { y: number; col: number; color?: st
   )
 }
 
+function WaveText({ info, row, color }: { info: RowInfo; row: number; color: string }): ReturnType<typeof SelectableText> {
+  const tick = useSpinnerTick()
+  const base = info.segments?.[0]?.style.bold === true ? { bold: true } : {}
+  return (
+    <SelectableText
+      y={row}
+      col={info.colStart}
+      segments={waveSegments(info.text, tick, wavePalette(color), color, base)}
+      messageLayer
+      flow
+    />
+  )
+}
+
 interface MessageRowProps {
   info: RowInfo
   row: number
   themeTick?: number
-  spinnerTick?: number
 }
 
+// The row component itself consumes no context: only the spinner and wave
+// subcomponents subscribe to the tick, so memoized rows that are not
+// animating stay untouched on every tick.
 export const MessageRow = memo(
-  function MessageRow({ info, row, themeTick = 0, spinnerTick = 0 }: MessageRowProps) {
+  function MessageRow({ info, row, themeTick = 0 }: MessageRowProps) {
   switch (info.kind) {
     case 'pad':
       return (
@@ -41,7 +59,6 @@ export const MessageRow = memo(
       const paddingLeft = col >= 2 ? col - 2 : 0
       const baseColor = info.role === 'error' ? COLORS.errorText : info.muted ? COLORS.toolBodyText : undefined
       const waveColor = info.segments?.[0]?.style.color ?? baseColor
-      const waveBase = info.segments?.[0]?.style.bold === true ? { bold: true } : {}
       return (
         <Box
           marginLeft={marginLeft}
@@ -49,15 +66,9 @@ export const MessageRow = memo(
           paddingLeft={info.spinner ? 0 : paddingLeft}
           backgroundColor={info.lineBg ?? (info.background ? backgroundFor(info.role) : undefined)}
         >
-          {info.spinner && <TickGlyph y={row} col={col - 2} color={info.accent ?? baseColor} tick={spinnerTick} />}
+          {info.spinner && <TickGlyph y={row} col={col - 2} color={info.accent ?? baseColor} />}
           {info.wave && waveColor !== undefined ? (
-            <SelectableText
-              y={row}
-              col={col}
-              segments={waveSegments(info.text, spinnerTick, wavePalette(waveColor), waveColor, waveBase)}
-              messageLayer
-              flow
-            />
+            <WaveText info={info} row={row} color={waveColor} />
           ) : info.segments !== undefined && info.segments.length > 0 ? (
             <SelectableText y={row} col={col} segments={info.segments} color={baseColor} messageLayer flow />
           ) : (
@@ -81,7 +92,7 @@ export const MessageRow = memo(
           {info.spinner ? (
             <>
               <SelectableText y={row} col={0} text={'  '} color={color} messageLayer />
-              <TickGlyph y={row} col={2} color={color} tick={spinnerTick} />
+              <TickGlyph y={row} col={2} color={color} />
             </>
           ) : (
             <SelectableText y={row} col={0} text={`  ${symbol} `} color={color} messageLayer />
@@ -97,7 +108,6 @@ export const MessageRow = memo(
   (prev, next) => {
     if (prev.row !== next.row) return false
     if (prev.themeTick !== next.themeTick) return false
-    if (((prev.info.spinner ?? false) || (prev.info.wave ?? false)) && prev.spinnerTick !== next.spinnerTick) return false
     const a = prev.info
     const b = next.info
     return (

@@ -11,6 +11,7 @@ import { useStatusLineTexts } from '../contributions.ts'
 import { glyphs } from '../../terminal/glyphs.ts'
 import { Region } from '../region.tsx'
 import { SelectableText } from '../selection.tsx'
+import { useSpinnerTick } from '../spinner-tick.tsx'
 
 const WORKING_HINT = 'Press esc to interrupt'
 const WORKING_ARMED_HINT = 'Press esc again to interrupt'
@@ -33,7 +34,6 @@ interface StatusBarProps {
   panel: ActivePanel | null
   retryStatus?: RetryStatus
   escArmed: boolean
-  uiTick: number
   streamedChars: number
 }
 
@@ -48,9 +48,10 @@ export function StatusBar({
   panel,
   retryStatus,
   escArmed,
-  uiTick,
   streamedChars,
 }: StatusBarProps) {
+  // Subscribing keeps the retry countdown (Date.now()-derived) fresh per tick.
+  useSpinnerTick()
   const badge = running && todoBadge !== undefined ? `[Task ${todoBadge.current}/${todoBadge.total}] ` : ''
   const leftText = busy ? `${badge}${agentStatusLabel(activity, panel, retryStatus)}` : cwdLabel(bridge)
   const extras = useStatusLineTexts(columns).join(` ${glyphs.separator} `)
@@ -67,7 +68,7 @@ export function StatusBar({
     <Box position="absolute" top={top} left={0} width={columns} height={1}>
       <Region y={top}>
         <Box position="absolute" top={0} left={CHROME_MARGIN_X} width={columns - CHROME_MARGIN_X}>
-          {busy && <SpinnerGlyph tick={uiTick} />}
+          {busy && <SpinnerGlyph />}
         </Box>
         <Box position="absolute" top={0} left={CHROME_TEXT_X} width={columns - CHROME_TEXT_X}>
           <SelectableText
@@ -95,7 +96,8 @@ export function StatusBar({
   )
 }
 
-function SpinnerGlyph({ tick }: { tick: number }) {
+function SpinnerGlyph() {
+  const tick = useSpinnerTick()
   return (
     <SelectableText
       y={0}
