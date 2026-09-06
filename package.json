@@ -1,6 +1,6 @@
 {
   "name": "@xp266/dshtui",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "type": "module",
   "description": "ink-based terminal UI plugin for DeepSeek Harness",
   "packageManager": "pnpm@11.2.2",
