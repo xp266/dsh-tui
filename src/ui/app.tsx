@@ -115,6 +115,16 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     [todoActive],
   )
   const busy = running || activity.compacting
+  // Busy ticks live in App state so every tick re-renders the composer: ink
+  // only writes the hardware-cursor suffix on frames where setCursorPosition
+  // ran, and skipping the composer parks the caret on the frame's bottom row.
+  const [uiTick, setUiTick] = useState(0)
+  useEffect(() => {
+    if (!busy) return
+    setUiTick(0)
+    const timer = setInterval(() => setUiTick(tick => tick + 1), 100)
+    return () => clearInterval(timer)
+  }, [busy])
   const [escArmed, setEscArmed] = useState(false)
   const escAtRef = useRef(0)
   const escTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -350,7 +360,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     }
   })
   return (
-    <SpinnerTickProvider busy={busy}>
+    <SpinnerTickProvider tick={busy ? uiTick : 0}>
       <SelectionContext.Provider value={messageAreaSelection}>
         <Box flexDirection="column" width={columns} height={rows}>
           <KeymapGate />
