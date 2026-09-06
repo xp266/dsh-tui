@@ -43,6 +43,12 @@ function runDsh(args) {
     : spawnSync('dsh', args, { stdio: 'inherit' })
 }
 
+function probeDsh() {
+  return windows
+    ? spawnSync(['dsh', '--version'].map(quote).join(' '), { stdio: 'ignore', shell: true })
+    : spawnSync('dsh', ['--version'], { stdio: 'ignore' })
+}
+
 function readJson(path) {
   try {
     return JSON.parse(readFileSync(path, 'utf8'))
@@ -107,7 +113,7 @@ function resolveProfile() {
 
 const profile = resolveProfile()
 const profileDir = join(profilesDir, profile)
-const dshProbe = runDsh(['--version'])
+const dshProbe = probeDsh()
 if (dshProbe.error !== undefined || dshProbe.status !== 0) {
   fail('the dsh CLI was not found on PATH; install it with: npm install -g @deepseek-ai/dsh')
 }
