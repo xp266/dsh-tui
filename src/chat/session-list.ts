@@ -23,9 +23,9 @@ export function sessionTime(session: SessionSummary): number {
  * with the client-side visibility rules: live sessions plus persisted cold
  * sessions with a cwd, blank and subagent-origin rows hidden, newest-first,
  * without any workspace filtering (the picker labels ungrouped sessions).
- * Cold rows read projection-cache hints or a size-gated small-artifact
- * probe; a hint-less conversation title comes from the cache's cold ladder
- * (one log read, then persisted), never a repeated full read.
+ * Cold rows take their titles from the host's batched session-title fold
+ * (`sessionQuery.readTitleSnapshots`), which reads each log once per
+ * release of the query corpus and never loads full sessions into memory.
  */
 export async function computeSessionList(ctx: Context): Promise<SessionSummary[]> {
   try {
@@ -55,7 +55,7 @@ async function computeSessionListInner(ctx: Context): Promise<SessionSummary[]> 
   }
   const persistence = ctx.get('sessionPersistence') as PersistenceLike | undefined
   const cold = await listColdHeaders(ctx, persistence, attached)
-  await mergeColdSummaries(ctx, persistence, cold, archived, workspacePaths, summaries)
+  await mergeColdSummaries(ctx, cold, archived, workspacePaths, summaries)
   await attachModifiedTimes(ctx, summaries)
   return summaries.sort((a, b) => sessionTime(b) - sessionTime(a))
 }
@@ -67,13 +67,18 @@ interface ColdHeader {
   origin?: string
 }
 
-interface SessionQueryLike {
-  listSessions?(signal?: AbortSignal): Promise<Array<{ header: ColdHeader; live: boolean; persisted: boolean }>>
+interface PersistenceLike {
+  list(signal?: AbortSignal): Promise<ColdHeader[]>
+  locate?(header: { cwd?: string; id: string }): { path: string } | undefined
 }
 
-interface ProjectionCacheLike {
-  cachedSnapshot?(meta: ColdHeader): { asOfSeq: number; values: Record<string, unknown> } | undefined
-  coldSnapshot?(id: string, signal?: AbortSignal): Promise<{ asOfSeq: number; values: Record<string, unknown> } | undefined>
+interface SessionQueryLike {
+  listSessions?(signal?: AbortSignal): Promise<Array<{ header: ColdHeader; live: boolean; persisted: boolean }>>
+  readTitleSnapshots?(sessionIds: readonly string[]): Promise<Array<{
+    sessionId: string
+    status: 'fulfilled' | 'rejected'
+    value?: { title?: { title?: string; updatedAt?: number } }
+  }>>
 }
 
 /**
@@ -159,134 +164,30 @@ function lastPromptAt(events: readonly SessionEvent[]): number {
   return last
 }
 
-interface PersistenceLike {
-  list(signal?: AbortSignal): Promise<ColdHeader[]>
-  locate?(header: { cwd?: string; id: string }): { path: string } | undefined
-  readFrom?(id: string, offset: number, signal?: AbortSignal): Promise<{ events: SessionEvent[] }>
-}
-
-interface SessionMetaCacheEntry {
-  title: string | undefined
-  blank: boolean | undefined
-  promptAt: number
-}
-
-const SESSION_META_CACHE_MAX = 512
-const sessionMetaCache = new Map<string, SessionMetaCacheEntry>()
-
-function cacheSessionMeta(id: string, entry: SessionMetaCacheEntry): void {
-  while (sessionMetaCache.size >= SESSION_META_CACHE_MAX) {
-    const oldest = sessionMetaCache.keys().next()
-    if (oldest.done) break
-    sessionMetaCache.delete(oldest.value)
-  }
-  sessionMetaCache.set(id, entry)
-}
-
-const PROBE_BATCH_SIZE = 16
-
-/** Mirrors the host's cold blank-probe gate: only small artifacts are read. */
-const COLD_PROBE_MAX_BYTES = 1024
-
-interface ColdMeta {
-  title: string | undefined
-  blank: boolean
-  promptAt: number
-}
-
-function listMetadataHint(values: Record<string, unknown>): { blank: boolean; lastPromptAt: number | null } | undefined {
-  const hint = values.sessionListMetadata as { blank?: unknown; lastPromptAt?: unknown } | undefined
-  if (typeof hint?.blank !== 'boolean') return undefined
-  return {
-    blank: hint.blank,
-    lastPromptAt: typeof hint.lastPromptAt === 'number' ? hint.lastPromptAt : null,
-  }
-}
-
-/**
- * Cold-session metadata without unconditional full-log reads: projection
- * hints first (zero I/O), then a direct read only when the artifact is small
- * enough to be a blank-session log. A hint-less oversized artifact is
- * conservatively visible; its title comes from the projection cache's cold
- * ladder, which reads the log once and writes the row back durably.
- */
-async function resolveColdMeta(cache: ProjectionCacheLike | undefined, persistence: PersistenceLike, header: ColdHeader): Promise<ColdMeta> {
-  let titleHint: string | undefined
-  let metadata: { blank: boolean; lastPromptAt: number | null } | undefined
-  try {
-    const values = cache?.cachedSnapshot?.(header)?.values ?? {}
-    if (typeof values.title === 'string' && values.title !== '') titleHint = values.title
-    metadata = listMetadataHint(values)
-  } catch {
-    // A broken projection cache must not block the session picker; fall back to probing.
-  }
-  if (metadata?.blank === false) {
-    return { title: await coldTitle(cache, header, titleHint), blank: false, promptAt: metadata.lastPromptAt ?? 0 }
-  }
-  const probed = await probeSmallArtifact(persistence, header)
-  if (probed !== undefined) {
-    return { title: probed.title ?? titleHint, blank: probed.blank, promptAt: probed.promptAt }
-  }
-  return { title: await coldTitle(cache, header, titleHint), blank: false, promptAt: metadata?.lastPromptAt ?? 0 }
-}
-
-async function coldTitle(cache: ProjectionCacheLike | undefined, header: ColdHeader, titleHint: string | undefined): Promise<string | undefined> {
-  if (titleHint !== undefined || cache?.coldSnapshot === undefined) return titleHint
-  try {
-    const snapshot = await cache.coldSnapshot(String(header.id))
-    const title = snapshot?.values?.title
-    return typeof title === 'string' && title !== '' ? title : undefined
-  } catch {
-    // A failed cold-snapshot read leaves the session without a title.
-    return undefined
-  }
-}
-
-async function probeSmallArtifact(persistence: PersistenceLike, header: ColdHeader): Promise<ColdMeta | undefined> {
-  if (persistence.locate === undefined || persistence.readFrom === undefined) return undefined
-  const location = persistence.locate(header)
-  if (location === undefined) return undefined
-  try {
-    const info = await stat(location.path)
-    if (info.size > COLD_PROBE_MAX_BYTES) return undefined
-    const { events } = await persistence.readFrom(String(header.id), 0)
-    return { blank: isBlankSession(events), title: titleFromEvents(events) ?? firstUserText(events), promptAt: lastPromptAt(events) }
-  } catch {
-    // An unreadable artifact is treated as a blank session (skipped in the list).
-    return undefined
-  }
-}
-
 async function mergeColdSummaries(
   ctx: Context,
-  persistence: PersistenceLike | undefined,
   cold: ColdHeader[],
   archived: ReadonlySet<string>,
   workspacePaths: ReadonlySet<string>,
   summaries: SessionSummary[],
 ): Promise<void> {
-  if (persistence === undefined) return
-  const cache = ctx.get('sessionProjectionCache') as ProjectionCacheLike | undefined
-  const pending: ColdHeader[] = []
+  const query = ctx.get('sessionQuery') as SessionQueryLike | undefined
+  if (query?.readTitleSnapshots === undefined) return
+  const observed = await query.readTitleSnapshots(cold.map(header => String(header.id))).catch(() => [])
+  const titleById = new Map<string, { title: string; promptAt: number }>()
+  for (const entry of observed) {
+    if (entry.status !== 'fulfilled') continue
+    const snapshot = entry.value?.title
+    if (snapshot?.title === undefined || snapshot.title === '') continue
+    titleById.set(String(entry.sessionId), { title: snapshot.title, promptAt: snapshot.updatedAt ?? 0 })
+  }
   for (const header of cold) {
     if (archived.has(String(header.id))) continue
-    const cached = sessionMetaCache.get(String(header.id))
-    if (cached !== undefined && cached.blank !== undefined) {
-      if (!cached.blank) {
-        summaries.push(toSummary(String(header.id), cached.title, header.cwd, header.createdAt, cached.promptAt, workspacePaths))
-      }
-      continue
-    }
-    pending.push(header)
-  }
-  for (let index = 0; index < pending.length; index += PROBE_BATCH_SIZE) {
-    await Promise.all(pending.slice(index, index + PROBE_BATCH_SIZE).map(async header => {
-      const meta = await resolveColdMeta(cache, persistence, header)
-      cacheSessionMeta(String(header.id), meta)
-      if (!meta.blank) {
-        summaries.push(toSummary(String(header.id), meta.title, header.cwd, header.createdAt, meta.promptAt, workspacePaths))
-      }
-    }))
+    // No title snapshot means the session never ran a turn: the host's
+    // deterministic fallback titles every session with a user message.
+    const meta = titleById.get(String(header.id))
+    if (meta === undefined) continue
+    summaries.push(toSummary(String(header.id), meta.title, header.cwd, header.createdAt, meta.promptAt, workspacePaths))
   }
 }
 
@@ -297,17 +198,6 @@ function fallbackName(id: string, directory?: string): string {
   }
   const match = id.match(/[^/]+$/)
   return match?.[0] ?? id
-}
-
-function titleFromEvents(events: readonly SessionEvent[]): string | undefined {
-  let title: string | undefined
-  for (const event of events) {
-    if ((event as { type?: string }).type === 'session/title') {
-      const data = (event as { data?: { title?: string } }).data
-      if (data?.title !== undefined && data.title !== '') title = data.title
-    }
-  }
-  return title
 }
 
 function firstUserText(events: readonly SessionEvent[]): string | undefined {
