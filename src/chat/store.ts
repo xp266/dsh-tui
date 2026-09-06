@@ -308,7 +308,7 @@ export function reduceChatEvent(
       }
       turn.pendingTools.clear()
       for (const message of messages) {
-        if (message.kind === 'compaction' || !message.streaming) continue
+        if (message.kind === 'compaction' || !('streaming' in message) || !message.streaming) continue
         changed = true
         message.streaming = false
       }
@@ -531,7 +531,7 @@ function clearStreamingById(messages: Message[], id: string): void {
   const index = messages.findIndex(m => m.id === id)
   if (index >= 0) {
     const message = messages[index]!
-    if (message.streaming === true) messages[index] = { ...message, streaming: false }
+    if ('streaming' in message && message.streaming === true) messages[index] = { ...message, streaming: false }
   }
 }
 

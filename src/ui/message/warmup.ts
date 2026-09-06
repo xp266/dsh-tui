@@ -28,6 +28,7 @@ export function warmRenderPipeline(): void {
   renderMarkdown(MARKDOWN_FIXTURE, 96)
   renderMarkdown(MARKDOWN_FIXTURE, 72)
   const messages: Message[] = [
+    { kind: 'home-logo', id: 'warm-logo', lines: ['██ ████'], colors: ['#7aa2f7'], info: ['dsh 0.0.0', 'dsh-tui 0.0.0'] },
     { kind: 'bubble', id: 'warm-user', role: 'user', content: 'warm up the render pipeline' },
     { kind: 'bubble', id: 'warm-ai', role: 'assistant', content: MARKDOWN_FIXTURE },
     { kind: 'collapsible', id: 'warm-think', label: 'Thinking', body: 'thinking fixture body', running: false, collapsed: false, thinking: true },

@@ -1,6 +1,12 @@
-import { useSyncExternalStore } from 'react'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { useMemo, useSyncExternalStore } from 'react'
+import { installedUpstreamLines } from '../contract/upstream.ts'
+import { BUBBLE_WIDTH_OFFSET } from '../core/metrics.ts'
+import type { HomeLogoMessage } from '../model/message.ts'
 import { keyedRegistry } from '../kernel/registry.ts'
 import { textWidth } from '../core/text.ts'
+import { COLORS } from '../theme.ts'
 
 export interface HomeLogoContribution {
   id: string
@@ -75,4 +81,52 @@ export function homeLogoLineColors(lines: readonly string[], top: string, bottom
   if (count === 1) return [top]
   const step = 1 / (count - 1)
   return lines.map((_, i) => mixHex(top, bottom, i * step))
+}
+
+const HOME_LOGO_ID = 'home-logo'
+
+/**
+ * The home page presents its content in chat-page style: the logo artwork is
+ * the first bubble, left-aligned with a transparent background, followed by
+ * version banner lines inside the same bubble. `width` is the full list
+ * width and `height` the visible viewport; when either cannot hold the
+ * artwork, only the artwork lines are culled and the bubble stays.
+ */
+export function useHomeLogoBubble(width: number, height: number): HomeLogoMessage {
+  const logo = useHomeLogo()
+  return useMemo(() => homeLogoBubble(logo, width, height), [logo, width, height])
+}
+
+function homeLogoBubble(logo: HomeLogoContribution | undefined, width: number, height: number): HomeLogoMessage {
+  const clean = logo?.lines.map(line => line.trimEnd()) ?? []
+  const metrics = homeLogoMetrics(clean)
+  const fits = clean.length > 0 && width - BUBBLE_WIDTH_OFFSET >= metrics.columns && height >= metrics.rows
+  return {
+    kind: 'home-logo',
+    id: HOME_LOGO_ID,
+    lines: fits ? clean : [],
+    colors: fits ? homeLogoLineColors(clean, COLORS.homeLogoTop, COLORS.homeLogoBottom) : [],
+    info: [dshVersionLine(), `dsh-tui ${tuiVersion()}`],
+  }
+}
+
+function dshVersionLine(): string {
+  // dsh-agent itself does not export ./package.json, so the version comes
+  // from the lockstepped harness line any sibling package exposes.
+  return `dsh ${installedUpstreamLines()[0] ?? 'unknown'}`
+}
+
+let cachedTuiVersion: string | undefined
+
+function tuiVersion(): string {
+  if (cachedTuiVersion !== undefined) return cachedTuiVersion
+  try {
+    const path = fileURLToPath(import.meta.resolve('dsh-tui/package.json'))
+    const manifest = JSON.parse(readFileSync(path, 'utf8')) as { version?: string }
+    cachedTuiVersion = manifest.version ?? 'unknown'
+  } catch {
+    // The manifest may be unreadable in unusual install layouts; the bubble still renders.
+    cachedTuiVersion = 'unknown'
+  }
+  return cachedTuiVersion
 }

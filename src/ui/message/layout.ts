@@ -248,6 +248,16 @@ function renderBody(message: Message, width: number): BodyRendered {
       }
       return { lines, rows, bgs: null }
     }
+    case 'home-logo': {
+      const lines: string[] = []
+      const rows: Segment[][] = []
+      message.lines.forEach((line, i) => {
+        lines.push(line)
+        rows.push([{ text: line, style: { color: message.colors[i] } }])
+      })
+      for (const line of message.info) lines.push(truncate(line, Math.max(8, inner)))
+      return { lines, rows: rows.length === 0 ? null : rows, bgs: null }
+    }
     case 'custom': {
       const view = messageViewOf(message.view)
       if (view === undefined) {
@@ -359,6 +369,11 @@ function planFor(message: Message, body: BodyRendered): PlanRow[] {
         blankRow(),
       ]
     }
+    case 'home-logo':
+      return [
+        ...bodyRows(body.lines.length, { colStart: 4, bg: false, muted: false, selectable: true, role: 'assistant' }),
+        blankRow(),
+      ]
     case 'custom': {
       const header: PlanRow = {
         type: 'header',
@@ -388,6 +403,7 @@ type RenderFingerprint =
   | { kind: 'tool-card'; tool: string; label: string; argsBody: string; resultBody: string | undefined; diff: ToolCardMessage['diff']; read: ToolCardMessage['read']; nested: ToolCardMessage['nested']; error: string | undefined; failed: boolean | undefined; exitCode: number | undefined; signal: string | undefined; bodyCol: number | undefined; running: boolean; streaming: boolean | undefined }
   | { kind: 'compaction'; summary: string; running: boolean; error: string | undefined }
   | { kind: 'custom'; view: string; data: unknown; running: boolean | undefined; streaming: boolean | undefined }
+  | { kind: 'home-logo'; lines: readonly string[]; colors: readonly string[]; info: readonly string[] }
 
 interface RenderMemoEntry {
   epoch: number
@@ -451,6 +467,13 @@ function fingerprintOf(message: Message): RenderFingerprint {
         running: message.running,
         streaming: message.streaming,
       }
+    case 'home-logo':
+      return {
+        kind: 'home-logo',
+        lines: message.lines,
+        colors: message.colors,
+        info: message.info,
+      }
   }
 }
 
@@ -497,6 +520,11 @@ function fingerprintMatches(entry: RenderFingerprint, message: Message): boolean
         && entry.data === message.data
         && entry.running === message.running
         && entry.streaming === message.streaming
+    case 'home-logo':
+      return message.kind === 'home-logo'
+        && entry.lines === message.lines
+        && entry.colors === message.colors
+        && entry.info === message.info
   }
 }
 
