@@ -106,7 +106,7 @@ function homeLogoBubble(logo: HomeLogoContribution | undefined, width: number, h
     id: HOME_LOGO_ID,
     lines: fits ? clean : [],
     colors: fits ? homeLogoLineColors(clean, COLORS.homeLogoTop, COLORS.homeLogoBottom) : [],
-    info: [dshVersionLine(), `dsh-tui ${tuiVersion()}`],
+    info: [dshVersionLine(), `dshtui ${tuiVersion()}`],
   }
 }
 
@@ -121,7 +121,7 @@ let cachedTuiVersion: string | undefined
 function tuiVersion(): string {
   if (cachedTuiVersion !== undefined) return cachedTuiVersion
   try {
-    const path = fileURLToPath(import.meta.resolve('dsh-tui/package.json'))
+    const path = fileURLToPath(import.meta.resolve('@xp266/dshtui/package.json'))
     const manifest = JSON.parse(readFileSync(path, 'utf8')) as { version?: string }
     cachedTuiVersion = manifest.version ?? 'unknown'
   } catch {

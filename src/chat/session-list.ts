@@ -2,6 +2,7 @@ import { stat } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { textFromBlocks } from './blocks.ts'
+import { error as logError } from '../log.ts'
 import { isBlankSession } from './presets.ts'
 
 export interface SessionSummary {
@@ -27,21 +28,30 @@ export function sessionTime(session: SessionSummary): number {
  * (one log read, then persisted), never a repeated full read.
  */
 export async function computeSessionList(ctx: Context): Promise<SessionSummary[]> {
+  try {
+    return await computeSessionListInner(ctx)
+  } catch (error) {
+    logError('boot', `session list failed: ${error instanceof Error ? error.message : String(error)}`)
+    throw error
+  }
+}
+
+async function computeSessionListInner(ctx: Context): Promise<SessionSummary[]> {
   const workspacePaths = collectWorkspacePaths(ctx)
   const archived = collectArchivedIds(ctx)
   const summaries: SessionSummary[] = []
   const attached = new Set<string>()
   const titleService = ctx.get('sessionTitle') as
-    | { get?(session: { id: string; events: readonly SessionEvent[] }): { title?: string } | undefined }
+    | { get?(session: { id: string; snapshotEvents(): readonly SessionEvent[] }): { title?: string } | undefined }
     | undefined
   for (const session of ctx.sessions.list()) {
     const id = String(session.id)
     attached.add(id)
     if (session.header.origin === 'subagent') continue
     if (archived.has(id)) continue
-    if (isBlankSession(session.events)) continue
-    const title = titleService?.get?.(session)?.title ?? firstUserText(session.events)
-    summaries.push(toSummary(id, title, session.header.cwd, session.header.createdAt, lastPromptAt(session.events), workspacePaths))
+    if (isBlankSession(session.snapshotEvents())) continue
+    const title = titleService?.get?.(session)?.title ?? firstUserText(session.snapshotEvents())
+    summaries.push(toSummary(id, title, session.header.cwd, session.header.createdAt, lastPromptAt(session.snapshotEvents()), workspacePaths))
   }
   const persistence = ctx.get('sessionPersistence') as PersistenceLike | undefined
   const cold = await listColdHeaders(ctx, persistence, attached)

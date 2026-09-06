@@ -308,22 +308,21 @@ type ApprovalRequestLike = {
 
 type CtxLike = {
   on(event: 'approval/request', handler: (req: ApprovalRequestLike) => Promise<ApprovalOutcome>): () => void
-  get(service: 'userQuestions'): {
-    registerProvider(provider: { ask(request: AskUserQuestionRequestLike): Promise<AskUserQuestionAnswerLike> }): () => void
-  } | undefined
+  on(event: 'user-questions/request', handler: (req: AskUserQuestionRequestLike) => Promise<AskUserQuestionAnswerLike>): () => void
 }
 
 export function registerInteractionChannels(ctx: CtxLike, store: InteractionStore): () => void {
   const offApproval = ctx.on('approval/request', async req => {
     return store.pushApproval(req.toolName, req.callId, req.reason, req.signal)
   })
-  const unregisterProvider = ctx.get('userQuestions')?.registerProvider({
-    ask(request) {
-      return store.pushQuestion(request, request.signal)
-    },
+  // The 0.1.2 user-questions service routes asks through the scoped
+  // `user-questions/request` waterfall; answering without calling `next`
+  // claims the request for this terminal.
+  const offQuestions = ctx.on('user-questions/request', async request => {
+    return store.pushQuestion(request, request.signal)
   })
   return () => {
     offApproval()
-    unregisterProvider?.()
+    offQuestions()
   }
 }

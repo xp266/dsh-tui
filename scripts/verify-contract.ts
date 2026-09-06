@@ -9,16 +9,17 @@ import assert from 'node:assert/strict'
 import { compareVersions, installedUpstreamLines, isCompatibleUpstreamVersion, parseUpstreamVersion, upstreamDrift, upstreamDriftSummary, UPSTREAM_BLESSED_PACKAGES, UPSTREAM_FLOOR_VERSION, UPSTREAM_FRAMEWORK_MAJORS, UPSTREAM_SUPPORTED_RANGE } from '../src/contract/upstream.ts'
 
 const floor = parseUpstreamVersion(UPSTREAM_FLOOR_VERSION)!
-assert.ok(compareVersions(floor, parseUpstreamVersion('0.1.0-rc.7')!) < 0)
+assert.ok(compareVersions(floor, parseUpstreamVersion('0.1.2-rc.2')!) < 0)
 assert.deepEqual(parseUpstreamVersion('1.2.3'), [1, 2, 3, 'stable', 0])
 assert.equal(parseUpstreamVersion('garbage'), undefined)
 assert.equal(parseUpstreamVersion(undefined), undefined)
 
-assert.ok(isCompatibleUpstreamVersion('0.1.0-rc.6'))
-assert.ok(isCompatibleUpstreamVersion('0.1.0-rc.7'))
-assert.ok(isCompatibleUpstreamVersion('0.1.1-rc.1'))
-assert.ok(isCompatibleUpstreamVersion('0.1.2-alpha.2'))
+assert.ok(isCompatibleUpstreamVersion('0.1.2-rc.1'))
+assert.ok(isCompatibleUpstreamVersion('0.1.2-rc.2'))
+assert.ok(!isCompatibleUpstreamVersion('0.1.2-alpha.3'))
 assert.ok(isCompatibleUpstreamVersion('0.1.5'))
+assert.ok(!isCompatibleUpstreamVersion('0.1.2-rc.0'))
+assert.ok(!isCompatibleUpstreamVersion('0.1.1-rc.9'))
 assert.ok(!isCompatibleUpstreamVersion('0.1.0-rc.5'))
 assert.ok(!isCompatibleUpstreamVersion('0.2.0-alpha.1'))
 assert.ok(!isCompatibleUpstreamVersion('0.2.0'))
@@ -28,12 +29,12 @@ assert.ok(!isCompatibleUpstreamVersion(undefined))
 function versionFor(packageName: string): string {
   const major = UPSTREAM_FRAMEWORK_MAJORS[packageName]
   if (major !== undefined) return `${major}.0.1`
-  return '0.1.0-rc.6'
+  return '0.1.2-rc.1'
 }
 
 const compatibleTree = Object.fromEntries(UPSTREAM_BLESSED_PACKAGES.map(packageName => [packageName, versionFor(packageName)]))
 
-assert.deepEqual(installedUpstreamLines(compatibleTree), ['0.1.0-rc.6'])
+assert.deepEqual(installedUpstreamLines(compatibleTree), ['0.1.2-rc.1'])
 assert.deepEqual(upstreamDrift(compatibleTree), [])
 assert.equal(upstreamDriftSummary(compatibleTree), undefined)
 assert.deepEqual(upstreamDriftSummary({ '@deepseek-ai/dsh-llm': '0.2.0-rc.1' }), { kind: 'newer', versions: ['0.2.0-rc.1'] })

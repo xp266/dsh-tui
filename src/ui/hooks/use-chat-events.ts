@@ -1,3 +1,4 @@
+import type {} from '@deepseek-ai/dsh-tool-todo'
 import { useEffect, useRef, useState } from 'react'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ChatBridge, ChatToolPresenter, RegistryCommand } from '../../chat/bridge.ts'

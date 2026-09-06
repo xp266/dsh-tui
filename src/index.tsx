@@ -23,11 +23,11 @@ import { warmRenderPipeline } from './ui/message/warmup.ts'
 import { createTuiExtensionPoint, exposeRuntimeFaces } from './ui/extension-point.ts'
 import { registerBuiltinToolViews } from './chat/builtin-tool-views.ts'
 import { closeBootLog, emitBootLine, openBootLog } from './boot-log.ts'
-import { configureLogs, error as logError, installCrashHandlers, warn } from './log.ts'
+import { configureLogs, error, error as logError, installCrashHandlers } from './log.ts'
 import { env } from './env.ts'
 import { upstreamDriftSummary, UPSTREAM_SUPPORTED_RANGE } from './contract/upstream.ts'
 
-export const name = 'dsh-tui'
+export const name = '@xp266/dshtui'
 
 export interface Config {
   theme: 'auto' | 'dark' | 'light'
@@ -50,7 +50,7 @@ const DEFAULT_CONFIG: Config = { theme: 'auto', colors: {}, maxFps: 240, bootLis
 
 async function initTheme(scope: ThemeSettingsScope | undefined, theme: Config['theme'], colors: Config['colors']): Promise<void> {
   if (Object.keys(colors).length > 0) {
-    registerPalette({ id: 'dsh-tui-config', order: Number.MAX_SAFE_INTEGER, colors })
+    registerPalette({ id: 'dshtui-config', order: Number.MAX_SAFE_INTEGER, colors })
   }
   const saved = scope?.get().mode
   applyTheme(saved === 'dark' || saved === 'light'
@@ -67,9 +67,13 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
     configureLogs({ stderr: env.debug, file: env.logFile, dir: env.logDir, level: env.logLevel, maxFileBytes: env.logMaxBytes })
     const restorePerformance = startPerformanceGuard()
     const disposeCrashHandlers = installCrashHandlers({ exit: env.crashExit })
+    // Fail before any surface mounts: an out-of-range host breaks the bridge
+    // in ways that render as a dead interface instead of an actionable error.
     const drift = upstreamDriftSummary()
     if (drift !== undefined) {
-      warn('upstream', `upstream version drift (supported: ${UPSTREAM_SUPPORTED_RANGE}): ${drift.kind} ${drift.versions.join(', ')}`)
+      const message = `dshtui requires dsh harness packages in ${UPSTREAM_SUPPORTED_RANGE} (found ${drift.kind}: ${drift.versions.join(', ')}); upgrade the dsh CLI with: npm install -g @deepseek-ai/dsh@latest`
+      error('boot', message)
+      throw new Error(message)
     }
     const capture = createScreenCapture()
     let bridge: ChatBridge | undefined
@@ -138,9 +142,6 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
     }
     const themeScope = registerThemeSettings(ctx)
     openBootLog()
-    if (drift !== undefined) {
-      emitBootLine(`warning: upstream version drift (${drift.kind})`)
-    }
     emitBootLine('terminal: probing color support')
     void (async () => {
       const probed = await probeColorLevel()

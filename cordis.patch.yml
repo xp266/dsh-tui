@@ -1,34 +1,24 @@
 - insert:
-    - id: storage
-      name: '@deepseek-ai/dsh-storage'
-    - id: storage-json
-      name: '@deepseek-ai/dsh-storage-json'
-      config:
-        root: !!js dshHomePath('storages')
-    - id: storage-domain
-      name: '@deepseek-ai/dsh-storage-domain'
-      config:
-        backend: json
-    # Persisted title/blank hints so the session picker lists cold sessions
-    # without reading their logs.
-    - id: session-projection-cache
-      name: '@deepseek-ai/dsh-session-projection-cache'
-      config:
-        writeEveryEvents: 200
-        writeIntervalMs: 5000
+    # The durable storage stack (storage, storage-json, storage-domain,
+    # session-projection-cache) is inserted by the dsh-base bundle since
+    # 0.1.2-rc.1 with the same configuration this file used to carry —
+    # re-inserting it here would collide with duplicate loader entry ids.
+    # The standard preset's subagent tool enables modelSelectionSettings,
+    # which requires this settings service in the host scope (the web bundle
+    # mounts the same row for its own roster).
+    - id: subagent-model-selection-settings
+      name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'
     - id: workspace
       name: '@deepseek-ai/dsh-workspace'
     - id: agent-presets
       name: '@deepseek-ai/dsh-agent-presets'
       config:
         default: standard
-    - id: cordis-host-runner
-      name: '@deepseek-ai/dsh-cordis-host-runner'
     # Durable image storage comes from the dsh base bundle's attachment-local
     # row; the TUI resolves ctx.attachments at send time and degrades to a
     # plain text message when the service is absent.
     - id: tui
-      name: dsh-tui
+      name: '@xp266/dshtui'
 
 # The per-agent rows move behind agent presets: each preset owns its own tool
 # and prompt composition, so the process-level rows must not also register

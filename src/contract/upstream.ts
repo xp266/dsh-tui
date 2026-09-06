@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-export const UPSTREAM_FLOOR_VERSION = '0.1.0-rc.6'
+export const UPSTREAM_FLOOR_VERSION = '0.1.2-rc.1'
 
 export const UPSTREAM_CEILING_VERSION = '0.2.0'
 

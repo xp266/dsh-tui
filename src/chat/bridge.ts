@@ -5,7 +5,6 @@ import type {} from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-agent-presets'
-import { resolveSessionPreset } from '@deepseek-ai/dsh-agent-presets'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentHandle, AgentOptions, ModelSelection, ModelSelectionRef } from '@deepseek-ai/dsh-agent'
 import type { ContentBlock, LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
@@ -47,7 +46,7 @@ import { applyTheme } from '../apply-theme.ts'
 import { THEME_SETTINGS_NAMESPACE } from '../theme-settings.ts'
 import { themeMode } from '../theme.ts'
 import type { ThemeMode } from '../theme.ts'
-import { warn } from '../log.ts'
+import { error as logError, warn } from '../log.ts'
 
 interface AttachmentsServiceLike {
   saveImage(input: { data: Uint8Array; mediaType: string; name?: string }): Promise<ImageAttachmentRef>
@@ -136,10 +135,15 @@ async function sendContent(
   agent.followup(createUserMessage({ content, source: { kind: 'user' } }))
 }
 
+interface PresetSessionLike {
+  snapshotEvents(): ReadonlyArray<{ type?: string; data?: unknown }>
+  header?: { agentPreset?: string }
+}
+
 export const PERMISSION_PRESETS = ['workspace-write', 'danger-full-access', 'read-only'] as const
 
 interface PermissionPresetsLike {
-  current(events: readonly SessionEvent[]): string
+  current(session: Session): string
   set(session: Session, name: string): void
   readonly names: readonly string[]
   readonly defaultPreset: string
@@ -663,6 +667,22 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     }
   }
 
+  // The 0.1.2 presets package dropped its resolveSessionPreset helper, so the
+  // session log is read directly: the newest selection event wins over the
+  // creation-time header value, matching the upstream semantics on every
+  // host version the peer range admits.
+  function resolveSessionPreset(session: PresetSessionLike): string | undefined {
+    const events = session.snapshotEvents()
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const event = events[index]
+      if (event?.type === 'agent-preset/selected') {
+        const data = event.data as { agentPreset?: string } | undefined
+        if (data?.agentPreset !== undefined) return data.agentPreset
+      }
+    }
+    return session.header?.agentPreset
+  }
+
   async function createAgent(cwd: string, presetId?: string): Promise<AgentHandle> {
     const resolved = presetId ?? (await presets?.resolve())?.id
     const meta = { cwd, ...(resolved === undefined ? {} : { agentPreset: resolved }) }
@@ -742,21 +762,21 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   async function openSession(id: string): Promise<void> {
     const sessionId = SessionId(id)
     if (activeAgent.id === sessionId) {
-      for (const event of activeAgent.session.events) emit(event)
+      for (const event of activeAgent.session.snapshotEvents()) emit(event)
       return
     }
     const existing = ctx.agents.get(sessionId)
     if (existing !== undefined) {
       await activateAgent(undefined, existing)
       syncCwd()
-      for (const event of activeAgent.session.events) emit(event)
+      for (const event of activeAgent.session.snapshotEvents()) emit(event)
       refreshAgentState()
       return
     }
     const handle = await resumeAgent(sessionId)
     await activateAgent(handle, handle.agent)
     syncCwd()
-    for (const event of activeAgent.session.events) emit(event)
+    for (const event of activeAgent.session.snapshotEvents()) emit(event)
     refreshAgentState()
   }
 
@@ -817,7 +837,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     if (presets === undefined) throw new Error('agent presets are not configured')
     if (currentPreset() === id) return
     const session = activeAgent.session
-    if (!isBlankSession(session.events)) {
+    if (!isBlankSession(session.snapshotEvents())) {
       throw new Error('the preset is fixed once the session has started; use /new to start a new session')
     }
     const preset = await presets.recompose(activeAgent.ctx, id)
@@ -1020,18 +1040,18 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     currentEffort,
     effortName,
     selectEffort,
-    permissionMode: () => permission()?.current(activeAgent.session.events) ?? PERMISSION_PRESETS[0],
+    permissionMode: () => permission()?.current(activeAgent.session) ?? PERMISSION_PRESETS[0],
     cyclePermission: () => {
       const service = permission()
       if (service === undefined) return
       try {
-        const current = service.current(activeAgent.session.events)
+        const current = service.current(activeAgent.session)
         const names = service.names.length > 0 ? service.names : PERMISSION_PRESETS
         const index = names.indexOf(current)
         const next = names[(index + 1) % names.length]
         service.set(activeAgent.session, next)
       } catch (error) {
-        console.error(`dsh-tui: permission mode switch rejected: ${error instanceof Error ? error.message : String(error)}`)
+        console.error(`dshtui: permission mode switch rejected: ${error instanceof Error ? error.message : String(error)}`)
       }
     },
     listPermissionPresets: async () => {
