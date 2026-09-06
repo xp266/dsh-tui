@@ -19,7 +19,7 @@ export interface PointerBuiltinDeps {
   setSelection(next: LineSelection | null | ((current: LineSelection | null) => LineSelection | null)): void
   getSelection(): LineSelection | null
   rowHasText(y: number): boolean
-  rowInfoAt(y: number): { messageId: string; clickable: boolean } | null | undefined
+  rowInfoAt(y: number): { messageId: string; clickable: boolean; selectable: boolean } | null | undefined
   inputClickAt(y: number, x: number): void
   panelClickAt(y: number, x: number): void
   dialogWheel(y: number, dir: -1 | 1): boolean
@@ -136,8 +136,10 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
         owner = 'message'
         return true
       }
-      if (deps.rowHasText(y)) {
-        const anchorInMessage = deps.inMessageArea(y)
+      // Message rows anchor on the row model: artwork made of block glyphs
+      // never passes the screen-level text check. Chrome rows keep it.
+      const anchorInMessage = deps.inMessageArea(y)
+      if (anchorInMessage ? hit?.selectable === true : deps.rowHasText(y)) {
         deps.setPointerArea(anchorInMessage)
         deps.setSelection({ anchorRow: contentRow, anchorCol: x, focusRow: contentRow, focusCol: x, inMessage: anchorInMessage })
         owner = 'message'
