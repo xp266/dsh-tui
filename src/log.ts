@@ -59,7 +59,7 @@ function formatLine(entry: LogLine): string {
 
 function formatCrash(report: CrashReport): string {
   return [
-    `=== dsh-tui crash: ${report.kind} ===`,
+    `=== dshtui crash: ${report.kind} ===`,
     `time: ${new Date().toISOString()}`,
     `node: ${process.version}`,
     `message: ${report.message}${fieldsText(report.fields)}`,
@@ -79,7 +79,7 @@ function writeStderr(line: string): void {
 }
 
 function resolveLogFile(dir: string | undefined): string {
-  return join(dir ?? join(resolveDshHome(), 'logs'), 'dsh-tui.log')
+  return join(dir ?? join(resolveDshHome(), 'logs'), 'dshtui.log')
 }
 
 function rotateIfNeeded(logFile: string): void {
@@ -118,7 +118,7 @@ function fileSinkFor(logFile: string): LogSink {
         // Diagnostics must never take the UI down.
       }
       if (entry.level === 'warn' || entry.level === 'error') {
-        writeStderr(`[dsh-tui] ${entry.message}${fieldsText(entry.fields)}\n`)
+        writeStderr(`[dshtui] ${entry.message}${fieldsText(entry.fields)}\n`)
       }
     },
     crash(report) {

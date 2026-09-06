@@ -1,5 +1,5 @@
 /**
-Every dsh-tui environment variable, parsed once at import.
+Every dshtui environment variable, parsed once at import.
 */
 import { LOG_LEVELS, type LogLevel } from './log.ts'
 

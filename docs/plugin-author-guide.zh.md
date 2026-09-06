@@ -1,6 +1,6 @@
 English | [中文](plugin-author-guide.md)
 
-# dsh-tui 扩展点
+# @xp266/dshtui 扩展点
 
 TUI 的每一个用户可见表面都是键控贡献注册表。插件通过标准 cordis bundle 机制
 挂载，取得 `tui` 服务后注册贡献项；所有注册都支持运行时添加、分层覆盖与卸载还原。
@@ -29,7 +29,7 @@ dsh plugin --profile <name> add <package-path>
 
 ```ts
 import type { Context } from '@deepseek-ai/cordis'
-import type { CommandDef } from 'dsh-tui/contract'
+import type { CommandDef } from '@xp266/dshtui/contract'
 
 export const name = 'my-plugin'
 
@@ -40,21 +40,21 @@ export function apply(ctx: Context): void {
 }
 ```
 
-- 导入任意 `dsh-tui/contract` 类型即获得 `ctx.tui` 的完整类型（纯类型入口，运行时为零模块，不会 fork 注册表）。
+- 导入任意 `@xp266/dshtui/contract` 类型即获得 `ctx.tui` 的完整类型（纯类型入口，运行时为零模块，不会 fork 注册表）。
 - 每个 `register` 返回 disposer；注册随插件自身 fiber 退栈。同 key 重复注册会在上层压入覆盖层，卸载后自动还原下一层。
 - markdown 与特殊字段的注册会额外失效渲染缓存并触发界面重渲染；窗口/工具/视图/色板注册走同一条重渲染通路。
 - `tui.interactions` / `tui.chat` 在聊天桥就绪前为 `undefined`。
 
-### 原生窗口（`dsh-tui/dialog`）
+### 原生窗口（`@xp266/dshtui/dialog`）
 
 通过 `tui.windows` 注册的窗口渲染你给出的任意组件，但内置窗口构建在内部
-Dialog 组件栈上。该栈以 `dsh-tui/dialog` 子路径导出，插件窗口可以做到与
+Dialog 组件栈上。该栈以 `@xp266/dshtui/dialog` 子路径导出，插件窗口可以做到与
 原生完全一致——主题色、边框、标题、焦点导航、搜索、页脚、鼠标点击/滚轮、
 关闭守卫全部免费获得：
 
 ```ts
-import { Dialog, React } from 'dsh-tui/dialog'
-import { useStdout } from 'dsh-tui/vendor'
+import { Dialog, React } from '@xp266/dshtui/dialog'
+import { useStdout } from '@xp266/dshtui/vendor'
 
 function MyWindow({ open, onClose, handleRef }) {
   if (!open) return null
@@ -78,15 +78,15 @@ Dialog 条目（`static`/`button`/`select`/`input`/`checkbox`/`actions`/
 `header`/`search`）覆盖绝大多数窗口形态；自定义条目类型经
 `tui.chrome.widgets` 注册。
 
-### 共享 react/ink 运行时（`dsh-tui/vendor`）
+### 共享 react/ink 运行时（`@xp266/dshtui/vendor`）
 
-贡献给窗口、控件、覆盖层或面板的组件运行在 dsh-tui 的 React 树内，必须使用
-dsh-tui 自己的 react 与 ink 实例。profile 的模块图只包含 dsh-tui 自己链接的
+贡献给窗口、控件、覆盖层或面板的组件运行在 dshtui 的 React 树内，必须使用
+dshtui 自己的 react 与 ink 实例。profile 的模块图只包含 dshtui 自己链接的
 依赖；插件若自带 `react` 依赖会分叉 React 实例（fallback 副本的主版本不同），
 hooks 直接崩溃。请从 vendor 入口导入，而不要把它们声明为依赖：
 
 ```ts
-import { Box, Text, useInput, useStdout, React, useState, useEffect } from 'dsh-tui/vendor'
+import { Box, Text, useInput, useStdout, React, useState, useEffect } from '@xp266/dshtui/vendor'
 ```
 
 vendor 入口 re-export `lib/vendor.d.mts` 中列出的 react 与 ink API，是插件内
@@ -153,7 +153,7 @@ tui.windows.register({
 ### tui.chrome.widgets.register
 
 ```ts
-declare module 'dsh-tui/contract' {
+declare module '@xp266/dshtui/contract' {
   interface DialogItemKinds {
     item: { type: 'gauge'; label: string; value: number }
   }
@@ -545,7 +545,7 @@ tui.content.renderers.register({
 
 ```yaml
 - id: tui
-  name: dsh-tui
+  name: @xp266/dshtui
   config:
     theme: dark            # auto | dark | light
     colors:                # 色板键 -> 覆盖值，作用在 dark/light 两套主题之上

@@ -71,7 +71,7 @@ async function firstText(attempts: Array<{ command: string; args: string[] }>): 
 
 async function readClipboardImageBuiltin(): Promise<ClipboardImage | undefined> {
   if (platform() === 'darwin') {
-    const file = join(tmpdir(), 'dsh-tui-clipboard.png')
+    const file = join(tmpdir(), 'dshtui-clipboard.png')
     const escaped = file.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
     const script = [
       'set imageData to the clipboard as "PNGf"',

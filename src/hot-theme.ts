@@ -22,10 +22,10 @@ export function startHotTheme(onChange: () => void): HotThemeHandle | undefined 
   try {
     lastSource = readFileSync(themeUrl, 'utf8')
   } catch {
-    console.error('dsh-tui: DSH_TUI_HOT_THEME is set but the theme file is missing; hot theme disabled')
+    console.error('dshtui: DSH_TUI_HOT_THEME is set but the theme file is missing; hot theme disabled')
     return undefined
   }
-  console.error('dsh-tui: hot theme enabled; saving the theme file applies colors live')
+  console.error('dshtui: hot theme enabled; saving the theme file applies colors live')
   const timer = setInterval(async () => {
     let source: string
     try {

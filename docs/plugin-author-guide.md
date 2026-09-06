@@ -1,6 +1,6 @@
 English | [中文](plugin-author-guide.zh.md)
 
-# dsh-tui Extension Points
+# @xp266/dshtui Extension Points
 
 Every user-facing surface of the TUI is a keyed contribution registry. Plugins
 mount through the standard cordis bundle mechanism, obtain the `tui` service,
@@ -31,7 +31,7 @@ dsh plugin --profile <name> add <package-path>
 
 ```ts
 import type { Context } from '@deepseek-ai/cordis'
-import type { CommandDef } from 'dsh-tui/contract'
+import type { CommandDef } from '@xp266/dshtui/contract'
 
 export const name = 'my-plugin'
 
@@ -42,22 +42,22 @@ export function apply(ctx: Context): void {
 }
 ```
 
-- Importing any type from `dsh-tui/contract` gives you the fully typed `ctx.tui` (the entry is types-only; its runtime module is empty, so you can never fork the internal registries).
+- Importing any type from `@xp266/dshtui/contract` gives you the fully typed `ctx.tui` (the entry is types-only; its runtime module is empty, so you can never fork the internal registries).
 - Every `register` returns a disposer; registrations unwind with the plugin's own fiber. Re-registering the same key layers an override on top, and disposal restores the layer beneath.
 - Markdown and special-field registrations additionally invalidate the render caches and re-render the surface; window/tool/view/palette registrations re-render through the same path.
 - `tui.interactions` / `tui.chat` are `undefined` until the chat bridge is ready.
 
-### Native windows (`dsh-tui/dialog`)
+### Native windows (`@xp266/dshtui/dialog`)
 
 Windows registered through `tui.windows` render whatever component you give
 them, but builtin windows are built on the internal Dialog stack. That stack
-is exported as `dsh-tui/dialog`, so a plugin window can look and behave
+is exported as `@xp266/dshtui/dialog`, so a plugin window can look and behave
 exactly like a native one — theme colors, frame, title, focus navigation,
 search, footer, mouse click/wheel, and the close guard:
 
 ```ts
-import { Dialog, React } from 'dsh-tui/dialog'
-import { useStdout } from 'dsh-tui/vendor'
+import { Dialog, React } from '@xp266/dshtui/dialog'
+import { useStdout } from '@xp266/dshtui/vendor'
 
 function MyWindow({ open, onClose, handleRef }) {
   if (!open) return null
@@ -81,17 +81,17 @@ Dialog items (`static`/`button`/`select`/`input`/`checkbox`/`actions`/
 `header`/`search`) cover most window shapes; custom item kinds register
 through `tui.chrome.widgets`.
 
-### Shared react/ink runtime (`dsh-tui/vendor`)
+### Shared react/ink runtime (`@xp266/dshtui/vendor`)
 
 Components contributed to windows, widgets, overlays, or panels render inside
-dsh-tui's React tree, so they must run on dsh-tui's own react and ink
-instances. The profile module graph contains only what dsh-tui links; a plugin
+dshtui's React tree, so they must run on dshtui's own react and ink
+instances. The profile module graph contains only what dshtui links; a plugin
 that adds its own `react` dependency forks React (the fallback copies carry a
 different major version) and hooks crash. Import both from the vendor entry
 instead of declaring them as dependencies:
 
 ```ts
-import { Box, Text, useInput, useStdout, React, useState, useEffect } from 'dsh-tui/vendor'
+import { Box, Text, useInput, useStdout, React, useState, useEffect } from '@xp266/dshtui/vendor'
 ```
 
 The vendor entry re-exports the react and ink APIs listed in `lib/vendor.d.mts`
@@ -161,7 +161,7 @@ tui.windows.register({
 ### tui.chrome.widgets.register
 
 ```ts
-declare module 'dsh-tui/contract' {
+declare module '@xp266/dshtui/contract' {
   interface DialogItemKinds {
     item: { type: 'gauge'; label: string; value: number }
   }
@@ -427,10 +427,10 @@ const answer = await tui.interactions.push('my-confirm', { prompt: 'ok?' }, sign
 - `panels.register` registers a modal panel component by `kind`, with props `{ request, resolve, reject, active, columns, rows, innerWidth, blockWidth, background, handleRef?, onResize }`.
 - `push(kind, request, signal?)` raises one modal interaction; the promise settles with the panel's `resolve`/`reject`, and `signal` aborts it.
 - The builtin `approval` and `question` panels are themselves registered through this registry at high order, so a plugin contribution for the same `kind` overrides them and disposal restores the builtin.
-- Panels that want the native pill look import the shared shell from `dsh-tui/dialog` instead of rebuilding it: `PanelSurface` (caps, background, per-row text or interactive content), `panelLegend` (key-hint rows with white keys and gray descriptions), and `panelAnchorRow` (the anchor row above the status line):
+- Panels that want the native pill look import the shared shell from `@xp266/dshtui/dialog` instead of rebuilding it: `PanelSurface` (caps, background, per-row text or interactive content), `panelLegend` (key-hint rows with white keys and gray descriptions), and `panelAnchorRow` (the anchor row above the status line):
 
 ```ts
-import { Dialog, PanelSurface, panelLegend, panelAnchorRow } from 'dsh-tui/dialog'
+import { Dialog, PanelSurface, panelLegend, panelAnchorRow } from '@xp266/dshtui/dialog'
 
 function ConfirmPanel({ request, resolve, active, columns, rows, innerWidth, blockWidth, background, onResize }) {
   const body = [
@@ -599,7 +599,7 @@ The key is a `MessageKind` (`'bubble' | 'collapsible' | 'tool-card' |
 
 ```yaml
 - id: tui
-  name: dsh-tui
+  name: @xp266/dshtui
   config:
     theme: dark            # auto | dark | light
     colors:                # palette key -> override, layered over both dark and light themes

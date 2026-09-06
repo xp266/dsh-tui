@@ -2,7 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { ThemeMode } from './theme.ts'
 
-export const THEME_SETTINGS_NAMESPACE = 'dsh-tui-theme'
+export const THEME_SETTINGS_NAMESPACE = 'dshtui-theme'
 
 export interface ThemeSettings {
   mode?: ThemeMode

@@ -56,7 +56,7 @@ export function panelLegend(hints: readonly PanelHint[], options: PanelLegendOpt
 /**
  * Shared panel chrome: a floating block anchored above the status line with
  * half-block caps, the panel background, and per-row text or interactive
- * content. Builtin panels and plugin panels built through dsh-tui/dialog
+ * content. Builtin panels and plugin panels built through dshtui/dialog
  * share this shell so every interaction panel looks the same.
  *
  * Selection pieces span the row text only, never the pill padding, so
