@@ -9,16 +9,18 @@ export interface MouseEventData {
   scrollDirection?: 'up' | 'down'
 }
 
+import { enterMode, exitMode } from './modes.ts'
+
 const MOUSE_ENABLE_SEQUENCES = '\x1b[?1003l\x1b[?1000h\x1b[?1002h\x1b[?1006h'
 const MOUSE_DISABLE_SEQUENCES = '\x1b[?1003l\x1b[?1000l\x1b[?1002l\x1b[?1006l'
 
-export function writeMouseEnable(): void {
-  process.stdout.write(MOUSE_ENABLE_SEQUENCES)
-}
+/**
+ * Terminal-mode sequences must reach the device even when the process exits
+ * right after: on Windows, TTY writes through process.stdout are
+ * asynchronous and a trailing restore sequence is silently dropped, leaving
+ * the terminal in mouse-tracking mode. fd 1 writes are synchronous.
+ */
 
-export function writeMouseDisable(): void {
-  process.stdout.write(MOUSE_DISABLE_SEQUENCES)
-}
 
 interface ParsedSequence {
   event: MouseEventData
@@ -143,11 +145,11 @@ export function createMouseController(onEvent: (event: MouseEventData) => void):
   const onData = (chunk: Buffer) => parser.feed(chunk.toString('latin1'))
   return {
     enable() {
-      writeMouseEnable()
+      enterMode('mouse', MOUSE_ENABLE_SEQUENCES, MOUSE_DISABLE_SEQUENCES)
       process.stdin.on('data', onData)
     },
     disable() {
-      writeMouseDisable()
+      exitMode('mouse')
       process.stdin.off('data', onData)
     },
   }

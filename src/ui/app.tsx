@@ -9,6 +9,7 @@ import type { ChatBridge } from '../chat/bridge.ts'
 import type { AgentActivity } from '../chat/store.ts'
 import { rowIndexFor, selectionText } from './message/layout.ts'
 import { glyphs } from '../terminal/glyphs.ts'
+import { restoreAllModes } from '../terminal/modes.ts'
 import { chromeSelectionText } from './selection-registry.ts'
 import type { ScreenCapture } from '../terminal/screen.ts'
 import type { LineSelection } from '../model/selection.ts'
@@ -30,7 +31,6 @@ import { useComposer } from './input/use-composer.ts'
 import type { ComposerSubmission } from './input/composer-fields.ts'
 import { Region } from './region.tsx'
 import { MessageList } from './message/message-list.tsx'
-import { useHomeLogoBubble } from './home-logo.ts'
 import { SpinnerTickProvider } from './spinner-tick.tsx'
 import { CloseGuardContext } from './dialog/dialog.tsx'
 import type { DialogHandle } from './dialog/dialog.tsx'
@@ -185,12 +185,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   const bottomHeight = panel === null ? layout.barHeight : panelHeight + 1
   const inputHeight = bottomHeight
   const messageHeight = Math.max(1, rows - inputHeight - MESSAGE_INPUT_GAP_ROWS)
-  // The home page is a chat-styled surface for special messages; the logo
-  // bubble is its content. Any real message switches to the chat list and
-  // the logo disappears.
-  const logoBubble = useHomeLogoBubble(columns, messageHeight)
-  const displayMessages = messages.length === 0 ? [logoBubble] : messages
-  const total = rowIndexFor(displayMessages, columns).total
+  const total = rowIndexFor(messages, columns).total
   const { scrollTop, applyScroll, getScroll } = useScroll(total, messageHeight)
   const startNewSession = () => {
     if (!bridge) return
@@ -284,7 +279,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
   }
   const selectionRef = useRef<LineSelection | null>(null)
   const { selection, messageAreaSelection, chromeSelection, setSelection, clearSelection } = useMouseSelection({
-    messages: displayMessages,
+    messages,
     columns,
     rows,
     scrollTop,
@@ -329,7 +324,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
     if (key.ctrl && input === 'c') {
       if (selection) {
         const text = copySelection(selection, {
-          messageText: sel => selectionText(displayMessages, columns, sel),
+          messageText: sel => selectionText(messages, columns, sel),
           chromeText: sel => chromeSelectionText(sel),
         })
         if (text) writeClipboardText(text)
@@ -338,6 +333,17 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
       }
       if (!exiting.current) {
         exiting.current = true
+        // Restore every terminal mode synchronously before signaling: on
+        // Windows the queued async writes of the dispose path can be lost
+        // at exit, and the console input mode (raw/VT) persists for the
+        // next process attached to this console.
+        restoreAllModes()
+        try {
+          process.stdin.setRawMode(false)
+          process.stdin.pause()
+        } catch {
+          // stdin is not a TTY (piped input); there is no mode to restore.
+        }
         process.kill(process.pid, 'SIGINT')
         setTimeout(() => process.exit(0), FORCE_EXIT_DELAY_MS).unref()
       }
@@ -349,7 +355,7 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
         <Box flexDirection="column" width={columns} height={rows}>
           <KeymapGate />
           <MessageList
-            messages={displayMessages}
+            messages={messages}
             height={messageHeight}
             width={columns}
             scrollTop={scrollTop}

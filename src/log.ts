@@ -1,6 +1,7 @@
 import { appendFileSync, chmodSync, mkdirSync, renameSync, statSync, unlinkSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { resolveDshHome } from './harness-home.ts'
+import { restoreAllModes } from './terminal/modes.ts'
 
 const LOG_LEVELS = ['debug', 'info', 'warn', 'error'] as const
 export type LogLevel = (typeof LOG_LEVELS)[number]
@@ -228,7 +229,10 @@ export function installCrashHandlers(options: { exit?: boolean } = {}): () => vo
       message: stringifyError(cause),
       stack: cause instanceof Error ? cause.stack : undefined,
     })
-    if (options.exit === true) process.exit(1)
+    if (options.exit === true) {
+      restoreAllModes()
+      process.exit(1)
+    }
   }
   const onRejected = (cause: unknown): void => {
     writeCrashReport({
@@ -236,7 +240,10 @@ export function installCrashHandlers(options: { exit?: boolean } = {}): () => vo
       message: stringifyError(cause),
       stack: cause instanceof Error ? cause.stack : undefined,
     })
-    if (options.exit === true) process.exit(1)
+    if (options.exit === true) {
+      restoreAllModes()
+      process.exit(1)
+    }
   }
   process.on('uncaughtException', onUncaught)
   process.on('unhandledRejection', onRejected)

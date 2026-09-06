@@ -10,6 +10,7 @@ import { createChatBridge } from './chat/bridge.ts'
 import type { ChatBridge } from './chat/bridge.ts'
 import { createScreenCapture } from './terminal/screen.ts'
 import { writeCursorShape } from './terminal/cursor-shape.ts'
+import { enterMode, restoreAllModes } from './terminal/modes.ts'
 import { startHotTheme } from './hot-theme.ts'
 import { applyTheme } from './apply-theme.ts'
 import { registerPalette } from './theme.ts'
@@ -113,6 +114,12 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
       })
       lastColumns = capture.stream.columns
       lastRows = capture.stream.rows
+      // Seed the modes ink enables on our behalf (its own enter writes are
+      // internal); a config-off alternate screen is never registered.
+      if (config.alternateScreen) enterMode('alt-screen', '', '\x1b[?1049l')
+      enterMode('kitty-keyboard', '', '\x1b[<u')
+      enterMode('bracketed-paste', '', '\x1b[?2004l')
+      enterMode('cursor', '', '\x1b[?25h\x1b[0 q')
       const onResize = () => {
         lastColumns = capture.stream.columns
         lastRows = capture.stream.rows
@@ -177,9 +184,9 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
       disposeExtensionPoint()
       stopSizePoll?.()
       hotTheme?.stop()
-      writeCursorShape('reset')
       bridge?.dispose()
       app?.unmount()
+      restoreAllModes()
       disposeCrashHandlers()
     }
   })
