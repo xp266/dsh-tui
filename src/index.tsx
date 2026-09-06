@@ -86,7 +86,7 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
     let lastRows = 0
     let stopSizePoll: (() => void) | undefined
     let exposeFaces: (() => void) | undefined
-    const buildAppNode = () => <App bridge={bridge} screen={capture} themeTick={themeTick} />
+    const buildAppNode = () => <App bridge={bridge} screen={capture} themeTick={themeTick} onForceExit={() => { app?.unmount() }} />
     const rerender = (): void => {
       themeTick += 1
       app?.rerender(buildAppNode())

@@ -63,9 +63,11 @@ interface AppProps {
   bridge?: ChatBridge
   screen?: ScreenCapture
   themeTick?: number
+  /** Unmount the ink root; the Ctrl-C path must stop all rendering before restoring terminal modes. */
+  onForceExit?: () => void
 }
 
-export function App({ bridge, screen, themeTick = 0 }: AppProps) {
+export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
   const { columns, rows } = useTerminalSize()
   const overlays = useOverlayStack<string>()
   const dialog: string | null = overlays.top ?? null
@@ -343,6 +345,11 @@ export function App({ bridge, screen, themeTick = 0 }: AppProps) {
       }
       if (!exiting.current) {
         exiting.current = true
+        // Unmount ink before touching modes: every frame written after the
+        // alt-screen exit lands in the primary buffer (WSL flushes the writes
+        // that Windows drops), so the shell screen stays clean only when
+        // nothing can render anymore.
+        onForceExit?.()
         // Restore every terminal mode synchronously before signaling: on
         // Windows the queued async writes of the dispose path can be lost
         // at exit, and the console input mode (raw/VT) persists for the
