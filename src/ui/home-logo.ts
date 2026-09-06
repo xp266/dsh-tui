@@ -1,9 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { useMemo, useSyncExternalStore } from 'react'
+import { useSyncExternalStore } from 'react'
 import { installedUpstreamLines } from '../contract/upstream.ts'
-import { BUBBLE_WIDTH_OFFSET } from '../core/metrics.ts'
-import type { HomeLogoMessage } from '../model/message.ts'
 import { keyedRegistry } from '../kernel/registry.ts'
 import { textWidth } from '../core/text.ts'
 import { COLORS } from '../theme.ts'
@@ -83,34 +81,43 @@ export function homeLogoLineColors(lines: readonly string[], top: string, bottom
   return lines.map((_, i) => mixHex(top, bottom, i * step))
 }
 
-const HOME_LOGO_ID = 'home-logo'
+const BLOCK_GLYPHS = new Set(['█', '▀', '▄', ' '])
 
 /**
- * The home page presents its content in chat-page style: the logo artwork is
- * the first bubble, left-aligned with a transparent background, followed by
- * version banner lines inside the same bubble. `width` is the full list
- * width and `height` the visible viewport; when either cannot hold the
- * artwork, only the artwork lines are culled and the bubble stays.
+ * Displace pure block-glyph artwork down by half a cell: every cell's
+ * top/bottom half ink moves one pixel-row down and is re-encoded as
+ * ▀/▄/█. The shape is pixel-identical, but the artwork's bottom edge lands
+ * on a cell boundary, so vertically centered text beside it reads as
+ * aligned with the bottom line. Artwork containing any non-block glyph is
+ * returned unchanged — text glyphs cannot be split across cells.
  */
-export function useHomeLogoBubble(width: number, height: number): HomeLogoMessage {
-  const logo = useHomeLogo()
-  return useMemo(() => homeLogoBubble(logo, width, height), [logo, width, height])
-}
-
-function homeLogoBubble(logo: HomeLogoContribution | undefined, width: number, height: number): HomeLogoMessage {
-  const clean = logo?.lines.map(line => line.trimEnd()) ?? []
-  const metrics = homeLogoMetrics(clean)
-  const fits = clean.length > 0 && width - BUBBLE_WIDTH_OFFSET >= metrics.columns && height >= metrics.rows
-  return {
-    kind: 'home-logo',
-    id: HOME_LOGO_ID,
-    lines: fits ? clean : [],
-    colors: fits ? homeLogoLineColors(clean, COLORS.homeLogoTop, COLORS.homeLogoBottom) : [],
-    info: [dshVersionLine(), `dshtui ${tuiVersion()}`],
+export function shiftLogoDownHalfRow(lines: readonly string[]): string[] {
+  const width = lines.reduce((max, line) => Math.max(max, line.length), 0)
+  if (width === 0) return [...lines]
+  for (const line of lines) {
+    for (const ch of line) {
+      if (!BLOCK_GLYPHS.has(ch)) return [...lines]
+    }
   }
+  const top: boolean[][] = lines.map(line => Array.from({ length: width }, (_, c) => line[c] === '█' || line[c] === '▀'))
+  const bottom: boolean[][] = lines.map(line => Array.from({ length: width }, (_, c) => line[c] === '█' || line[c] === '▄'))
+  const rows: string[] = []
+  for (let r = 0; r <= lines.length; r++) {
+    let row = ''
+    let ink = false
+    for (let c = 0; c < width; c++) {
+      const t = r > 0 && bottom[r - 1]![c]!
+      const b = r < lines.length && top[r]![c]!
+      row += t && b ? '█' : t ? '▀' : b ? '▄' : ' '
+      ink = ink || t || b
+    }
+    if (ink) rows.push(row.trimEnd())
+  }
+  return rows
 }
 
-function dshVersionLine(): string {
+/** The running harness version, `dsh <version>`. */
+export function dshVersionLine(): string {
   // dsh-agent itself does not export ./package.json, so the version comes
   // from the lockstepped harness line any sibling package exposes.
   return `dsh ${installedUpstreamLines()[0] ?? 'unknown'}`
@@ -118,14 +125,14 @@ function dshVersionLine(): string {
 
 let cachedTuiVersion: string | undefined
 
-function tuiVersion(): string {
+export function tuiVersion(): string {
   if (cachedTuiVersion !== undefined) return cachedTuiVersion
   try {
     const path = fileURLToPath(import.meta.resolve('@xp266/dshtui/package.json'))
     const manifest = JSON.parse(readFileSync(path, 'utf8')) as { version?: string }
     cachedTuiVersion = manifest.version ?? 'unknown'
   } catch {
-    // The manifest may be unreadable in unusual install layouts; the bubble still renders.
+    // The manifest may be unreadable in unusual install layouts; the label still renders.
     cachedTuiVersion = 'unknown'
   }
   return cachedTuiVersion

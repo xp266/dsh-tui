@@ -304,7 +304,7 @@ export interface InputStatusContribution {
 export interface HomeLogoContribution {
   id: string
   order?: number
-  /** Logo artwork rendered as the first chat-styled bubble on the home page, one string per terminal row. */
+  /** Logo artwork centered on the empty home page, one string per terminal row. */
   lines: readonly string[]
 }
 

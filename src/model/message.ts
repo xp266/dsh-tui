@@ -73,17 +73,6 @@ export interface CompactionMessage {
   streaming?: boolean
 }
 
-export interface HomeLogoMessage {
-  kind: 'home-logo'
-  id: string
-  /** Artwork lines after culling; empty when the terminal cannot fit the logo. */
-  lines: readonly string[]
-  /** One gradient color per artwork line, aligned with `lines`. */
-  colors: readonly string[]
-  /** Version banner lines rendered under the artwork inside the same bubble. */
-  info: readonly string[]
-}
+export type MessageKind = 'bubble' | 'collapsible' | 'tool-card' | 'compaction' | 'custom'
 
-export type MessageKind = 'bubble' | 'collapsible' | 'tool-card' | 'compaction' | 'custom' | 'home-logo'
-
-export type Message = BubbleMessage | CollapsibleMessage | ToolCardMessage | CompactionMessage | CustomMessage | HomeLogoMessage
+export type Message = BubbleMessage | CollapsibleMessage | ToolCardMessage | CompactionMessage | CustomMessage
