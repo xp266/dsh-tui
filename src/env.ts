@@ -18,6 +18,8 @@ export const env = {
   color: process.env.DSH_TUI_COLOR,
   /** Render every glyph as plain ASCII. */
   ascii: process.env.DSH_TUI_ASCII === '1',
+  /** Force char width model: 'wcwidth' (classic EA table, emoji 1 cell) or 'unicode' (grapheme-aware, default). */
+  width: process.env.DSH_TUI_WIDTH,
   /** Force background mode: 'dark' or 'light'. */
   background: process.env.DSH_TUI_BG,
   /** Reload theme.ts on every save (path relative to cwd, default src/theme.ts). */

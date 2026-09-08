@@ -91,7 +91,12 @@ export function createMouseParser(onEvent: (event: MouseEventData) => void) {
         if (parsed === null) return
         const { event, consumed } = parsed
         buffer = buffer.slice(consumed)
-        onEvent(event)
+        // SGR mouse coordinates are 1-based viewport cells; an event beyond
+        // the viewport is a terminal bug (scrollback-offset events in some
+        // hosts) and must not become a phantom pointer position.
+        const withinColumns = process.stdout.columns === undefined || event.x < process.stdout.columns
+        const withinRows = process.stdout.rows === undefined || event.y < process.stdout.rows
+        if (withinColumns && withinRows) onEvent(event)
       }
     },
   }

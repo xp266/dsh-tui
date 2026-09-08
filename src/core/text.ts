@@ -1,4 +1,5 @@
 import stringWidth from 'string-width'
+import { env } from '../env.ts'
 import { isFieldCode, fieldCodeWidth } from './fields.ts'
 
 const WIDTH_CACHE_LIMIT = 8192
@@ -24,7 +25,7 @@ export function textWidth(text: string): number {
     const code = text.charCodeAt(i)
     if (isFieldCode(code)) {
       if (run !== '') {
-        total += stringWidth(run)
+        total += measure(run)
         run = ''
       }
       total += fieldCodeWidth(code)
@@ -32,7 +33,7 @@ export function textWidth(text: string): number {
     }
     run += text[i]
   }
-  if (run !== '') total += stringWidth(run)
+  if (run !== '') total += measure(run)
   if (widthCache.size >= WIDTH_CACHE_LIMIT) widthCache.clear()
   widthCache.set(text, total)
   return total
@@ -54,13 +55,50 @@ export function segmentGraphemes(text: string): Iterable<Intl.SegmentData> {
   return graphemeSegmenter.segment(text)
 }
 
+// Terminals disagree on emoji and wide-glyph cell counts (wcwidth east-asian
+// tables vs Unicode 15+ grapheme rules). When the host renders one cell where
+// string-width says two, every later column drifts — the "extra spaces" in
+// selections. DSH_TUI_WIDTH forces the model instead of chasing per-terminal
+// tables; ascii run fast paths below still bypass both.
+const WIDTH_MODE: 'wcwidth' | 'unicode' = env.width === 'wcwidth' ? 'wcwidth' : 'unicode'
+
+function measure(text: string): number {
+  if (WIDTH_MODE === 'unicode') return stringWidth(text)
+  let total = 0
+  for (const codePoint of text) {
+    const code = codePoint.codePointAt(0)!
+    total += isCombiningOrZeroWidth(code) ? 0 : code >= 0x1100 && isWideCodePoint(code) ? 2 : 1
+  }
+  return total
+}
+
+function isCombiningOrZeroWidth(code: number): boolean {
+  return code === 0x200b
+    || code === 0x200c
+    || code === 0x200d
+    || (code >= 0x0300 && code <= 0x036f)
+    || (code >= 0xfe00 && code <= 0xfe0f)
+    || (code >= 0x1f3fb && code <= 0x1f3ff)
+}
+
+function isWideCodePoint(code: number): boolean {
+  return (code >= 0x1100 && code <= 0x115f)
+    || (code >= 0x2e80 && code <= 0xa4cf && code !== 0x303f)
+    || (code >= 0xac00 && code <= 0xd7a3)
+    || (code >= 0xf900 && code <= 0xfaff)
+    || (code >= 0xfe30 && code <= 0xfe6f)
+    || (code >= 0xff00 && code <= 0xff60)
+    || (code >= 0xffe0 && code <= 0xffe6)
+    || (code >= 0x20000 && code <= 0x3fffd)
+}
+
 export function charWidth(cluster: string): number {
   if (cluster.length === 1) {
     const code = cluster.charCodeAt(0)
     if (code >= 0x20 && code <= 0x7e) return 1
     if (isFieldCode(code)) return fieldCodeWidth(code)
   }
-  return cachedWidth(charWidthCache, cluster, () => stringWidth(cluster))
+  return cachedWidth(charWidthCache, cluster, () => measure(cluster))
 }
 
 const NO_START_CHARS = new Set<string>(

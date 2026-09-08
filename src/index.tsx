@@ -1,6 +1,6 @@
 import './runtime/prod-react.ts'
-import { setColorLevel } from './terminal/capabilities.ts'
-import { probeColorLevel } from './terminal/probe.ts'
+import { applyProbeReport } from './terminal/capabilities.ts'
+import { probeTerminal } from './terminal/probe.ts'
 import { render } from 'ink'
 import { startPerformanceGuard } from './performance-guard.ts'
 import type { Context } from '@deepseek-ai/cordis'
@@ -14,7 +14,7 @@ import { enterMode, restoreAllModes } from './terminal/modes.ts'
 import { startHotTheme } from './hot-theme.ts'
 import { applyTheme } from './apply-theme.ts'
 import { registerPalette } from './theme.ts'
-import { detectBackgroundMode } from './terminal/background.ts'
+import { resolveBackgroundMode } from './terminal/background.ts'
 import { registerThemeSettings } from './theme-settings.ts'
 import { warmLanguages, onLanguagesWarm, clearHighlightCache } from './ui/message/md/highlight.ts'
 import { clearMarkdownBlockCache } from './ui/message/md/engine.ts'
@@ -146,20 +146,20 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
     registerConfigPalette(config.colors)
     const themeScope = registerThemeSettings(ctx)
     openBootLog()
-    emitBootLine('terminal: probing color support')
+    emitBootLine('terminal: probing capabilities')
     void (async () => {
-      // The color probe and the background query are independent terminal
-      // round-trips; running them concurrently halves the worst-case wait.
-      const [probed, background] = await Promise.all([
-        probeColorLevel(),
-        config.theme === 'auto' ? detectBackgroundMode() : Promise.resolve(undefined),
-      ])
-      if (probed !== undefined) setColorLevel(probed)
+      // One raw-mode query burst answers color, terminal identity, and
+      // background in a single round trip; the CPR sentinel ends the wait as
+      // soon as the terminal has answered everything it is going to.
+      const report = await probeTerminal()
+      applyProbeReport(report)
       emitBootLine('theme: applying initial theme')
       const scopeMode = themeScope?.get().mode
       applyTheme(scopeMode === 'dark' || scopeMode === 'light'
         ? scopeMode
-        : background === 'dark' || background === 'light' ? background : config.theme === 'light' ? 'light' : 'dark')
+        : config.theme === 'auto'
+          ? resolveBackgroundMode(report.background)
+          : config.theme === 'light' ? 'light' : 'dark')
       emitBootLine('chat bridge: connecting harness services')
       bridge = await createChatBridge(ctx)
       exposeFaces = exposeRuntimeFaces(extensionPoint, bridge)
