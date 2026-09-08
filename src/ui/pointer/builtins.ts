@@ -1,8 +1,10 @@
 import type { LineSelection, PointerEventFrame } from '../../contract/index.ts'
+import { STRIP_ROW_BASE } from '../../model/selection.ts'
 import { panelContains } from '../layout-service.ts'
 import { POINTER_BUILTIN_ORDER } from './registry.ts'
 
 const WHEEL_LINES = 3
+const STRIP_DRAG_SCROLL_INTERVAL_MS = 15
 
 export interface PointerBuiltinDeps {
   inInputContent(y: number): boolean
@@ -33,6 +35,10 @@ export interface PointerBuiltinDeps {
   onScroll(next: number): void
   toggleMessage(id: string): void
   dialogClick(y: number, x: number): void
+  /** Strip content row (already offset into virtual space) under a screen row, or null. */
+  stripRowAt(y: number): number | null
+  /** Step the strip for an out-of-band drag; returns the new edge content row, or null when stuck. */
+  dialogStripScroll(dir: -1 | 1): number | null
 }
 
 /**
@@ -48,8 +54,34 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
   const dialogCandidate: { current: { x: number; y: number } | null } = { current: null }
   const panelCandidate: { current: { x: number; y: number } | null } = { current: null }
   const inputCandidate: { current: { x: number; y: number } | null } = { current: null }
+  const stripAutoScroll: { current: ReturnType<typeof setInterval> | null } = { current: null }
+  const lastStripY: { current: number } = { current: 0 }
   // Which sub-handler owns the active gesture; '' means none.
   let owner = ''
+
+  function stopStripAutoScroll(): void {
+    if (stripAutoScroll.current !== null) {
+      clearInterval(stripAutoScroll.current)
+      stripAutoScroll.current = null
+    }
+  }
+
+  /** Step the strip one row per tick while a strip selection drags outside it. */
+  function startStripAutoScroll(dir: -1 | 1, current: LineSelection): void {
+    if (stripAutoScroll.current !== null) return
+    const step = (): void => {
+      const landed = deps.dialogStripScroll(dir)
+      if (landed === null) {
+        stopStripAutoScroll()
+        return
+      }
+      deps.setSelection(current2 => current2 === null ? current2 : {
+        ...current2,
+        focusRow: landed,
+      })
+    }
+    stripAutoScroll.current = setInterval(step, STRIP_DRAG_SCROLL_INTERVAL_MS)
+  }
 
   function clearCandidates(): void {
     clickCandidate.current = null
@@ -85,6 +117,7 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
       clearCandidates()
       scrollbarSession.current = null
       hintGesture.current = null
+      stopStripAutoScroll()
       owner = ''
     },
     onDown(event: PointerEventFrame): boolean {
@@ -111,6 +144,16 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
       if (event.ui.dialogOpen) {
         const anchorable = deps.rowHasText(y)
         dialogCandidate.current = { x, y }
+        // Error-strip rows anchor in strip content space (a virtual row band
+        // above the screen), so scrolling the strip moves the selection with
+        // the content instead of leaving it behind.
+        const stripRow = deps.stripRowAt(y)
+        if (stripRow !== null) {
+          lastStripY.current = y
+          deps.setSelection({ anchorRow: stripRow, anchorCol: x, focusRow: stripRow, focusCol: x, inMessage: false })
+          owner = 'dialog'
+          return true
+        }
         if (anchorable) deps.setSelection({ anchorRow: y, anchorCol: x, focusRow: y, focusCol: x, inMessage: false })
         owner = 'dialog'
         return true
@@ -171,9 +214,29 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
         case 'panel':
           extendOrDrag(panelCandidate, event)
           return
-        case 'dialog':
+        case 'dialog': {
+          const stripRow = deps.stripRowAt(event.event.y)
+          if (stripRow !== null) {
+            stopStripAutoScroll()
+            lastStripY.current = event.event.y
+            deps.setSelection(current => current === null || current.inMessage ? current : {
+              ...current,
+              focusRow: stripRow,
+              focusCol: event.event.x,
+            })
+            return
+          }
+          // A strip-anchored drag off the band auto-scrolls the strip past
+          // its edge; the focus rides the row that lands at the boundary.
+          const current = deps.getSelection()
+          if (current !== null && !current.inMessage && current.anchorRow >= STRIP_ROW_BASE) {
+            startStripAutoScroll(event.event.y < lastStripY.current ? -1 : 1, current)
+            return
+          }
+          stopStripAutoScroll()
           extendOrDrag(dialogCandidate, event)
           return
+        }
         case 'message': {
           const candidate = clickCandidate.current
           if (candidate !== null) {
@@ -235,6 +298,7 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
           return
         }
         case 'dialog': {
+          stopStripAutoScroll()
           const candidate = dialogCandidate.current
           dialogCandidate.current = null
           if (candidate !== null) {

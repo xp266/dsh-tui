@@ -20,6 +20,12 @@ export type { ScrollSnapshot } from '../ui/hooks/use-scroll.ts'
 export interface WindowHandle {
   clickAt(y: number, x: number): void
   wheelAt(y: number, dir: -1 | 1): boolean
+  /** Strip content row under a screen row, or null when outside the strip. */
+  stripRow?(y: number): number | null
+  /** Step the strip one row; returns the content row now at the scrolled edge, or null when stuck. */
+  stripScroll?(dir: -1 | 1): number | null
+  /** Selected text drawn from the strip model, or null when unaffected. */
+  copySelection?(sel: { anchorRow: number; anchorCol: number; focusRow: number; focusCol: number }): string | null
 }
 
 export interface WindowProps {

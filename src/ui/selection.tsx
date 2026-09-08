@@ -23,6 +23,8 @@ export interface SelectableTextProps {
   backgroundColor?: string
   messageLayer?: boolean
   flow?: boolean
+  /** Model row this piece belongs to, when it differs from the screen row. */
+  stripRow?: number
 }
 
 interface SelectableContentProps {
@@ -80,21 +82,22 @@ const SelectableContent = memo(function SelectableContent({ content, segments, c
   prev.sliceEnd === next.sliceEnd
 ))
 
-export const SelectableText = function SelectableText({ y, col, text, segments, color, bold = false, inverse = false, backgroundColor, messageLayer = false, flow = false }: SelectableTextProps) {
+export const SelectableText = function SelectableText({ y, col, text, segments, color, bold = false, inverse = false, backgroundColor, messageLayer = false, flow = false, stripRow }: SelectableTextProps) {
   const selection = useContext(SelectionContext)
   const origin = useOrigin()
   const absY = origin.y + y
   const absCol = origin.x + col
   const content = text ?? (segments?.map(segment => segment.text).join('') ?? '')
   const pieceId = useRef({})
+  const modelY = stripRow ?? absY
   useLayoutEffect(() => {
-    registerRowPiece(pieceId.current, absY, { col: absCol, text: content, ...(messageLayer ? { layer: 'message' as const } : {}) })
-    return () => registerRowPiece(pieceId.current, absY, null)
-  }, [absY, absCol, content, messageLayer])
+    registerRowPiece(pieceId.current, modelY, { col: absCol, text: content, ...(messageLayer ? { layer: 'message' as const } : {}) })
+    return () => registerRowPiece(pieceId.current, modelY, null)
+  }, [modelY, absCol, content, messageLayer])
   let sliceStart = -1
   let sliceEnd = -1
   if (selection !== null) {
-    const range = selectedRange(selection, absY)
+    const range = selectedRange(selection, modelY)
     if (range !== null && (flow || envelopeOverlaps(selection, absCol, textWidth(content)))) {
       const lineWidth = textWidth(content)
       const start = Math.max(range.start, absCol)

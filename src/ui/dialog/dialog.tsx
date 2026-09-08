@@ -8,6 +8,8 @@ import { writeCursorShape } from '../../terminal/cursor-shape.ts'
 import { textWidth, colToCharIndex, caretScrollStart, truncate } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
 import { Region } from '../region.tsx'
+import { STRIP_ROW_BASE } from '../../model/selection.ts'
+import { sliceByColumns } from '../selection-registry.ts'
 import { renderRow } from './dialog-item.tsx'
 import { adjustScroll, hitRowIndex, rowHeight, rowTopOffset, wrapFooter, wrapStatusLines } from './geometry.ts'
 import type { DialogFooterLine } from './geometry.ts'
@@ -237,6 +239,38 @@ export function Dialog({
       applyNavigation(live.current, dir === -1 ? 'up' : 'down', search, { setFocus, setScrollTop }, centerScroll)
       return true
     },
+    stripRow(y) {
+      if (errorRows.length === 0 || errorVisible === 0) return null
+      const bandTop = top + windowHeight
+      if (y < bandTop || y >= bandTop + errorVisible) return null
+      return Math.min(errorScroll + (y - bandTop), errorRows.length - 1)
+    },
+    stripScroll(dir) {
+      const next = Math.max(0, Math.min(errorScroll + dir, maxErrorScroll))
+      if (next === errorScroll) return null
+      setErrorScrollTop(next)
+      const edge = dir === -1 ? next : Math.min(next + errorVisible - 1, errorRows.length - 1)
+      return STRIP_ROW_BASE + edge
+    },
+    copySelection(sel) {
+      if (sel.anchorRow < STRIP_ROW_BASE && sel.focusRow < STRIP_ROW_BASE) return null
+      const first = Math.min(sel.anchorRow, sel.focusRow) - STRIP_ROW_BASE
+      const last = Math.max(sel.anchorRow, sel.focusRow) - STRIP_ROW_BASE
+      const env = {
+        start: Math.min(sel.anchorCol, sel.focusCol),
+        end: Math.max(sel.anchorCol, sel.focusCol),
+      }
+      const lines: string[] = []
+      for (let row = first; row <= last; row++) {
+        const text = errorRows[row]
+        if (text === undefined) continue
+        const width = textWidth(text.text)
+        const start = Math.max(env.start, 0)
+        const end = Math.min(env.end, width)
+        lines.push(start < end ? sliceByColumns(text.text, start, end) : '')
+      }
+      return lines.join('\n').replace(/[ \t]+$/gm, '').replace(/\n+$/, '')
+    },
     clickAt(y, x) {
       onActivity?.()
       if (y < top || y >= top + windowHeight || x < left || x >= left + windowWidth) return
@@ -377,6 +411,7 @@ export function Dialog({
               col={frameLeft}
               text={line.text}
               color={line.color}
+              stripRow={STRIP_ROW_BASE + errorScroll + index}
             />
           ))}
         </Box>

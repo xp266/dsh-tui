@@ -309,6 +309,7 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
     onHintDragMove: handleHintDragMove,
     onHintRelease: handleHintRelease,
     onDialogWheel: (y, dir) => dialogRef.current?.wheelAt(y, dir) === true,
+    dialogHandle: dialogRef,
     onScroll: applyScroll,
     onToggleMessage: handleToggle,
     onDialogClick: (y, x) => dialogRef.current?.clickAt(y, x),
@@ -337,7 +338,7 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
       if (selection) {
         const text = copySelection(selection, {
           messageText: sel => selectionText(messages, columns, sel),
-          chromeText: sel => chromeSelectionText(sel),
+          chromeText: sel => dialogRef.current?.copySelection?.(sel) ?? chromeSelectionText(sel),
         })
         if (text) writeClipboardText(text)
         clearSelection()

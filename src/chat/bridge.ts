@@ -722,7 +722,16 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       installSelection(agentCtx)
       const session = agentCtx.agent?.session
       const resolved = session === undefined ? undefined : resolveSessionPreset(session)
-      await presets?.mount(agentCtx, resolved)
+      try {
+        await presets?.mount(agentCtx, resolved)
+      } catch (cause) {
+        // A stored preset row that no longer mounts must not lock the user
+        // out of their own history; the session opens without it instead.
+        warn('bridge', 'stored agent preset failed to mount; continuing without it', {
+          preset: resolved ?? '(session default)',
+          message: cause instanceof Error ? cause.message : String(cause),
+        })
+      }
     }
     const spawnResumedAgent = async (snapshot: { session: { cwd?: string }; events: SessionEvent[] }): Promise<AgentHandle> => {
       return ctx.agentLoop.createAgent(ctx, {

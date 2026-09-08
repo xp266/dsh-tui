@@ -6,6 +6,13 @@ export interface LineSelection {
   inMessage: boolean
 }
 
+/**
+* Row space of the dialog error strip, far above any real screen row. Strip
+* selections anchor to strip content rows through this offset, so scrolling
+* the strip moves the viewport over the selection instead of detaching it.
+*/
+export const STRIP_ROW_BASE = 1_000_000
+
 export function selectedRange(sel: LineSelection, row: number): { start: number; end: number } | null {
   const top = Math.min(sel.anchorRow, sel.focusRow)
   const bottom = Math.max(sel.anchorRow, sel.focusRow)

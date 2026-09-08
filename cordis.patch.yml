@@ -19,6 +19,12 @@
     # plain text message when the service is absent.
     - id: tui
       name: '@xp266/dshtui'
+    # Host-plane services the `cordis` preset's self-modification tool waits
+    # on (dynamicCordisRunner/cordisInspect); dsh-base carries no such row —
+    # the official web app inserts it the same way. A profile that also lists
+    # the web bundle must drop this row: same-id inserts would collide.
+    - id: cordis-host-runner
+      name: '@deepseek-ai/dsh-cordis-host-runner'
 
 # The per-agent rows move behind agent presets: each preset owns its own tool
 # and prompt composition, so the process-level rows must not also register

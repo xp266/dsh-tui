@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { pointerHandlerEntries, type PointerSession } from '../pointer/registry.ts'
-import type { PointerHandlerContribution } from '../../contract/index.ts'
+import type { PointerHandlerContribution, WindowHandle } from '../../contract/index.ts'
 import { createBuiltinPointerHandler, type BuiltinPointerHandler } from '../pointer/builtins.ts'
 import type { RefObject } from 'react'
 import type { ScreenCapture } from '../../terminal/screen.ts'
@@ -46,6 +46,7 @@ export interface MouseSelectionOptions {
   onHintDragMove?(x: number, y: number): void
   onHintRelease?(x: number, y: number, dragged: boolean): void
   onDialogWheel?(y: number, dir: -1 | 1): boolean
+  dialogHandle?: RefObject<WindowHandle | null>
   onScroll(next: number): void
   onToggleMessage(id: string): void
   onDialogClick(y: number, x: number): void
@@ -60,7 +61,7 @@ export interface MouseSelectionState {
 }
 
 export function useMouseSelection(options: MouseSelectionOptions): MouseSelectionState {
-  const { messages, columns, rows, scrollTop, messageHeight, inputHeight, dialogOpen, hint, screen, inputHandle, panelActive = false, panelHandle, getScroll, onHintPress, onHintDragStart, onHintDragMove, onHintRelease, onDialogWheel, onScroll, onToggleMessage, onDialogClick } = options
+  const { messages, columns, rows, scrollTop, messageHeight, inputHeight, dialogOpen, hint, screen, inputHandle, panelActive = false, panelHandle, dialogHandle, getScroll, onHintPress, onHintDragStart, onHintDragMove, onHintRelease, onDialogWheel, onScroll, onToggleMessage, onDialogClick } = options
   const [selection, setSelection] = useState<LineSelection | null>(null)
   const messagesRef = useRef(messages)
   const widthRef = useRef(columns)
@@ -74,6 +75,7 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
   const inputHandleRef = useRef(inputHandle)
   const panelActiveRef = useRef(panelActive)
   const panelHandleRef = useRef(panelHandle)
+  const dialogHandleRef = useRef(dialogHandle)
   const getScrollRef = useRef(getScroll)
   const onHintPressRef = useRef(onHintPress)
   const onHintDragStartRef = useRef(onHintDragStart)
@@ -104,6 +106,7 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
   inputHandleRef.current = inputHandle
   panelActiveRef.current = panelActive
   panelHandleRef.current = panelHandle
+  dialogHandleRef.current = dialogHandle
   getScrollRef.current = getScroll
   onHintPressRef.current = onHintPress
   onHintDragStartRef.current = onHintDragStart
@@ -273,6 +276,8 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
       onScroll: (next: number) => onScrollRef.current(next),
       toggleMessage: (id: string) => onToggleMessageRef.current(id),
       dialogClick: (y: number, x: number) => onDialogClickRef.current(y, x),
+      stripRowAt: (y: number) => dialogHandleRef.current?.current?.stripRow?.(y) ?? null,
+      dialogStripScroll: (dir: -1 | 1) => dialogHandleRef.current?.current?.stripScroll?.(dir) ?? null,
     }
     const builtinHandler: BuiltinPointerHandler = createBuiltinPointerHandler(builtinDeps)
     let ownerId: string | null = null
