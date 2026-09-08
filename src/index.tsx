@@ -16,7 +16,6 @@ import { applyTheme } from './apply-theme.ts'
 import { registerPalette } from './theme.ts'
 import { detectBackgroundMode } from './terminal/background.ts'
 import { registerThemeSettings } from './theme-settings.ts'
-import type { ThemeSettingsScope } from './theme-settings.ts'
 import { warmLanguages, onLanguagesWarm, clearHighlightCache } from './ui/message/md/highlight.ts'
 import { clearMarkdownBlockCache } from './ui/message/md/engine.ts'
 import { clearLayoutCache } from './ui/message/layout.ts'
@@ -49,19 +48,16 @@ export const Config: z<Config> = z.object({
 
 const DEFAULT_CONFIG: Config = { theme: 'auto', colors: {}, maxFps: 240, bootListTimeout: 10000, alternateScreen: true }
 
-async function initTheme(scope: ThemeSettingsScope | undefined, theme: Config['theme'], colors: Config['colors']): Promise<void> {
+function registerConfigPalette(colors: Config['colors']): void {
   if (Object.keys(colors).length > 0) {
     registerPalette({ id: 'dshtui-config', order: Number.MAX_SAFE_INTEGER, colors })
   }
-  const saved = scope?.get().mode
-  applyTheme(saved === 'dark' || saved === 'light'
-    ? saved
-    : theme === 'auto'
-      ? await detectBackgroundMode()
-      : theme)
 }
 
-export const inject = ['agentLoop', 'agents', 'sessions', 'workspaceRegistry', 'llm', 'settings', 'credentials', 'agentDefaultModel']
+// workspaceRegistry is deliberately absent: its upstream startup header
+// index costs seconds on large histories, so the bridge resolves it lazily
+// (fail-soft) instead of gating first paint on its initialization.
+export const inject = ['agentLoop', 'agents', 'sessions', 'llm', 'settings', 'credentials', 'agentDefaultModel']
 
 export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
   ctx.effect(() => {
@@ -147,14 +143,23 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
       }
       hotTheme = startHotTheme(rerender)
     }
+    registerConfigPalette(config.colors)
     const themeScope = registerThemeSettings(ctx)
     openBootLog()
     emitBootLine('terminal: probing color support')
     void (async () => {
-      const probed = await probeColorLevel()
+      // The color probe and the background query are independent terminal
+      // round-trips; running them concurrently halves the worst-case wait.
+      const [probed, background] = await Promise.all([
+        probeColorLevel(),
+        config.theme === 'auto' ? detectBackgroundMode() : Promise.resolve(undefined),
+      ])
       if (probed !== undefined) setColorLevel(probed)
       emitBootLine('theme: applying initial theme')
-      await initTheme(themeScope, config.theme, config.colors)
+      const scopeMode = themeScope?.get().mode
+      applyTheme(scopeMode === 'dark' || scopeMode === 'light'
+        ? scopeMode
+        : background === 'dark' || background === 'light' ? background : config.theme === 'light' ? 'light' : 'dark')
       emitBootLine('chat bridge: connecting harness services')
       bridge = await createChatBridge(ctx)
       exposeFaces = exposeRuntimeFaces(extensionPoint, bridge)

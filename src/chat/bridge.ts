@@ -545,13 +545,13 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   const effortNames = new Map<string, string>()
   const defaultCwd = process.cwd()
   let currentCwd = defaultCwd
-  void registerWorkspace(ctx, defaultCwd)
   const sessionList = cachedList(
     () => computeSessionList(ctx),
     SESSION_LIST_TTL_MS,
     { staleWhileRevalidate: true, refreshOnInvalidate: true },
   )
   void sessionList.get().catch(() => {})
+  void registerWorkspace(ctx, defaultCwd).then(() => sessionList.invalidate()).catch(() => {})
   let activeHandle: AgentHandle | undefined = await createAgent(currentCwd)
   let activeAgent = activeHandle.agent
   const commandsService = ctx.get('commands') as CommandsServiceLike | undefined
@@ -1082,15 +1082,36 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   }
 }
 
-async function registerWorkspace(ctx: Context, path: string): Promise<void> {
-  const workspace = ctx.get('workspaceRegistry') as { create?(path: string): Promise<unknown> } | undefined
+interface WorkspaceRegistryLike {
+  create?(path: string): Promise<unknown>
+  archiveSession?(sessionId: SessionId): Promise<void>
+}
+
+interface InjectHost {
+  inject?(deps: readonly string[], callback: (child: Context) => void): unknown
+}
+
+/**
+ * Wait for the workspace registry without gating plugin apply: its upstream
+ * startup header index walks every persisted log header, so on large
+ * histories it is ready seconds after the interface can paint. The registry
+ * object exists before init, so the inject fork is the only readiness signal.
+ */
+async function registerWorkspace(ctx: Context, path: string): Promise<WorkspaceRegistryLike | undefined> {
   try {
+    const workspace = await new Promise<WorkspaceRegistryLike | undefined>(resolve => {
+      ;(ctx as InjectHost).inject?.(['workspaceRegistry'], child => {
+        resolve((child as { workspaceRegistry?: WorkspaceRegistryLike }).workspaceRegistry)
+      })
+    })
     await workspace?.create?.(path)
+    return workspace
   } catch (cause) {
     // A session without a registered workspace still runs; the picker labels it ungrouped.
     warn('workspace', 'failed to register the session workspace', {
       path,
       message: cause instanceof Error ? cause.message : String(cause),
     })
+    return undefined
   }
 }

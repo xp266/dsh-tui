@@ -4,6 +4,7 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { textFromBlocks } from './blocks.ts'
 import { error as logError } from '../log.ts'
 import { isBlankSession } from './presets.ts'
+import { listColdRows } from '../sessions/list.ts'
 
 export interface SessionSummary {
   id: string
@@ -23,9 +24,8 @@ export function sessionTime(session: SessionSummary): number {
  * with the client-side visibility rules: live sessions plus persisted cold
  * sessions with a cwd, blank and subagent-origin rows hidden, newest-first,
  * without any workspace filtering (the picker labels ungrouped sessions).
- * Cold rows take their titles from the host's batched session-title fold
- * (`sessionQuery.readTitleSnapshots`), which reads each log once per
- * release of the query corpus and never loads full sessions into memory.
+ * Cold rows come from the local bounded reader (`sessions/list`), which
+ * serves titles from a revision-keyed index and never loads full logs.
  */
 export async function computeSessionList(ctx: Context): Promise<SessionSummary[]> {
   try {
@@ -54,52 +54,25 @@ async function computeSessionListInner(ctx: Context): Promise<SessionSummary[]> 
     summaries.push(toSummary(id, title, session.header.cwd, session.header.createdAt, lastPromptAt(session.snapshotEvents()), workspacePaths))
   }
   const persistence = ctx.get('sessionPersistence') as PersistenceLike | undefined
-  const cold = await listColdHeaders(ctx, persistence, attached)
-  await mergeColdSummaries(ctx, cold, archived, workspacePaths, summaries)
+  const cold = await listColdRows({ attached, archived, root: persistence?.root })
+  for (const row of cold) {
+    summaries.push({
+      id: row.id,
+      name: row.name,
+      directory: row.directory,
+      ungrouped: workspacePaths.has(row.directory) === false,
+      updatedAt: Math.max(row.updatedAt, row.createdAt),
+      modifiedAt: row.modifiedAt,
+    })
+  }
   await attachModifiedTimes(ctx, summaries)
   return summaries.sort((a, b) => sessionTime(b) - sessionTime(a))
 }
 
-interface ColdHeader {
-  id: string
-  cwd?: string
-  createdAt: number
-  origin?: string
-}
-
 interface PersistenceLike {
-  list(signal?: AbortSignal): Promise<ColdHeader[]>
+  /** Configured artifact root of the JSONL backend; absent on other backends. */
+  root?: string
   locate?(header: { cwd?: string; id: string }): { path: string } | undefined
-}
-
-interface SessionQueryLike {
-  listSessions?(signal?: AbortSignal): Promise<Array<{ header: ColdHeader; live: boolean; persisted: boolean }>>
-  readTitleSnapshots?(sessionIds: readonly string[]): Promise<Array<{
-    sessionId: string
-    status: 'fulfilled' | 'rejected'
-    value?: { title?: { title?: string; updatedAt?: number } }
-  }>>
-}
-
-/**
- * Cold-session headers from the official query corpus (`sessionQuery`,
- * live-preferred, zero log reads), falling back to `persistence.list()`
- * (first-line header reads) when the query service is not mounted.
- */
-async function listColdHeaders(ctx: Context, persistence: PersistenceLike | undefined, attached: ReadonlySet<string>): Promise<ColdHeader[]> {
-  const query = ctx.get('sessionQuery') as SessionQueryLike | undefined
-  if (query?.listSessions !== undefined) {
-    const records = await query.listSessions()
-    return records
-      .filter(record => !record.live && record.persisted && !attached.has(String(record.header.id)))
-      .filter(record => record.header.cwd !== undefined && record.header.origin !== 'subagent')
-      .map(record => record.header)
-  }
-  if (persistence?.list !== undefined) {
-    const headers = await persistence.list()
-    return headers.filter(header => !attached.has(String(header.id)) && header.cwd !== undefined && header.origin !== 'subagent')
-  }
-  return []
 }
 
 async function attachModifiedTimes(ctx: Context, summaries: SessionSummary[]): Promise<void> {
@@ -162,33 +135,6 @@ function lastPromptAt(events: readonly SessionEvent[]): number {
     if (event.type === 'user/message' && event.data.source.kind === 'user') last = event.time
   }
   return last
-}
-
-async function mergeColdSummaries(
-  ctx: Context,
-  cold: ColdHeader[],
-  archived: ReadonlySet<string>,
-  workspacePaths: ReadonlySet<string>,
-  summaries: SessionSummary[],
-): Promise<void> {
-  const query = ctx.get('sessionQuery') as SessionQueryLike | undefined
-  if (query?.readTitleSnapshots === undefined) return
-  const observed = await query.readTitleSnapshots(cold.map(header => String(header.id))).catch(() => [])
-  const titleById = new Map<string, { title: string; promptAt: number }>()
-  for (const entry of observed) {
-    if (entry.status !== 'fulfilled') continue
-    const snapshot = entry.value?.title
-    if (snapshot?.title === undefined || snapshot.title === '') continue
-    titleById.set(String(entry.sessionId), { title: snapshot.title, promptAt: snapshot.updatedAt ?? 0 })
-  }
-  for (const header of cold) {
-    if (archived.has(String(header.id))) continue
-    // No title snapshot means the session never ran a turn: the host's
-    // deterministic fallback titles every session with a user message.
-    const meta = titleById.get(String(header.id))
-    if (meta === undefined) continue
-    summaries.push(toSummary(String(header.id), meta.title, header.cwd, header.createdAt, meta.promptAt, workspacePaths))
-  }
 }
 
 function fallbackName(id: string, directory?: string): string {
