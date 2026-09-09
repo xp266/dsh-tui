@@ -17,6 +17,8 @@
     "verify:contract": "node --import tsx/esm scripts/verify-contract.ts",
     "verify:manifest": "node --import tsx/esm scripts/verify-manifest.ts",
     "verify:package": "node scripts/verify-package.mjs",
+    "update-capabilities": "node --import tsx/esm scripts/update-capabilities.ts",
+    "preversion": "pnpm run update-capabilities && git add src/chat/model-capabilities.ts && pnpm run verify",
     "prepare": "tsdown"
   },
   "main": "lib/index.mjs",

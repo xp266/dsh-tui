@@ -24,6 +24,7 @@ import {
   listConfiguredModels,
   listProviderDirectory,
   readModelEntries,
+  resolveModelEntryEfforts,
   saveCustomProvider,
   saveModelEntry,
   saveProviderKey,
@@ -1032,8 +1033,10 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     describeModel,
     saveModelEntry: async (ns, provider, entry) => {
       const settings = settingsService()
-      await saveModelEntry(settings, settings, ns, provider, entry)
+      const resolved = resolveModelEntryEfforts(settings, ns, provider, entry)
+      await saveModelEntry(settings, settings, ns, provider, resolved)
       modelsList.clear()
+      efforts.invalidate()
     },
     deleteModelEntry: async (ns, provider, modelId) => {
       const settings = settingsService()

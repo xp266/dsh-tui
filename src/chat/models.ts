@@ -1,5 +1,6 @@
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import type { LlmRuntime } from '@deepseek-ai/dsh-llm'
+import { resolveReasoningEfforts } from './effort-inference.ts'
 
 export interface ConfiguredModel {
   id: string
@@ -108,6 +109,20 @@ function storedModels(models: LlmDiscoveredModel[]): Array<Record<string, unknow
   }))
 }
 
+/**
+ * One-shot capability resolution at save time: a model the models.dev snapshot
+ * knows gets its reasoningEfforts written once, here. Later saves must not
+ * second-guess an existing declaration — an explicit map or `false` wins.
+ */
+function withInferredEfforts(api: string, baseURL: string, models: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  return models.map(model => {
+    if (typeof model.id !== 'string' || model.reasoningEfforts !== undefined) return model
+    const efforts = resolveReasoningEfforts(baseURL, model.id)
+    if (efforts === undefined || Object.keys(efforts).length === 0) return model
+    return { ...model, reasoningEfforts: efforts }
+  })
+}
+
 export async function saveCustomProvider(
   write: SettingsWriter,
   store: KeyStorer,
@@ -123,7 +138,7 @@ export async function saveCustomProvider(
         api: form.apiProtocol,
         baseURL: form.apiUrl,
         ...(form.apiKey.length > 0 ? { apiKeyEnv: keyRef } : {}),
-        models: storedModels(models),
+        models: withInferredEfforts(form.apiProtocol, form.apiUrl, storedModels(models)),
       },
     },
   })
@@ -211,6 +226,28 @@ export async function saveModelEntry(
   if (index >= 0) next[index] = entry
   else next.push(entry)
   await write.update(ns, { providers: { [provider]: { models: next } } })
+}
+
+/**
+ * Lazy backfill for model entries saved before the capability snapshot existed.
+ * The entry must be hand-declared, carry no reasoning declaration at all, and
+ * belong to a provider whose api and baseURL are both declared; anything else
+ * is returned untouched. Resolution is pure — persisting is the caller's job.
+ */
+export function resolveModelEntryEfforts(
+  reader: SettingsReader,
+  ns: string,
+  provider: string,
+  entry: ModelEntryConfig,
+): ModelEntryConfig {
+  if (entry.reasoningEfforts !== undefined) return entry
+  const profile = providerSection(reader, ns, provider)
+  const api = typeof profile?.api === 'string' ? profile.api : undefined
+  const baseURL = typeof profile?.baseURL === 'string' ? profile.baseURL : undefined
+  if (api === undefined || baseURL === undefined) return entry
+  const efforts = resolveReasoningEfforts(baseURL, entry.id)
+  if (efforts === undefined || Object.keys(efforts).length === 0) return entry
+  return { ...entry, reasoningEfforts: efforts }
 }
 
 export async function deleteModelEntry(
