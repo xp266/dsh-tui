@@ -13,7 +13,7 @@ import { sliceByColumns } from '../selection-registry.ts'
 import { renderRow } from './dialog-item.tsx'
 import { adjustScroll, hitRowIndex, rowHeight, rowTopOffset, wrapFooter, wrapStatusLines } from './geometry.ts'
 import type { DialogFooterLine } from './geometry.ts'
-import { ERROR_MAX_ROWS } from './sizes.ts'
+import { DIALOG_MIN_HEIGHT, ERROR_MAX_ROWS } from './sizes.ts'
 import { asTextItem, clampFocus, filterRowsWithHeaders, focusedItem, isSelectableRow, selectableSpan, snapRow } from './items.ts'
 import type { DialogFocus, DialogItem, DialogRow } from './items.ts'
 import { applyNavigation, useDialogInput } from './use-dialog-input.ts'
@@ -85,8 +85,7 @@ export function Dialog({
   const displayRows = search ? [searchRow, ...filteredRows] : rows
   const contentRows = search ? filteredRows : rows
   const [focus, setFocus] = useState<DialogFocus>(() => ({ row: snapRow(search ? [searchRow, ...rows] : rows, search ? 1 : 0), col: 0 }))
-  const widthCells = width <= 1 ? Math.floor(columns * width) : width
-  const windowWidth = Math.min(Math.max(1, widthCells), columns)
+  const windowWidth = Math.min(Math.max(1, width), columns)
   const contentWidth = Math.max(1, windowWidth - 4)
   const fixedHeight = search ? rowHeight(searchRow, contentWidth) : 0
   const focusMinRow = search ? 1 : 0
@@ -106,7 +105,9 @@ export function Dialog({
   const extraHeight = footerRows.length > 0 ? 1 + footerRows.length : 0
   const desired = displayRows.reduce((sum, row) => sum + rowHeight(row, contentWidth), 0) + titleLines + extraHeight + 2
   const maxRows = Math.max(1, maxHeight <= 1 ? Math.floor(totalRows * maxHeight) : maxHeight)
-  const windowHeight = Math.min(desired, maxRows, totalRows)
+  // Width-like height clamp: the floor holds until the terminal cannot fit
+  // it, outranking the ratio cap; only true overflow squeezes the window.
+  const windowHeight = Math.max(Math.min(DIALOG_MIN_HEIGHT, totalRows), Math.min(desired, maxRows, totalRows))
   const contentHeight = Math.max(1, windowHeight - 2 - titleLines - extraHeight)
   const viewportHeight = Math.max(1, contentHeight - fixedHeight)
   const top = Math.max(0, Math.floor((totalRows - windowHeight) / 2))
