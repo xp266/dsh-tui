@@ -18,6 +18,7 @@ export interface ModelEntryConfig {
   maxTokens?: number
   input?: string[]
   reasoningEfforts?: false | Partial<Record<ModelEffortKey, string | null>>
+  compat?: Record<string, unknown>
 }
 
 export interface DescribedModel {
@@ -110,6 +111,18 @@ function storedModels(models: LlmDiscoveredModel[]): Array<Record<string, unknow
 }
 
 /**
+ * Declaring a model reasoning changes how pi-ai encodes the system prompt:
+ * with an unresolved supportsDeveloperRole it sends OpenAI's `developer` role,
+ * which strict OpenAI-compatible relays reject. Pin `system` on every inferred
+ * entry — every such endpoint accepts `system` — except protocols whose schema
+ * refuses the field. An explicitly set value always wins.
+ */
+function compatForInferredEntry(api: string, existing: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (api === 'anthropic-messages' || existing?.supportsDeveloperRole !== undefined) return undefined
+  return { ...(existing ?? {}), supportsDeveloperRole: false }
+}
+
+/**
  * One-shot capability resolution at save time: a model the models.dev snapshot
  * knows gets its reasoningEfforts written once, here. Later saves must not
  * second-guess an existing declaration — an explicit map or `false` wins.
@@ -119,7 +132,8 @@ function withInferredEfforts(api: string, baseURL: string, models: Array<Record<
     if (typeof model.id !== 'string' || model.reasoningEfforts !== undefined) return model
     const efforts = resolveReasoningEfforts(baseURL, model.id)
     if (efforts === undefined || Object.keys(efforts).length === 0) return model
-    return { ...model, reasoningEfforts: efforts }
+    const compat = compatForInferredEntry(api, model.compat as Record<string, unknown> | undefined)
+    return { ...model, reasoningEfforts: efforts, ...(compat === undefined ? {} : { compat }) }
   })
 }
 
@@ -247,7 +261,8 @@ export function resolveModelEntryEfforts(
   if (api === undefined || baseURL === undefined) return entry
   const efforts = resolveReasoningEfforts(baseURL, entry.id)
   if (efforts === undefined || Object.keys(efforts).length === 0) return entry
-  return { ...entry, reasoningEfforts: efforts }
+  const compat = compatForInferredEntry(api, entry.compat)
+  return { ...entry, reasoningEfforts: efforts, ...(compat === undefined ? {} : { compat }) }
 }
 
 export async function deleteModelEntry(
