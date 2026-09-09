@@ -136,6 +136,16 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
     setFetching(true)
     await run(async () => {
       if (providerKey.trim() !== '') await api.saveProviderKey(provider, providerKey)
+      // A declared provider stores its models outright; this window only
+      // manages the key, so discovery (which needs a catalog or a baseURL)
+      // is for undeclared routes only.
+      if (provider.declared === true) {
+        resetProvider()
+        clearError()
+        setWindow({ kind: 'providers' })
+        reload()
+        return
+      }
       const found = await api.fetchProviderModels(provider, providerKey)
       if (found === undefined) {
         resetProvider()
@@ -234,13 +244,16 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
   }))
   const statusLines: DialogFooterLine[] = [
     ...(window.kind === 'select-models' ? [{ text: 'Press Space to toggle, Enter to confirm', color: COLORS.dialogHintText }] : []),
+    ...(window.kind === 'add-provider-key' && provider?.declared === true
+      ? [{ text: 'Submit an empty key to keep the stored one', color: COLORS.dialogHintText }]
+      : []),
     ...(fetching && (window.kind === 'add-provider-key' || window.kind === 'add-custom') ? [{ text: 'Fetching models...' }] : []),
   ]
   const errorLines: DialogFooterLine[] = error !== null ? [errorLine(error)] : []
   if (window.kind !== 'providers') {
     const title =
       window.kind === 'add-provider-key'
-        ? `Add ${provider?.displayName ?? provider?.provider ?? ''}`
+        ? `${provider?.declared === true ? 'Reset key' : 'Add'} ${provider?.displayName ?? provider?.provider ?? ''}`
         : window.kind === 'add-custom'
           ? 'Add Custom Provider'
           : 'Select Models'
