@@ -154,9 +154,9 @@ function buildPalette(ladder: GrayLadder, hues: SemanticHues, code: CodeHues, mo
     ink: ladder.ink,
 
     userBubbleBackground: ladder.surface,
-    aiBubbleBackground: ladder.sunken,
+    aiBubbleBackground: ladder.surface,
 
-    permissionBackground: ladder.sunken,
+    permissionBackground: ladder.surface,
     workspaceWriteText: hues.info,
     dangerFullAccessText: hues.accent,
     readOnlyText: hues.success,
