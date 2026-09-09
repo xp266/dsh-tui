@@ -31,7 +31,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
       order: BUILTIN_WINDOW_ORDER + 0,
       required: ['models'],
       component: props => <ModelsWindow {...props} onModelSelected={deps.onModelSelected} onAddProvider={deps.onAddProvider} />,
-      command: { name: 'models', description: 'Open model selection' },
+      command: { name: 'models', description: 'Switch the active model' },
     }),
     registerWindow({
       id: 'providers',
@@ -39,7 +39,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
       order: BUILTIN_WINDOW_ORDER + 5,
       required: ['models'],
       component: props => <ProvidersWindow {...props} onModelSelected={deps.onModelSelected} />,
-      command: { name: 'providers', description: 'Open provider selection' },
+      command: { name: 'providers', description: 'Manage providers and API keys' },
     }),
     registerWindow({
       id: 'sessions',
@@ -54,7 +54,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
           onNewSession={deps.onNewSession}
         />
       ),
-      command: { name: 'sessions', description: 'Open session picker' },
+      command: { name: 'sessions', description: 'Resume a previous session' },
     }),
     registerWindow({
       id: 'preset',
@@ -70,7 +70,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
       order: BUILTIN_WINDOW_ORDER + 30,
       required: ['efforts'],
       component: createServiceWindow('efforts', EffortDialog),
-      command: { name: 'reasoning-effort', description: "Select the current model's reasoning effort" },
+      command: { name: 'effort', description: "Select the current model's reasoning effort" },
     }),
     registerWindow({
       id: 'defaults',
