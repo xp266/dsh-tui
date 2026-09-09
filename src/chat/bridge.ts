@@ -43,10 +43,6 @@ import { builtInPresetName, isBlankSession, presetDisplayName } from './presets.
 import type { PresetSummary } from './presets.ts'
 import type { EffortSummary } from './efforts.ts'
 import { InteractionStore, registerInteractionChannels } from './interactions.ts'
-import { applyTheme } from '../apply-theme.ts'
-import { THEME_SETTINGS_NAMESPACE } from '../theme-settings.ts'
-import { themeMode } from '../theme.ts'
-import type { ThemeMode } from '../theme.ts'
 import { error as logError, warn } from '../log.ts'
 
 interface AttachmentsServiceLike {
@@ -436,8 +432,6 @@ export interface ChatBridge {
   setDefaultPermission(id: string): Promise<void>
   defaultPresetId(): string
   setDefaultPreset(id: string): Promise<void>
-  themePreference(): ThemeMode
-  setThemePreference(mode: ThemeMode): Promise<void>
   tokenStats(): TokenStats
   toolPresenter: ChatToolPresenter
   interactions: InteractionStore
@@ -1077,11 +1071,6 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     defaultPresetId: () => presets?.defaultId ?? 'standard',
     setDefaultPreset: async id => {
       await settingsService().update('agent-presets', { default: id })
-    },
-    themePreference: () => themeMode(),
-    setThemePreference: async mode => {
-      applyTheme(mode)
-      await settingsService().update(THEME_SETTINGS_NAMESPACE, { mode })
     },
     tokenStats,
     toolPresenter,

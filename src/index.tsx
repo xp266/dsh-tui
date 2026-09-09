@@ -15,7 +15,6 @@ import { startHotTheme } from './hot-theme.ts'
 import { applyTheme } from './apply-theme.ts'
 import { registerPalette } from './theme.ts'
 import { resolveBackgroundMode } from './terminal/background.ts'
-import { registerThemeSettings } from './theme-settings.ts'
 import { warmLanguages, onLanguagesWarm, clearHighlightCache } from './ui/message/md/highlight.ts'
 import { clearMarkdownBlockCache } from './ui/message/md/engine.ts'
 import { clearLayoutCache } from './ui/message/layout.ts'
@@ -30,7 +29,6 @@ import { upstreamDriftSummary, UPSTREAM_SUPPORTED_RANGE } from './contract/upstr
 export const name = '@xp266/dshtui'
 
 export interface Config {
-  theme: 'auto' | 'dark' | 'light'
   /** Palette overrides applied on top of the built-in dark and light themes (palette key -> hex). */
   colors: Record<string, string>
   maxFps: number
@@ -39,14 +37,13 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  theme: z.union(['auto', 'dark', 'light']).default('auto'),
   colors: z.dict(z.string()).default({}),
   maxFps: z.number().default(240),
   bootListTimeout: z.number().default(10000),
   alternateScreen: z.boolean().default(true),
 })
 
-const DEFAULT_CONFIG: Config = { theme: 'auto', colors: {}, maxFps: 240, bootListTimeout: 10000, alternateScreen: true }
+const DEFAULT_CONFIG: Config = { colors: {}, maxFps: 240, bootListTimeout: 10000, alternateScreen: true }
 
 function registerConfigPalette(colors: Config['colors']): void {
   if (Object.keys(colors).length > 0) {
@@ -144,7 +141,6 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
       hotTheme = startHotTheme(rerender)
     }
     registerConfigPalette(config.colors)
-    const themeScope = registerThemeSettings(ctx)
     openBootLog()
     emitBootLine('terminal: probing capabilities')
     void (async () => {
@@ -154,12 +150,9 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
       const report = await probeTerminal()
       applyProbeReport(report)
       emitBootLine('theme: applying initial theme')
-      const scopeMode = themeScope?.get().mode
-      applyTheme(scopeMode === 'dark' || scopeMode === 'light'
-        ? scopeMode
-        : config.theme === 'auto'
-          ? resolveBackgroundMode(report.background)
-          : config.theme === 'light' ? 'light' : 'dark')
+      // Dark and light are terminal-coupled modes, not preferences: probed
+      // fresh at every startup, never persisted or hand-configured.
+      applyTheme(resolveBackgroundMode(report.background))
       emitBootLine('chat bridge: connecting harness services')
       bridge = await createChatBridge(ctx)
       exposeFaces = exposeRuntimeFaces(extensionPoint, bridge)

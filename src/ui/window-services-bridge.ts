@@ -51,8 +51,6 @@ export function registerWindowServices(bridge: ChatBridge): () => void {
     listPermissionPresets: bridge.listPermissionPresets,
     defaultPermission: bridge.defaultPermission,
     setDefaultPermission: bridge.setDefaultPermission,
-    themeMode: bridge.themePreference,
-    setThemeMode: bridge.setThemePreference,
   }
   const disposers = [
     registerWindowService('models', models, { order: BUILTIN_SERVICE_ORDER }),

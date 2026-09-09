@@ -262,10 +262,6 @@ export const COLORS: Theme = { ...darkPalette }
 
 let currentMode: ThemeMode = 'dark'
 
-export function themeMode(): ThemeMode {
-  return currentMode
-}
-
 function permissionModes(): Record<PermissionModeId, { color: string; textColor: string; name: string }> {
   return {
     'workspace-write': { color: COLORS.permissionBackground, textColor: COLORS.workspaceWriteText, name: 'Workspace Write' },
