@@ -1,5 +1,5 @@
 import { Box, Text } from 'ink'
-import { COLORS } from '../../theme.ts'
+import { DIALOG_COLORS } from '../../theme.ts'
 import { caretScrollStart, padToWidth, textWidth, truncate } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
 import { caretNonceBold, caretNonceColor, caretNonceText } from '../../core/caret-nonce.ts'
@@ -42,8 +42,8 @@ registerWidget<SearchItem>('search', {
     }
     return (
       <Box flexDirection="column">
-      <Box width={width} backgroundColor={COLORS.dialogInputBackground}>
-        <SelectableText y={y} col={x} text={padToWidth(text, width)} color={isEmpty ? COLORS.dialogHintText : undefined} />
+      <Box width={width} backgroundColor={DIALOG_COLORS.dialogInputBackground}>
+        <SelectableText y={y} col={x} text={padToWidth(text, width)} color={isEmpty ? DIALOG_COLORS.dialogHintText : DIALOG_COLORS.ink} />
       </Box>
         <Box height={1}>
           <Text

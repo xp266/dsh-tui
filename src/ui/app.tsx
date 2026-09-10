@@ -2,7 +2,7 @@ import { Box, Text, useInput } from 'ink'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { RefObject } from 'react'
-import { permissionModeInfo } from '../theme.ts'
+import { permissionModeInfo, setDialogDimmed } from '../theme.ts'
 import { writeClipboardText } from '../terminal/clipboard.ts'
 import { copySelection } from './selection/service.ts'
 import type { ChatBridge } from '../chat/bridge.ts'
@@ -13,7 +13,7 @@ import { restoreAllModes } from '../terminal/modes.ts'
 import { chromeSelectionText } from './selection-registry.ts'
 import type { ScreenCapture } from '../terminal/screen.ts'
 import type { LineSelection } from '../model/selection.ts'
-import { SelectionContext } from './selection.tsx'
+import { SelectionContext, DialogPaletteContext } from './selection.tsx'
 import { useTerminalSize } from './hooks/use-terminal-size.ts'
 import { useChatEvents } from './hooks/use-chat-events.ts'
 import { useScroll } from './hooks/use-scroll.ts'
@@ -71,6 +71,10 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
   const { columns, rows } = useTerminalSize()
   const overlays = useOverlayStack<string>()
   const dialog: string | null = overlays.top ?? null
+  const dialogOpen = dialog !== null
+  useEffect(() => {
+    setDialogDimmed(dialogOpen)
+  }, [dialogOpen])
   const [, setSessionTick] = useState(0)
   const { messages, modelName, setModelName, updateMessages, resetChat, activity, todos, retryStatus, streamedChars, registryCommands } = useChatEvents(bridge, dialog !== null)
   const windows = useAvailableWindows()
@@ -453,24 +457,28 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
               />
             )}
           </SelectionContext.Provider>
-          {dialog !== null && (() => {
-            const entry = windows.find(candidate => candidate.id === dialog)
-            if (entry !== undefined && bridge !== undefined) {
-              const Window = entry.component
-              return (
-                <CloseGuardContext.Provider value={selection !== null}>
-                  <SelectionContext.Provider value={chromeSelection}>
-                    <Window open handleRef={dialogRef} onClose={() => overlays.pop()} />
-                  </SelectionContext.Provider>
-                </CloseGuardContext.Provider>
-              )
-            }
-            const overlay = overlayContribution
-            if (overlay !== undefined) {
-              return <Region>{overlay.render({ onClose: () => overlays.pop() })}</Region>
-            }
-            return null
-          })()}
+          {dialog !== null && (
+            <DialogPaletteContext.Provider value={true}>
+              {(() => {
+                const entry = windows.find(candidate => candidate.id === dialog)
+                if (entry !== undefined && bridge !== undefined) {
+                  const Window = entry.component
+                  return (
+                    <CloseGuardContext.Provider value={selection !== null}>
+                      <SelectionContext.Provider value={chromeSelection}>
+                        <Window open handleRef={dialogRef} onClose={() => overlays.pop()} />
+                      </SelectionContext.Provider>
+                    </CloseGuardContext.Provider>
+                  )
+                }
+                const overlay = overlayContribution
+                if (overlay !== undefined) {
+                  return <Region>{overlay.render({ onClose: () => overlays.pop() })}</Region>
+                }
+                return null
+              })()}
+            </DialogPaletteContext.Provider>
+          )}
         </Box>
       </SelectionContext.Provider>
     </SpinnerTickProvider>

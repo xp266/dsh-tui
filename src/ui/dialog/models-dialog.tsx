@@ -3,7 +3,7 @@ import type { Ref } from 'react'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import type { ConfiguredModel, CustomProviderForm, DescribedModel, ModelEntryConfig, OfficialProvider } from '../../chat/models.ts'
 import { PI_AI_SETTINGS_NS } from '../../chat/models.ts'
-import { COLORS } from '../../theme.ts'
+import { DIALOG_COLORS } from '../../theme.ts'
 import { glyphs } from '../../terminal/glyphs.ts'
 import { errorLine, loadingLine } from './status-lines.ts'
 import { useAsyncAction } from '../hooks/use-async-action.ts'
@@ -167,7 +167,7 @@ export function ModelsDialog({ api, onClose, onModelSelected, onAddProvider, ref
   const listFooter: DialogFooterLine[] = [
     {
       text: `Ctrl+A add providers ${glyphs.separator} Ctrl+E configure`,
-      color: COLORS.dialogHintText,
+      color: DIALOG_COLORS.dialogHintText,
     },
     ...(loading ? [loadingLine()] : []),
   ]

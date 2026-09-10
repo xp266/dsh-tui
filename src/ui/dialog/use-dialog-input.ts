@@ -13,6 +13,7 @@ import type { WidgetKeyApi } from '../widgets/types.ts'
 export interface DialogLiveState {
   rows: DialogRow[]
   contentRows: DialogRow[]
+  scrollRows: DialogRow[]
   focus: DialogFocus
   scrollTop: number
   cursor: number
@@ -36,9 +37,13 @@ export function applyNavigation(live: DialogLiveState, direction: 'up' | 'down' 
   const clamped = clampFocus(live.rows, next, live.focusMinRow, live.focusMaxRow)
   setters.setFocus(clamped)
   const contentRow = Math.max(0, clamped.row - (search ? 1 : 0))
+  if (contentRow >= live.scrollRows.length) {
+    setters.setScrollTop(live.scrollTop)
+    return
+  }
   setters.setScrollTop(centerScroll && (direction === 'up' || direction === 'down')
-    ? listCenterScroll(live.contentRows, contentRow, live.viewportHeight, live.contentWidth, direction)
-    : adjustScroll(live.contentRows, { row: contentRow, col: clamped.col }, live.scrollTop, live.viewportHeight, live.contentWidth))
+    ? listCenterScroll(live.scrollRows, contentRow, live.viewportHeight, live.contentWidth, direction)
+    : adjustScroll(live.scrollRows, { row: contentRow, col: clamped.col }, live.scrollTop, live.viewportHeight, live.contentWidth))
 }
 
 function arrowFromRaw(input: string): 'up' | 'down' | 'left' | 'right' | null {

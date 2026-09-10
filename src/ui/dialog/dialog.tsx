@@ -3,7 +3,7 @@ import { createContext, useContext } from 'react'
 import { useCaret } from '../hooks/use-caret.ts'
 import type { ReactNode, Ref } from 'react'
 import { useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { COLORS } from '../../theme.ts'
+import { DIALOG_COLORS } from '../../theme.ts'
 import { writeCursorShape } from '../../terminal/cursor-shape.ts'
 import { textWidth, colToCharIndex, caretScrollStart, truncate } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
@@ -47,6 +47,20 @@ export type DialogHandle = WindowHandle
 
 export const CloseGuardContext = createContext(false)
 
+function isActionRow(row: DialogRow): boolean {
+  return row.items.some(item => item.type === 'actions')
+}
+
+function splitActionRows(rows: DialogRow[]): { bodyRows: DialogRow[]; actionRows: DialogRow[] } {
+  const bodyRows: DialogRow[] = []
+  const actionRows: DialogRow[] = []
+  for (const row of rows) {
+    if (isActionRow(row)) actionRows.push(row)
+    else bodyRows.push(row)
+  }
+  return { bodyRows, actionRows }
+}
+
 export function Dialog({
   width,
   maxHeight,
@@ -82,9 +96,10 @@ export function Dialog({
   }
   const searchRow: DialogRow = { items: [{ type: 'search', value: searchValue, onChange: handleSearch }] }
   const filteredRows = search ? filterRowsWithHeaders(rows, searchValue, searchRight) : rows
-  const displayRows = search ? [searchRow, ...filteredRows] : rows
-  const contentRows = search ? filteredRows : rows
-  const [focus, setFocus] = useState<DialogFocus>(() => ({ row: snapRow(search ? [searchRow, ...rows] : rows, search ? 1 : 0), col: 0 }))
+  const { bodyRows: scrollRows, actionRows } = splitActionRows(filteredRows)
+  const contentRows = [...scrollRows, ...actionRows]
+  const displayRows = search ? [searchRow, ...contentRows] : contentRows
+  const [focus, setFocus] = useState<DialogFocus>(() => ({ row: snapRow(search ? [searchRow, ...contentRows] : contentRows, search ? 1 : 0), col: 0 }))
   const windowWidth = Math.min(Math.max(1, width), columns)
   const contentWidth = Math.max(1, windowWidth - 4)
   const fixedHeight = search ? rowHeight(searchRow, contentWidth) : 0
@@ -109,7 +124,8 @@ export function Dialog({
   // it, outranking the ratio cap; only true overflow squeezes the window.
   const windowHeight = Math.max(Math.min(DIALOG_MIN_HEIGHT, totalRows), Math.min(desired, maxRows, totalRows))
   const contentHeight = Math.max(1, windowHeight - 2 - titleLines - extraHeight)
-  const viewportHeight = Math.max(1, contentHeight - fixedHeight)
+  const actionHeight = actionRows.reduce((sum, row) => sum + rowHeight(row, contentWidth), 0)
+  const viewportHeight = Math.max(1, contentHeight - fixedHeight - actionHeight)
   const top = Math.max(0, Math.floor((totalRows - windowHeight) / 2))
   const left = Math.max(0, Math.floor((columns - windowWidth) / 2))
   const frameLeft = 2
@@ -124,12 +140,14 @@ export function Dialog({
     row: Math.min(Math.max(focus.row, 0), focusMaxRow),
     col: Math.min(Math.max(focus.col, 0), selectableSpan(displayRows[focus.row])),
   }
-  const contentRowsHeight = contentRows.reduce((sum, row) => sum + rowHeight(row, contentWidth), 0)
-  const maxScroll = Math.max(0, contentRowsHeight - viewportHeight)
-  const scroll = adjustScroll(contentRows, { row: Math.max(0, safeFocus.row - (search ? 1 : 0)), col: 0 }, Math.min(scrollTop, maxScroll), viewportHeight, contentWidth)
+  const scrollRowsHeight = scrollRows.reduce((sum, row) => sum + rowHeight(row, contentWidth), 0)
+  const maxScroll = Math.max(0, scrollRowsHeight - viewportHeight)
+  const scrollFocusRow = Math.min(Math.max(0, safeFocus.row - (search ? 1 : 0)), Math.max(0, scrollRows.length - 1))
+  const scroll = adjustScroll(scrollRows, { row: scrollFocusRow, col: 0 }, Math.min(scrollTop, maxScroll), viewportHeight, contentWidth)
   const live = useRef<DialogLiveState>({
     rows: displayRows,
     contentRows,
+    scrollRows,
     focus,
     scrollTop: scroll,
     cursor,
@@ -144,6 +162,7 @@ export function Dialog({
   })
   live.current.rows = displayRows
   live.current.contentRows = contentRows
+  live.current.scrollRows = scrollRows
   live.current.focus = focus
   live.current.scrollTop = scroll
   live.current.searchValue = searchValue
@@ -184,8 +203,8 @@ export function Dialog({
     if (caretOffset === undefined) {
       setCursorPosition(undefined)
     } else {
-      const contentIndex = Math.max(0, safeFocus.row - (search ? 1 : 0))
-      const rowOffset = rowTopOffset(contentRows, contentIndex, contentWidth)
+      const contentIndex = Math.min(Math.max(0, safeFocus.row - (search ? 1 : 0)), Math.max(0, scrollRows.length - 1))
+      const rowOffset = rowTopOffset(scrollRows, contentIndex, contentWidth)
       setCursorPosition({
         x: left + frameLeft + caretOffset.dx,
         y: top + contentTop + rowOffset + caretOffset.dy - scroll,
@@ -287,43 +306,83 @@ export function Dialog({
           return
         }
       }
-      const rowIndex = hitRowIndex(y, top + fixedHeight, titleLines, contentRows, scroll, contentWidth)
-      if (rowIndex === null) return
-      const rowSpec = contentRows[rowIndex]
-      if (!isSelectableRow(rowSpec)) return
-      const displayRow = Math.min(Math.max(rowIndex + (search ? 1 : 0), focusMinRow), focusMaxRow)
-      const rowOffset = rowTopOffset(contentRows, rowIndex, contentWidth)
-      const hit: ClickHit = {
-        localX: x - (left + frameLeft),
-        localY: y - (top + contentTop + rowOffset - scroll),
-        width: contentWidth,
-      }
-      const clickActions: ClickActions = {
-        focus: col => setFocus({ row: displayRow, col }),
-        flash: side => flashCarousel(rowIndex, side),
-      }
-      for (const item of rowSpec?.items ?? []) {
-        if (widgetOf(item.type).onClick?.(item, hit, clickActions) === true) return
-      }
-      if (safeFocus.row === displayRow && rowSpec !== undefined) {
-        const first = rowSpec.items[0]
-        if (first !== undefined) {
-          const activate = widgetOf(first.type).activate
-          if (activate !== undefined) {
-            activate(first)
-            return
+      const rowIndex = hitRowIndex(y, top + fixedHeight, titleLines, scrollRows, scroll, contentWidth)
+      if (rowIndex !== null) {
+        const rowSpec = scrollRows[rowIndex]
+        if (isSelectableRow(rowSpec)) {
+          const displayRow = Math.min(Math.max(rowIndex + (search ? 1 : 0), focusMinRow), focusMaxRow)
+          const rowOffset = rowTopOffset(scrollRows, rowIndex, contentWidth)
+          const hit: ClickHit = {
+            localX: x - (left + frameLeft),
+            localY: y - (top + contentTop + rowOffset - scroll),
+            width: contentWidth,
           }
+          const clickActions: ClickActions = {
+            focus: col => setFocus({ row: displayRow, col }),
+            flash: side => flashCarousel(rowIndex, side),
+          }
+          for (const item of rowSpec?.items ?? []) {
+            if (widgetOf(item.type).onClick?.(item, hit, clickActions) === true) return
+          }
+          if (safeFocus.row === displayRow && rowSpec !== undefined) {
+            const first = rowSpec.items[0]
+            if (first !== undefined) {
+              const activate = widgetOf(first.type).activate
+              if (activate !== undefined) {
+                activate(first)
+                return
+              }
+            }
+          }
+          setFocus({ row: displayRow, col: 0 })
+          const contentRow = Math.max(0, Math.min(rowIndex, scrollRows.length - 1))
+          setScrollTop(adjustScroll(scrollRows, { row: contentRow, col: 0 }, scroll, viewportHeight, contentWidth))
+          return
         }
       }
-      setFocus({ row: displayRow, col: 0 })
-      const contentRow = Math.max(0, Math.min(rowIndex, contentRows.length - 1))
-      setScrollTop(adjustScroll(contentRows, { row: contentRow, col: 0 }, scroll, viewportHeight, contentWidth))
+      if (actionRows.length > 0) {
+        const actionTop = top + contentTop + viewportHeight
+        let actionOffset = 0
+        for (let i = 0; i < actionRows.length; i++) {
+          const height = rowHeight(actionRows[i]!, contentWidth)
+          if (y >= actionTop + actionOffset && y < actionTop + actionOffset + height) {
+            const rowSpec = actionRows[i]!
+            if (!isSelectableRow(rowSpec)) return
+            const displayRow = Math.min(Math.max(scrollRows.length + (search ? 1 : 0) + i, focusMinRow), focusMaxRow)
+            const hit: ClickHit = {
+              localX: x - (left + frameLeft),
+              localY: y - (actionTop + actionOffset),
+              width: contentWidth,
+            }
+            const clickActions: ClickActions = {
+              focus: col => setFocus({ row: displayRow, col }),
+              flash: side => flashCarousel(scrollRows.length + i, side),
+            }
+            for (const item of rowSpec?.items ?? []) {
+              if (widgetOf(item.type).onClick?.(item, hit, clickActions) === true) return
+            }
+            if (safeFocus.row === displayRow && rowSpec !== undefined) {
+              const first = rowSpec.items[0]
+              if (first !== undefined) {
+                const activate = widgetOf(first.type).activate
+                if (activate !== undefined) {
+                  activate(first)
+                  return
+                }
+              }
+            }
+            setFocus({ row: displayRow, col: 0 })
+            return
+          }
+          actionOffset += height
+        }
+      }
     },
   }))
   const visibleRows: ReactNode[] = []
   let offset = 0
-  for (let i = 0; i < contentRows.length; i++) {
-    const height = rowHeight(contentRows[i]!, contentWidth)
+  for (let i = 0; i < scrollRows.length; i++) {
+    const height = rowHeight(scrollRows[i]!, contentWidth)
     if (offset + height <= scroll) {
       offset += height
       continue
@@ -335,7 +394,7 @@ export function Dialog({
     const focused = safeFocus.row === i + (search ? 1 : 0)
     visibleRows.push(
       <Box key={`row-${i}`} position="absolute" top={rel} left={0} width={contentWidth}>
-        {renderRow(contentRows[i], focused, contentWidth, baseY, frameLeft, carouselPress?.row === i ? carouselPress.side : null, focused ? safeFocus.col : 0, clip, focused ? effectiveCursor : undefined)}
+        {renderRow(scrollRows[i], focused, contentWidth, baseY, frameLeft, carouselPress?.row === i ? carouselPress.side : null, focused ? safeFocus.col : 0, clip, focused ? effectiveCursor : undefined)}
       </Box>,
     )
     offset += height
@@ -349,7 +408,7 @@ export function Dialog({
         width={windowWidth}
         height={windowHeight}
         flexDirection="column"
-        backgroundColor={COLORS.dialogBackground}
+        backgroundColor={DIALOG_COLORS.dialogBackground}
         paddingLeft={2}
         paddingRight={2}
         paddingTop={1}
@@ -374,6 +433,25 @@ export function Dialog({
           <Box flexDirection="column" height={viewportHeight} overflow="hidden">
             {visibleRows}
           </Box>
+          {actionRows.length > 0 && (
+            <Box flexDirection="column">
+              {actionRows.map((row, index) => (
+                <Box key={`action-${index}`}>
+                  {renderRow(
+                    row,
+                    safeFocus.row === scrollRows.length + (search ? 1 : 0) + index,
+                    contentWidth,
+                    contentTop + viewportHeight + rowTopOffset(actionRows, index, contentWidth),
+                    frameLeft,
+                    null,
+                    safeFocus.row === scrollRows.length + (search ? 1 : 0) + index ? safeFocus.col : 0,
+                    0,
+                    safeFocus.row === scrollRows.length + (search ? 1 : 0) + index ? effectiveCursor : undefined,
+                  )}
+                </Box>
+              ))}
+            </Box>
+          )}
         </Box>
         {footerRows.length > 0 && (
           <>
@@ -400,7 +478,7 @@ export function Dialog({
           width={windowWidth}
           height={errorVisible + 1}
           flexDirection="column"
-          backgroundColor={COLORS.dialogBackground}
+          backgroundColor={DIALOG_COLORS.dialogBackground}
           paddingLeft={2}
           paddingRight={2}
           paddingBottom={1}

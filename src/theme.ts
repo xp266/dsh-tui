@@ -260,6 +260,59 @@ export const palettes: Record<ThemeMode, Theme> = { dark: darkPalette, light: li
 
 export const COLORS: Theme = { ...darkPalette }
 
+/**
+ * The un-dimmed palette the dialog layer renders with: while a window is
+ * open, COLORS drops in brightness behind it, DIALOG_COLORS does not.
+ */
+export const DIALOG_COLORS: Theme = { ...darkPalette }
+
+// Interaction state, not content: the selection highlight stays at full
+// brightness in the dimmed region and inside the dialog alike.
+const DIALOG_DIM_EXEMPT: ReadonlySet<keyof Theme> = new Set(['selectionBg', 'selectionFg'])
+
+const DIALOG_DIM_RATIO = 0.5
+
+/** Every channel scales by the same ratio, which lowers HSL lightness while
+ *  keeping hue and saturation untouched, so one rule dims every color. */
+function dimHex(hex: string): string {
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
+  if (match === null) return hex
+  const channel = (at: number): string => Math.round(parseInt(match[at]!, 16) * DIALOG_DIM_RATIO).toString(16).padStart(2, '0')
+  return `#${channel(1)}${channel(2)}${channel(3)}`
+}
+
+function dimPalette(palette: Theme): Theme {
+  const dimmed: Record<string, string> = { ...palette }
+  for (const key of Object.keys(dimmed)) {
+    if (DIALOG_DIM_EXEMPT.has(key as keyof Theme)) continue
+    dimmed[key] = dimHex(dimmed[key]!)
+  }
+  return dimmed as Theme
+}
+
+let dialogDimActive = false
+const dialogDimListeners = new Set<() => void>()
+
+export function subscribeDimState(listener: () => void): () => void {
+  dialogDimListeners.add(listener)
+  return () => {
+    dialogDimListeners.delete(listener)
+  }
+}
+
+export function setDialogDimmed(dimmed: boolean): void {
+  if (dialogDimActive === dimmed) return
+  dialogDimActive = dimmed
+  materialize(currentMode)
+  for (const listener of [...dialogDimListeners]) {
+    try {
+      listener()
+    } catch {
+      // One broken listener must not leave the dim state half-published.
+    }
+  }
+}
+
 let currentMode: ThemeMode = 'dark'
 
 function permissionModes(): Record<PermissionModeId, { color: string; textColor: string; name: string }> {
@@ -280,7 +333,9 @@ function effectivePalette(mode: ThemeMode): Theme {
 }
 
 function materialize(mode: ThemeMode): void {
-  Object.assign(COLORS, effectivePalette(mode))
+  const palette = effectivePalette(mode)
+  Object.assign(DIALOG_COLORS, palette)
+  Object.assign(COLORS, dialogDimActive ? dimPalette(palette) : palette)
   Object.assign(PERMISSION_MODES, permissionModes())
 }
 

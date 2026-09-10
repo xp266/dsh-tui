@@ -8,9 +8,15 @@ import type { LineSelection } from '../model/selection.ts'
 import { envelopeOverlaps, registerRowPiece } from './selection-registry.ts'
 import { useOrigin } from './region.tsx'
 import type { Segment } from '../core/segments.ts'
-import { COLORS } from '../theme.ts'
+import { COLORS, DIALOG_COLORS } from '../theme.ts'
 
 export const SelectionContext = createContext<LineSelection | null>(null)
+
+/**
+ * True under the dialog layer: the ink fallback must come from the un-dimmed
+ * palette so window text never dims along with the page behind it.
+ */
+export const DialogPaletteContext = createContext(false)
 
 export interface SelectableTextProps {
   y: number
@@ -49,14 +55,14 @@ const SelectableContent = memo(function SelectableContent({ content, segments, c
     if (segments !== undefined) {
       return (
         <Text backgroundColor={backgroundColor}>
-          {renderSegments(segments, 0, sliceStart, color ?? COLORS.ink)}
+          {renderSegments(segments, 0, sliceStart, color)}
           {highlight}
-          {renderSegments(segments, sliceEnd, content.length, color ?? COLORS.ink)}
+          {renderSegments(segments, sliceEnd, content.length, color)}
         </Text>
       )
     }
     return (
-      <Text backgroundColor={backgroundColor} inverse={inverse} color={color ?? COLORS.ink} bold={bold}>
+      <Text backgroundColor={backgroundColor} inverse={inverse} color={color} bold={bold}>
         {content.slice(0, sliceStart)}
         {highlight}
         {content.slice(sliceEnd)}
@@ -64,10 +70,10 @@ const SelectableContent = memo(function SelectableContent({ content, segments, c
     )
   }
   if (segments !== undefined) {
-    return <Text backgroundColor={backgroundColor}>{renderSegments(segments, 0, content.length, color ?? COLORS.ink)}</Text>
+    return <Text backgroundColor={backgroundColor}>{renderSegments(segments, 0, content.length, color)}</Text>
   }
   return (
-    <Text backgroundColor={backgroundColor} inverse={inverse} color={color ?? COLORS.ink} bold={bold}>
+    <Text backgroundColor={backgroundColor} inverse={inverse} color={color} bold={bold}>
       {content}
     </Text>
   )
@@ -84,6 +90,11 @@ const SelectableContent = memo(function SelectableContent({ content, segments, c
 
 export const SelectableText = function SelectableText({ y, col, text, segments, color, bold = false, inverse = false, backgroundColor, messageLayer = false, flow = false, stripRow }: SelectableTextProps) {
   const selection = useContext(SelectionContext)
+  const dialogPalette = useContext(DialogPaletteContext)
+  // Resolve the ink fallback here, outside the memo below: the resolved color
+  // rides the props, so a palette swap (theme change, dialog dim) invalidates
+  // the memoized content even when every other prop is unchanged.
+  const baseColor = color ?? (dialogPalette ? DIALOG_COLORS.ink : COLORS.ink)
   const origin = useOrigin()
   const absY = origin.y + y
   const absCol = origin.x + col
@@ -112,7 +123,7 @@ export const SelectableText = function SelectableText({ y, col, text, segments, 
     <SelectableContent
       content={content}
       segments={segments}
-      color={color}
+      color={baseColor}
       bold={bold}
       inverse={inverse}
       backgroundColor={backgroundColor}

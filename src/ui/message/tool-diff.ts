@@ -47,12 +47,12 @@ export interface ToolDiffBody {
   bgs: (string | undefined)[]
 }
 
-const PLAIN_STYLE = { color: COLORS.mdCodePlain }
-
 function splitHighlightedLines(source: string, lang: string, streamId: string): Segment[][] {
   if (source === '') return []
   const highlighted = highlightCodeBlock(source, lang, false, streamId)
-  const segments = highlighted ?? [{ text: source, style: PLAIN_STYLE }]
+  // Read at call time: a module-level style snapshot would freeze the
+  // pre-dim color and keep plain tool card bodies bright behind a dialog.
+  const segments = highlighted ?? [{ text: source, style: { color: COLORS.mdCodePlain } }]
   const out: Segment[][] = [[]]
   for (const segment of segments) {
     const parts = segment.text.split('\n')

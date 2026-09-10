@@ -1,5 +1,5 @@
 import { Box, Text } from 'ink'
-import { COLORS } from '../../theme.ts'
+import { DIALOG_COLORS } from '../../theme.ts'
 import { locToPoint, textWidth, wrapLines } from '../../core/text.ts'
 import { caretNonceBold, caretNonceColor, caretNonceText } from '../../core/caret-nonce.ts'
 import { SelectableText } from '../selection.tsx'
@@ -36,7 +36,7 @@ registerWidget<InputItem>('input', {
     if (clip === 0) {
       parts.push(
         <Box key="label" height={1}>
-          <SelectableText y={y} col={x} text={item.label} color={focused ? undefined : COLORS.dialogHintText} />
+          <SelectableText y={y} col={x} text={item.label} color={focused ? DIALOG_COLORS.ink : DIALOG_COLORS.dialogHintText} />
         </Box>,
       )
     }
@@ -44,7 +44,7 @@ registerWidget<InputItem>('input', {
       if (1 + index < clip) continue
       const currentY = y + 1 + index - clip
       parts.push(
-        <Box key={index} width={width} height={1} backgroundColor={COLORS.dialogInputBackground}>
+        <Box key={index} width={width} height={1} backgroundColor={DIALOG_COLORS.dialogInputBackground}>
           <SelectableText y={currentY} col={x} text={lines[first + index]!} />
         </Box>,
       )

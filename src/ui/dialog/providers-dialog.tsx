@@ -3,7 +3,7 @@ import type { Ref } from 'react'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import type { CustomProviderForm, OfficialProvider } from '../../chat/models.ts'
 import { API_PROTOCOLS, isProviderIdValid } from '../../chat/models.ts'
-import { COLORS } from '../../theme.ts'
+import { DIALOG_COLORS } from '../../theme.ts'
 import { errorLine, loadingLine } from './status-lines.ts'
 import { useAsyncAction } from '../hooks/use-async-action.ts'
 import { useAsyncList } from '../hooks/use-async-list.ts'
@@ -28,7 +28,7 @@ type Window =
 const ARM_TIMEOUT_MS = 3000
 
 const DELETE_HINT: DialogFooterLine[] = [
-  { text: 'Ctrl+D to delete the custom provider', color: COLORS.dialogHintText },
+  { text: 'Ctrl+D to delete the custom provider', color: DIALOG_COLORS.dialogHintText },
 ]
 
 
@@ -243,9 +243,9 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
     ],
   }))
   const statusLines: DialogFooterLine[] = [
-    ...(window.kind === 'select-models' ? [{ text: 'Press Space to toggle, Enter to confirm', color: COLORS.dialogHintText }] : []),
+    ...(window.kind === 'select-models' ? [{ text: 'Press Space to toggle, Enter to confirm', color: DIALOG_COLORS.dialogHintText }] : []),
     ...(window.kind === 'add-provider-key' && provider?.declared === true
-      ? [{ text: 'Submit an empty key to keep the stored one', color: COLORS.dialogHintText }]
+      ? [{ text: 'Submit an empty key to keep the stored one', color: DIALOG_COLORS.dialogHintText }]
       : []),
     ...(fetching && (window.kind === 'add-provider-key' || window.kind === 'add-custom') ? [{ text: 'Fetching models...' }] : []),
   ]
@@ -286,7 +286,7 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
         label: entry.displayName || entry.provider,
         right: armed ? 'Press Ctrl+D again to delete' : sourceOf(entry),
         onPress: () => selectDirectoryProvider(entry),
-        ...(armed ? { rightColor: COLORS.errorText } : {}),
+        ...(armed ? { rightColor: DIALOG_COLORS.errorText } : {}),
       }
       providerItemMap.set(item, entry)
       return { items: [item] }

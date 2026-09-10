@@ -13,7 +13,8 @@ import { writeCursorShape } from './terminal/cursor-shape.ts'
 import { enterMode, restoreAllModes } from './terminal/modes.ts'
 import { startHotTheme } from './hot-theme.ts'
 import { applyTheme } from './apply-theme.ts'
-import { registerPalette } from './theme.ts'
+import { registerPalette, subscribeDimState } from './theme.ts'
+import { bumpSurface } from './kernel/surface.ts'
 import { resolveBackgroundMode } from './terminal/background.ts'
 import { warmLanguages, onLanguagesWarm, clearHighlightCache } from './ui/message/md/highlight.ts'
 import { clearMarkdownBlockCache } from './ui/message/md/engine.ts'
@@ -79,6 +80,7 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
     let lastRows = 0
     let stopSizePoll: (() => void) | undefined
     let exposeFaces: (() => void) | undefined
+    let offDialogDim: (() => void) | undefined
     const buildAppNode = () => <App bridge={bridge} screen={capture} themeTick={themeTick} onForceExit={() => { app?.unmount() }} />
     const rerender = (): void => {
       themeTick += 1
@@ -139,6 +141,10 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
         return
       }
       hotTheme = startHotTheme(rerender)
+      offDialogDim = subscribeDimState(() => {
+        bumpSurface()
+        rerender()
+      })
     }
     registerConfigPalette(config.colors)
     openBootLog()
@@ -182,6 +188,7 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
       disposeExtensionPoint()
       stopSizePoll?.()
       hotTheme?.stop()
+      offDialogDim?.()
       bridge?.dispose()
       app?.unmount()
       restoreAllModes()

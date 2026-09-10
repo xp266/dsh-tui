@@ -1,6 +1,6 @@
 import { Box } from 'ink'
 import { padToWidth, textWidth, truncate } from '../../core/text.ts'
-import { COLORS } from '../../theme.ts'
+import { DIALOG_COLORS } from '../../theme.ts'
 import { SelectableText } from '../selection.tsx'
 import { BUILTIN_WIDGET_ORDER, registerWidget } from './registry.ts'
 import type { PaintArgs } from './types.ts'
@@ -25,7 +25,7 @@ function paintButton(item: ButtonItem, paint: PaintArgs<ButtonItem>) {
     return (
       <Box width={width} justifyContent="space-between">
         <SelectableText y={y} col={x} text={item.label} />
-        <SelectableText y={y} col={x + width - textWidth(right)} text={right} color={item.rightColor ?? COLORS.dialogHintText} />
+        <SelectableText y={y} col={x + width - textWidth(right)} text={right} color={item.rightColor ?? DIALOG_COLORS.dialogHintText} />
       </Box>
     )
   }

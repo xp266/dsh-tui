@@ -1,5 +1,5 @@
 import { Box } from 'ink'
-import { COLORS } from '../../theme.ts'
+import { DIALOG_COLORS } from '../../theme.ts'
 import { textWidth, wrapLines } from '../../core/text.ts'
 import { SelectableText } from '../selection.tsx'
 import { BUILTIN_WIDGET_ORDER, registerWidget } from './registry.ts'
@@ -18,7 +18,7 @@ registerWidget<StaticItem>('static', {
   render({ item, width, y, x }) {
     const lines = item.label === '' ? [''] : wrapLines(item.label, Math.max(4, width))
     if (lines.length === 1) {
-      return <SelectableText y={y} col={x} text={item.label === '' ? ' ' : item.label} color={item.label === '' ? undefined : COLORS.toolBodyText} />
+      return <SelectableText y={y} col={x} text={item.label === '' ? ' ' : item.label} color={item.label === '' ? undefined : DIALOG_COLORS.toolBodyText} />
     }
     return (
       <Box flexDirection="column">
@@ -28,7 +28,7 @@ registerWidget<StaticItem>('static', {
             y={y + index}
             col={x}
             text={line === '' ? ' ' : line}
-            color={line === '' ? undefined : COLORS.toolBodyText}
+            color={line === '' ? undefined : DIALOG_COLORS.toolBodyText}
           />
         ))}
       </Box>

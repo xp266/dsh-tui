@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Ref } from 'react'
-import { COLORS } from '../../theme.ts'
+import { DIALOG_COLORS } from '../../theme.ts'
 import { errorLine, loadingLine } from './status-lines.ts'
 import type { SessionSummary } from '../../chat/session-list.ts'
 import { groupSessions } from '../../chat/session-groups.ts'
@@ -38,7 +38,7 @@ const SECTION_LABELS: Record<SessionSectionKind, string> = {
 }
 
 const ARCHIVE_HINT: DialogFooterLine[] = [
-  { text: 'Ctrl+D to archive the session', color: COLORS.dialogHintText },
+  { text: 'Ctrl+D to archive the session', color: DIALOG_COLORS.dialogHintText },
 ]
 
 interface ArmedRow {
@@ -129,7 +129,7 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
         label: session.name || session.id,
         right: armed ? 'Press Ctrl+D again to archive' : session.ungrouped ? 'Ungrouped' : session.directory,
         onPress: () => void selectSession(session),
-        ...(armed ? { rightColor: COLORS.errorText } : {}),
+        ...(armed ? { rightColor: DIALOG_COLORS.errorText } : {}),
       }
       rowRefs.set(item, { key, id: session.id })
       rows.push({ items: [item] })
