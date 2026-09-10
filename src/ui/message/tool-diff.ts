@@ -2,7 +2,7 @@ import { wrapSegments } from '../../core/segments.ts'
 import type { Segment } from '../../core/segments.ts'
 import { COLORS } from '../../theme.ts'
 import { highlightCodeBlock, LANGUAGE_ALIASES } from './md/highlight.ts'
-import type { DiffLine } from '../../model/message.ts'
+import type { DiffLine, DiffLineKind } from '../../model/message.ts'
 
 const FILENAME_LANGUAGES: Record<string, string> = {
   makefile: 'makefile',
@@ -45,7 +45,20 @@ export interface ToolDiffBody {
   lines: string[]
   rows: Segment[][]
   bgs: (string | undefined)[]
+  /** Per-row +/- marker, rendered outside the selectable code (diffs only). */
+  gutters?: Segment[]
 }
+
+/** Columns of the +/- gutter that leads every diff row. */
+export const DIFF_GUTTER_COLS = 2
+
+function diffGutter(kind: DiffLineKind): Segment {
+  if (kind === 'add') return { text: '+ ', style: { color: COLORS.diffAdded } }
+  if (kind === 'del') return { text: '- ', style: { color: COLORS.diffRemoved } }
+  return { text: '  ', style: {} }
+}
+
+const BLANK_GUTTER: Segment = { text: '  ', style: {} }
 
 function splitHighlightedLines(source: string, lang: string, streamId: string): Segment[][] {
   if (source === '') return []
@@ -72,27 +85,25 @@ export interface ToolDiffLike {
   error?: string
   /**
    * Paint whole-line red/green backgrounds behind removed and added lines.
-   * Defaults to true when the diff contains any removal: a pure-addition card
-   * (a fresh file write) would otherwise read as one noisy column of green.
+   * Defaults to true for every tool but `write`: a write dumps whole files, so
+   * one solid color reads as noise, while an edit's one-sided change (only
+   * additions, or only removals) is still a modification worth marking.
    * Contributions set this explicitly to override the heuristic either way.
    */
   backgrounds?: boolean
 }
 
-function hasRemovals(hunks: readonly (readonly DiffLine[])[]): boolean {
-  return hunks.some(hunk => hunk.some(line => line.kind === 'del'))
-}
-
 export function renderToolDiffBody(message: ToolDiffLike, width: number): ToolDiffBody {
   const budget = Math.max(4, width)
-  const bodyWidth = Math.max(2, budget - 2)
+  const bodyWidth = Math.max(2, budget - DIFF_GUTTER_COLS)
   const lines: string[] = []
   const rows: Segment[][] = []
   const bgs: (string | undefined)[] = []
+  const gutters: Segment[] = []
   const sourceText = message.hunks.map(hunk => hunk.map(line => line.text).join('\n')).join('\n')
   const fromPath = message.path === '' ? '' : languageFromPath(message.path)
   const lang = fromPath !== '' ? fromPath : sniffLanguage(sourceText)
-  const withBackgrounds = message.backgrounds ?? hasRemovals(message.hunks)
+  const withBackgrounds = message.backgrounds ?? (message.tool ?? '').toLowerCase() !== 'write'
   for (const [hunkIndex, hunk] of message.hunks.entries()) {
     const perLine = splitHighlightedLines(
       hunk.map(line => line.text).join('\n'),
@@ -101,24 +112,19 @@ export function renderToolDiffBody(message: ToolDiffLike, width: number): ToolDi
     )
     for (let index = 0; index < hunk.length; index++) {
       const line = hunk[index]!
-      let bg: string | undefined
-      let prefix: Segment[]
-      if (line.kind === 'add') {
-        bg = withBackgrounds ? COLORS.diffAddedBackground : undefined
-        prefix = [{ text: '+', style: { color: COLORS.diffAdded } }, { text: ' ', style: {} }]
-      } else if (line.kind === 'del') {
-        bg = withBackgrounds ? COLORS.diffRemovedBackground : undefined
-        prefix = [{ text: '-', style: { color: COLORS.diffRemoved } }, { text: ' ', style: {} }]
-      } else {
-        prefix = [{ text: '  ', style: {} }]
-      }
+      const bg = withBackgrounds
+        ? line.kind === 'add' ? COLORS.diffAddedBackground
+          : line.kind === 'del' ? COLORS.diffRemovedBackground
+            : undefined
+        : undefined
+      const gutter = diffGutter(line.kind)
       const wrapped = wrapSegments(perLine[index] ?? [], bodyWidth)
       for (let r = 0; r < wrapped.length; r++) {
-        const codeRow = wrapped[r] ?? []
-        const row = r === 0 ? [...prefix, ...codeRow] : [{ text: '  ', style: {} }, ...codeRow]
+        const row = wrapped[r] ?? []
         rows.push(row)
         lines.push(row.map(segment => segment.text).join(''))
         bgs.push(bg)
+        gutters.push(r === 0 ? gutter : BLANK_GUTTER)
       }
     }
   }
@@ -126,14 +132,16 @@ export function renderToolDiffBody(message: ToolDiffLike, width: number): ToolDi
     rows.push([])
     lines.push('')
     bgs.push(undefined)
+    gutters.push(BLANK_GUTTER)
     const wrapped = wrapSegments([{ text: message.error, style: { color: COLORS.errorText } }], bodyWidth)
     for (const segs of wrapped) {
       rows.push(segs)
       lines.push(segs.map(segment => segment.text).join(''))
       bgs.push(undefined)
+      gutters.push(BLANK_GUTTER)
     }
   }
-  return { lines, rows, bgs }
+  return { lines, rows, bgs, gutters }
 }
 
 export interface ToolReadLike {

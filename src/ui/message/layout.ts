@@ -7,7 +7,7 @@ import { selectedRange } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
 import { sliceByColumns } from '../selection-registry.ts'
 import { renderMarkdown, renderMarkdownStreaming, clearMarkdownStreamStates } from './md/index.ts'
-import { renderToolDiffBody, renderToolReadBody } from './tool-diff.ts'
+import { DIFF_GUTTER_COLS, renderToolDiffBody, renderToolReadBody } from './tool-diff.ts'
 import { trimTrailingBlanks } from '../../chat/tool-view.ts'
 import { messageViewOf } from './message-views.ts'
 import { segmentsKey } from '../../core/segments.ts'
@@ -40,6 +40,8 @@ export interface RowInfo {
   role: 'user' | 'assistant' | 'error' | undefined
   /** Surface family for a painted background; 'card' keeps a user-shaped row on the card gray. */
   surface?: 'card'
+  /** Diff row marker, rendered outside the selectable code and the diff fill. */
+  gutter?: Segment
   /** Exclusive column bound: a clickable row toggles only left of it (header text). */
   clickEnd?: number
   /** Row of a collapsible tool card: hovering it lights the whole bubble. */
@@ -56,6 +58,8 @@ interface BodyRendered {
   lines: string[]
   rows: Segment[][] | null
   bgs: (string | undefined)[] | null
+  /** Diff bodies only: the +/- gutter that leads every row. */
+  gutters?: Segment[] | null
   customLabel?: string
   customMuted?: boolean
   /** Tool-card fold state; present exactly when the card toggles on click. */
@@ -172,7 +176,7 @@ function renderBody(message: Message, width: number): BodyRendered {
           error: message.error,
           ...(message.diff.backgrounds === undefined ? {} : { backgrounds: message.diff.backgrounds }),
         }, inner)
-        return { lines: rendered.lines, rows: rendered.rows, bgs: rendered.bgs }
+        return { lines: rendered.lines, rows: rendered.rows, bgs: rendered.bgs, gutters: rendered.gutters }
       }
       if (message.read !== undefined) return renderReadCard(message, message.read, inner)
       const lines: string[] = []
@@ -431,11 +435,14 @@ function planFor(message: Message, body: BodyRendered): PlanRow[] {
           default: return row
         }
       }
+      // Diff rows lead with a non-selectable +/- gutter, so their code starts
+      // one gutter right of the plain tool body column.
+      const bodyCol = body.gutters === undefined ? 4 : 4 + DIFF_GUTTER_COLS
       return [
         withCard(padRow('assistant')),
         withCard(header),
         withCard(padRow('assistant')),
-        ...bodyRows(body.lines.length, { colStart: 4, bg: true, muted: false, selectable: true, role: 'assistant' }).map(withCard),
+        ...bodyRows(body.lines.length, { colStart: bodyCol, bg: true, muted: false, selectable: true, role: 'assistant' }).map(withCard),
         withCard(padRow('assistant')),
         blankRow(),
       ]
@@ -805,6 +812,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number)
     case 'body': {
       const lineBg = render.bgs?.[plan.line]
       const segments = render.rows?.[plan.line]
+      const gutter = render.gutters?.[plan.line]
       return {
         ...base,
         kind: 'text',
@@ -818,6 +826,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number)
         ...(plan.hoverable === true ? { hoverable: true } : {}),
         ...(plan.wave === true ? { wave: true } : {}),
         ...(lineBg === undefined ? {} : { lineBg }),
+        ...(gutter === undefined ? {} : { gutter }),
         ...(segments === undefined ? {} : { segments, segKey: segmentsKeyCached(segments) }),
       }
     }

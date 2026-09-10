@@ -362,8 +362,8 @@ export interface ToolViewDiff {
   hunks: readonly DiffHunk[]
   /**
    * Paint whole-line red/green backgrounds behind removed and added lines.
-   * Defaults to true when any line is a removal, false for pure additions.
-   * Set it explicitly to override that heuristic.
+   * Defaults to true for every tool but `write` (a whole-file dump reads as
+   * noise when filled). Set it explicitly to override that heuristic.
    */
   backgrounds?: boolean
 }

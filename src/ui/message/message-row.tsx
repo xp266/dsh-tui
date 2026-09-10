@@ -70,13 +70,9 @@ export const MessageRow = memo(
       const baseColor = info.role === 'error' ? COLORS.errorText : info.muted ? COLORS.toolBodyText : undefined
       const waveColor = info.segments?.[0]?.style.color ?? baseColor
       const hoverBg = info.hoverable === true && hovered ? COLORS.hoverBackground : undefined
-      return (
-        <Box
-          marginLeft={marginLeft}
-          width={info.backgroundWidth}
-          paddingLeft={info.spinner ? 0 : paddingLeft}
-          backgroundColor={hoverBg ?? info.lineBg ?? (info.background ? backgroundFor(info) : undefined)}
-        >
+      const rowBg = hoverBg ?? (info.background ? backgroundFor(info) : undefined)
+      const content = (
+        <>
           {info.spinner && <TickGlyph y={row} col={col - 2} color={info.accent ?? baseColor} />}
           {info.wave && waveColor !== undefined ? (
             <WaveText info={info} row={row} color={waveColor} />
@@ -92,6 +88,32 @@ export const MessageRow = memo(
               flow
             />
           )}
+        </>
+      )
+      // A diff row splits its surface in two: the +/- gutter keeps the card
+      // gray and stays out of the selectable text, while the diff fill covers
+      // the code region only.
+      if (info.gutter !== undefined) {
+        const lead = col - 2
+        return (
+          <Box marginLeft={2} width={info.backgroundWidth} flexDirection="row" backgroundColor={rowBg}>
+            <Box paddingLeft={2} width={lead}>
+              <Text color={info.gutter.style.color}>{info.gutter.text}</Text>
+            </Box>
+            <Box width={info.backgroundWidth - lead} backgroundColor={info.lineBg}>
+              {content}
+            </Box>
+          </Box>
+        )
+      }
+      return (
+        <Box
+          marginLeft={marginLeft}
+          width={info.backgroundWidth}
+          paddingLeft={info.spinner ? 0 : paddingLeft}
+          backgroundColor={hoverBg ?? info.lineBg ?? rowBg}
+        >
+          {content}
         </Box>
       )
     }
@@ -135,6 +157,8 @@ export const MessageRow = memo(
       a.collapsed === b.collapsed &&
       a.hoverable === b.hoverable &&
       a.surface === b.surface &&
+      a.gutter?.text === b.gutter?.text &&
+      a.gutter?.style.color === b.gutter?.style.color &&
       a.segKey === b.segKey &&
       a.spinner === b.spinner &&
       a.wave === b.wave &&

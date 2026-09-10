@@ -137,7 +137,7 @@ export function diffLineGroups(diffs: readonly DiffLike[]): DiffLine[][] {
 export interface ToolDiffView {
   path: string
   hunks: readonly (readonly DiffLine[])[]
-  /** Override the default "paint backgrounds when a removal exists" rule. */
+  /** Override the default "paint backgrounds unless the tool is write" rule. */
   backgrounds?: boolean
 }
 
