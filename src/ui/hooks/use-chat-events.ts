@@ -9,6 +9,7 @@ import type { AgentActivity } from '../../chat/store.ts'
 import { normalizeTodos } from '../../chat/todo-view.ts'
 import type { TodoItemLike } from '../../chat/todo-view.ts'
 import type { Message } from '../../model/message.ts'
+import { windowMessages } from '../../chat/store.ts'
 import { releaseFields, hasFieldSlots, releaseUnreferenced } from '../../core/fields.ts'
 
 const FRAME_MS = 33
@@ -98,6 +99,9 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
         dirty = dirty || next.changed
         state = { messages: next.messages, turn: next.turn }
       }
+      const windowed = windowMessages(state.messages, state.turn)
+      if (windowed !== state.messages) dirty = true
+      state = { messages: windowed, turn: state.turn }
       chatStateRef.current = state
       if (dirty && hasFieldSlots('message')) {
         let keep = ''

@@ -17,6 +17,7 @@ import { glyphs } from '../../terminal/glyphs.ts'
 import { BUBBLE_WIDTH_OFFSET, HEADER_LABEL_COL } from '../../core/metrics.ts'
 import { messageBackgroundWidth } from '../layout-service.ts'
 import { messageRendererOf } from './renderers.ts'
+import { currentCollapsePolicy } from '../../chat/collapse-policy.ts'
 
 export { HEADER_LABEL_COL }
 
@@ -38,6 +39,8 @@ export interface RowInfo {
   collapsed: boolean
   thinking: boolean
   role: 'user' | 'assistant' | 'error' | undefined
+  /** Row of a collapsible tool card: hovering it lights the whole bubble. */
+  hoverable?: boolean
   segments?: Segment[]
   segKey?: string
   spinner?: boolean
@@ -52,12 +55,14 @@ interface BodyRendered {
   bgs: (string | undefined)[] | null
   customLabel?: string
   customMuted?: boolean
+  /** Tool-card fold state; when set the hint row (last line) toggles the card. */
+  collapse?: { collapsed: boolean }
 }
 
 type PlanRow =
-  | { type: 'pad'; role: RowInfo['role'] }
+  | { type: 'pad'; role: RowInfo['role']; toggle?: boolean; hoverable?: boolean }
   | { type: 'blank' }
-  | { type: 'header'; label: string; collapsed: boolean; clickable: boolean }
+  | { type: 'header'; label: string; collapsed: boolean; clickable: boolean; hoverable?: boolean }
   | {
       type: 'body'
       line: number
@@ -66,6 +71,9 @@ type PlanRow =
       muted: boolean
       selectable: boolean
       role: RowInfo['role']
+      /** The row click toggles the card; selection only starts by dragging off it. */
+      toggle?: boolean
+      hoverable?: boolean
       wave?: boolean
     }
   | {
@@ -77,6 +85,8 @@ type PlanRow =
       muted: boolean
       selectable: boolean
       role: RowInfo['role']
+      toggle?: boolean
+      hoverable?: boolean
       wave?: boolean
     }
 
@@ -94,10 +104,10 @@ export function clearLayoutCache(): void {
 const padRow = (role: RowInfo['role']): PlanRow => ({ type: 'pad', role })
 const blankRow = (): PlanRow => ({ type: 'blank' })
 
-function bodyRows(count: number, options: { colStart: number; bg: boolean; muted: boolean; selectable: boolean; role: RowInfo['role'] }): PlanRow[] {
+function bodyRows(count: number, options: { colStart: number; bg: boolean; muted: boolean; selectable: boolean; role: RowInfo['role'] }, toggleLine = -1): PlanRow[] {
   const out: PlanRow[] = []
   for (let line = 0; line < count; line++) {
-    out.push({ type: 'body', line, ...options })
+    out.push({ type: 'body', line, ...options, ...(line === toggleLine ? { toggle: true } : {}) })
   }
   return out
 }
@@ -229,6 +239,27 @@ function renderBody(message: Message, width: number): BodyRendered {
         const text = truncate(message.error!, Math.max(8, inner))
         push(text, [{ text, style: { color: COLORS.errorText } }])
       }
+      if (toolCardCollapsible(message) && toolCardOverflow(message, lines, inner)) {
+        const collapsed = message.collapsed ?? true
+        const hint = collapsed ? 'click to expand' : 'click to collapse'
+        const hintRow: Segment[] = [{ text: hint, style: { color: COLORS.dialogHintText } }]
+        if (collapsed) {
+          const preview = lines.slice(0, Math.max(1, currentCollapsePolicy().maxLines))
+          preview.push('')
+          preview.push(hint)
+          const outRows: Segment[][] = []
+          for (let index = 0; index < preview.length; index++) {
+            const row = rows[index]
+            if (row !== undefined) outRows[index] = row
+          }
+          outRows[preview.length - 1] = hintRow
+          return { lines: preview, rows: outRows, bgs: null, collapse: { collapsed: true } }
+        }
+        lines.push('')
+        lines.push(hint)
+        rows[lines.length - 1] = hintRow
+        return { lines, rows, bgs: null, collapse: { collapsed: false } }
+      }
       return { lines, rows: rows.length === 0 ? null : rows, bgs: null }
     }
     case 'compaction': {
@@ -282,7 +313,30 @@ function firstLine(text: string): string {
   return at === -1 ? text : text.slice(0, at)
 }
 
-function planFor(message: Message, body: BodyRendered): PlanRow[] {
+/**
+ * Cards whose body IS the payload never collapse by size: diffs and read
+ * windows must show their content (compaction renders separately), while
+ * running/streaming cards would flicker if the fold flipped mid-flight.
+ */
+function toolCardCollapsible(message: ToolCardMessage): boolean {
+  if (message.diff !== undefined || message.read !== undefined) return false
+  if (message.running === true || message.streaming === true || message.error !== undefined) return false
+  const policy = currentCollapsePolicy()
+  const tool = message.tool.toLowerCase()
+  if (policy.expanded.has(tool)) return false
+  return true
+}
+
+function toolCardOverflow(message: ToolCardMessage, lines: readonly string[], inner: number): boolean {
+  if (message.collapsed !== undefined) return true
+  const policy = currentCollapsePolicy()
+  if (policy.folded.has(message.tool.toLowerCase())) return true
+  const previewLines = Math.max(1, policy.maxLines)
+  const chars = lines.reduce((sum, line) => sum + line.length, 0)
+  return lines.length > previewLines || chars > previewLines * Math.max(20, inner)
+}
+
+function planFor(message: Message, body: BodyRendered, width: number): PlanRow[] {
   switch (message.kind) {
     case 'bubble': {
       // User bubbles sit inside the background box; assistant, error, and
@@ -326,12 +380,25 @@ function planFor(message: Message, body: BodyRendered): PlanRow[] {
       if (body.lines.length === 0 && message.running === true) {
         return [padRow('assistant'), header, padRow('assistant'), blankRow()]
       }
+      const hoverable = toolCardCollapsible(message) && toolCardOverflow(message, body.lines, width) === true
+      // Every bubble row participates: the whole card toggles and lights up,
+      // not just the hint line. Selection starts by dragging, never by a
+      // plain click on the bubble.
+      const withCard = (row: PlanRow): PlanRow => {
+        if (!hoverable) return row
+        switch (row.type) {
+          case 'pad': return { ...row, toggle: true, hoverable: true }
+          case 'body': return { ...row, toggle: true, hoverable: true }
+          case 'lit': return { ...row, toggle: true, hoverable: true }
+          default: return row
+        }
+      }
       return [
-        padRow('assistant'),
-        header,
-        padRow('assistant'),
-        ...bodyRows(body.lines.length, { colStart: 4, bg: true, muted: false, selectable: true, role: 'assistant' }),
-        padRow('assistant'),
+        withCard(padRow('assistant')),
+        withCard(header),
+        withCard(padRow('assistant')),
+        ...bodyRows(body.lines.length, { colStart: 4, bg: true, muted: false, selectable: true, role: 'assistant' }).map(withCard),
+        withCard(padRow('assistant')),
         blankRow(),
       ]
     }
@@ -385,7 +452,7 @@ function planFor(message: Message, body: BodyRendered): PlanRow[] {
 type RenderFingerprint =
   | { kind: 'bubble'; content: string; role: string | undefined; origin: string | undefined; streaming: boolean | undefined }
   | { kind: 'collapsible'; body: string; label: string; collapsed: boolean; running: boolean; thinking: boolean | undefined; streaming: boolean | undefined }
-  | { kind: 'tool-card'; tool: string; label: string; argsBody: string; resultBody: string | undefined; diff: ToolCardMessage['diff']; read: ToolCardMessage['read']; nested: ToolCardMessage['nested']; error: string | undefined; failed: boolean | undefined; exitCode: number | undefined; signal: string | undefined; bodyCol: number | undefined; running: boolean; streaming: boolean | undefined }
+  | { kind: 'tool-card'; tool: string; label: string; argsBody: string; resultBody: string | undefined; diff: ToolCardMessage['diff']; read: ToolCardMessage['read']; nested: ToolCardMessage['nested']; error: string | undefined; failed: boolean | undefined; exitCode: number | undefined; signal: string | undefined; bodyCol: number | undefined; running: boolean; streaming: boolean | undefined; collapsed: boolean | undefined }
   | { kind: 'compaction'; summary: string; running: boolean; error: string | undefined }
   | { kind: 'custom'; view: string; data: unknown; running: boolean | undefined; streaming: boolean | undefined }
 
@@ -435,6 +502,7 @@ function fingerprintOf(message: Message): RenderFingerprint {
         bodyCol: message.bodyCol,
         running: message.running,
         streaming: message.streaming,
+        collapsed: message.collapsed,
       }
     case 'compaction':
       return {
@@ -486,6 +554,7 @@ function fingerprintMatches(entry: RenderFingerprint, message: Message): boolean
         && entry.bodyCol === message.bodyCol
         && entry.running === message.running
         && entry.streaming === message.streaming
+        && entry.collapsed === message.collapsed
     case 'compaction':
       return message.kind === 'compaction'
         && entry.summary === message.summary
@@ -506,7 +575,7 @@ function renderFor(message: Message, width: number): MessageRender {
     return memo.render
   }
   const body = renderBody(message, width)
-  const render: MessageRender = { ...body, plan: planFor(message, body) }
+  const render: MessageRender = { ...body, plan: planFor(message, body, width) }
   renderMemo.set(message, { epoch: layoutEpoch, width, fingerprint: fingerprintOf(message), render })
   return render
 }
@@ -601,7 +670,14 @@ function rowInfo(message: Message, index: number, offset: number, width: number)
   if (plan === undefined) return base
   switch (plan.type) {
     case 'pad':
-      return { ...base, kind: 'pad', background: true, role: plan.role }
+      return {
+        ...base,
+        kind: 'pad',
+        background: true,
+        role: plan.role,
+        ...(plan.toggle === true ? { clickable: true } : {}),
+        ...(plan.hoverable === true ? { hoverable: true } : {}),
+      }
     case 'blank':
       return base
     case 'header':
@@ -612,6 +688,7 @@ function rowInfo(message: Message, index: number, offset: number, width: number)
         clickable: plan.clickable,
         label: fitLabel(plan.label, width),
         collapsed: plan.collapsed,
+        ...(plan.hoverable === true ? { hoverable: true } : {}),
         spinner: Boolean(
           (message.kind === 'collapsible' || message.kind === 'custom')
           && (message.running || message.streaming),
@@ -624,9 +701,11 @@ function rowInfo(message: Message, index: number, offset: number, width: number)
         text: fitLabel(plan.text, width),
         colStart: plan.colStart,
         selectable: plan.selectable,
+        ...(plan.toggle === true ? { clickable: true } : {}),
         background: plan.bg,
         muted: plan.muted,
         role: plan.role,
+        ...(plan.hoverable === true ? { hoverable: true } : {}),
         ...(plan.wave === true ? { wave: true } : {}),
         ...(plan.segments === undefined ? {} : { segments: plan.segments, segKey: segmentsKeyCached(plan.segments) }),
       }
@@ -639,9 +718,11 @@ function rowInfo(message: Message, index: number, offset: number, width: number)
         text: render.lines[plan.line] ?? '',
         colStart: plan.colStart,
         selectable: plan.selectable,
+        clickable: plan.toggle === true,
         background: plan.bg || lineBg !== undefined,
         muted: plan.muted,
         role: plan.role,
+        ...(plan.hoverable === true ? { hoverable: true } : {}),
         ...(plan.wave === true ? { wave: true } : {}),
         ...(lineBg === undefined ? {} : { lineBg }),
         ...(segments === undefined ? {} : { segments, segKey: segmentsKeyCached(segments) }),

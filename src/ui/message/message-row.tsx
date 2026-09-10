@@ -1,5 +1,5 @@
 import { Box, Text } from 'ink'
-import { memo } from 'react'
+import { memo, useSyncExternalStore } from 'react'
 import { COLORS } from '../../theme.ts'
 import { glyphs } from '../../terminal/glyphs.ts'
 import { headerSymbol, HEADER_LABEL_COL } from './layout.ts'
@@ -7,6 +7,7 @@ import type { RowInfo } from './layout.ts'
 import { SelectableText } from '../selection.tsx'
 import { useSpinnerTick } from '../spinner-tick.tsx'
 import { wavePalette, waveSegments } from './wave.ts'
+import { hoveredMessageId, subscribeHoveredMessage } from './hover.ts'
 
 function TickGlyph({ y, col, color }: { y: number; col: number; color?: string }): ReturnType<typeof SelectableText> {
   const tick = useSpinnerTick()
@@ -35,21 +36,30 @@ function WaveText({ info, row, color }: { info: RowInfo; row: number; color: str
   )
 }
 
+function useHoveredMessage(id: string): boolean {
+  return useSyncExternalStore(
+    subscribeHoveredMessage,
+    () => hoveredMessageId() === id,
+    () => false,
+  )
+}
+
 interface MessageRowProps {
   info: RowInfo
   row: number
   themeTick?: number
 }
 
-// The row component itself consumes no context: only the spinner and wave
-// subcomponents subscribe to the tick, so memoized rows that are not
+// The row component itself consumes no context: only the spinner, wave, and
+// hover subcomponents subscribe to their ticks, so memoized rows that are not
 // animating stay untouched on every tick.
 export const MessageRow = memo(
   function MessageRow({ info, row, themeTick = 0 }: MessageRowProps) {
+  const hovered = useHoveredMessage(info.messageId)
   switch (info.kind) {
     case 'pad':
       return (
-        <Box marginLeft={2} width={info.backgroundWidth} backgroundColor={backgroundFor(info.role)}>
+        <Box marginLeft={2} width={info.backgroundWidth} backgroundColor={info.hoverable === true && hovered ? COLORS.hoverBackground : backgroundFor(info.role)}>
           <Text>{' '.repeat(info.backgroundWidth)}</Text>
         </Box>
       )
@@ -59,12 +69,13 @@ export const MessageRow = memo(
       const paddingLeft = col >= 2 ? col - 2 : 0
       const baseColor = info.role === 'error' ? COLORS.errorText : info.muted ? COLORS.toolBodyText : undefined
       const waveColor = info.segments?.[0]?.style.color ?? baseColor
+      const hoverBg = info.hoverable === true && hovered ? COLORS.hoverBackground : undefined
       return (
         <Box
           marginLeft={marginLeft}
           width={info.backgroundWidth}
           paddingLeft={info.spinner ? 0 : paddingLeft}
-          backgroundColor={info.lineBg ?? (info.background ? backgroundFor(info.role) : undefined)}
+          backgroundColor={hoverBg ?? info.lineBg ?? (info.background ? backgroundFor(info.role) : undefined)}
         >
           {info.spinner && <TickGlyph y={row} col={col - 2} color={info.accent ?? baseColor} />}
           {info.wave && waveColor !== undefined ? (

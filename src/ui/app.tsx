@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { RefObject } from 'react'
 import { permissionModeInfo, setDialogDimmed } from '../theme.ts'
+import { setHoveredMessage } from './message/hover.ts'
 import { writeClipboardText } from '../terminal/clipboard.ts'
 import { copySelection } from './selection/service.ts'
 import type { ChatBridge } from '../chat/bridge.ts'
@@ -74,6 +75,7 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
   const dialogOpen = dialog !== null
   useEffect(() => {
     setDialogDimmed(dialogOpen)
+    if (dialogOpen) setHoveredMessage('')
   }, [dialogOpen])
   const [, setSessionTick] = useState(0)
   const { messages, modelName, setModelName, updateMessages, resetChat, activity, todos, retryStatus, streamedChars, registryCommands } = useChatEvents(bridge, dialog !== null)
@@ -264,8 +266,8 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
     : null
   const handleToggle = (id: string) => {
     updateMessages(current => current.map(message =>
-      message.kind === 'collapsible' && message.id === id
-        ? { ...message, collapsed: !message.collapsed }
+      (message.kind === 'collapsible' || message.kind === 'tool-card') && message.id === id
+        ? { ...message, collapsed: !(message.collapsed ?? true) }
         : message,
     ))
   }

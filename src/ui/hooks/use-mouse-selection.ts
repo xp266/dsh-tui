@@ -4,12 +4,13 @@ import type { PointerHandlerContribution, WindowHandle } from '../../contract/in
 import { createBuiltinPointerHandler, type BuiltinPointerHandler } from '../pointer/builtins.ts'
 import type { RefObject } from 'react'
 import type { ScreenCapture } from '../../terminal/screen.ts'
-import { createMouseController } from '../../terminal/mouse.ts'
+import { createMouseController, createHoverThrottler } from '../../terminal/mouse.ts'
 import { inputContentContains, hintSpan, scrollbarColumn } from '../layout-service.ts'
 import { clampFocusRow, toScreenSelection } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
 import type { ScrollSnapshot } from './use-scroll.ts'
 import { rowInfoAt, rowCount, scrollbarGeometry } from '../message/layout.ts'
+import { setHoveredMessage } from '../message/hover.ts'
 import { POINTER_BUILTIN_ORDER } from '../pointer/registry.ts'
 import type { InputBarHandle } from '../input/input-bar.tsx'
 import type { PanelPointerHandle } from '../panels/approval-panel.tsx'
@@ -281,7 +282,7 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
     }
     const builtinHandler: BuiltinPointerHandler = createBuiltinPointerHandler(builtinDeps)
     let ownerId: string | null = null
-    const controller = createMouseController(rawEvent => {
+    const throttled = createHoverThrottler(rawEvent => {
       const frame = { event: rawEvent, session, ui: uiContext() }
       // The builtin composite participates in the same dispatch chain as
       // plugin handlers, sorted by order (builtin at 100, plugin default 300).
@@ -317,6 +318,23 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
           ownerId = null
           return
         }
+        case 'move': {
+          // No-button motion drives hover highlighting only: never touches
+          // selection, drag sessions, or handler ownership. A zero-length
+          // click-selection (any plain click) must not suppress it; only a
+          // real dragged range does. Plugin handlers observe the same
+          // motion in order, like onWheel.
+          const sel = selectionRef.current
+          const dragging = sel !== null && (sel.anchorRow !== sel.focusRow || sel.anchorCol !== sel.focusCol)
+          if (dragging || frame.ui.dialogOpen || frame.ui.panelActive) {            setHoveredMessage('')
+            for (const entry of entries) entry.value.onMove?.(frame)
+            return
+          }
+          const hit = rowInfoAt(messagesRef.current, widthRef.current, toContentRow(rawEvent.y))
+          setHoveredMessage(hit?.hoverable === true ? hit.messageId : '')
+          for (const entry of entries) entry.value.onMove?.(frame)
+          return
+        }
         case 'scroll': {
           for (const entry of entries) {
             if (entry.value.onWheel?.(frame) === true) return
@@ -327,6 +345,7 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
           return
       }
     })
+    const controller = createMouseController(throttled)
     controller.enable()
     return () => {
       controller.disable()

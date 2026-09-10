@@ -11,7 +11,7 @@ export interface MouseEventData {
 
 import { enterMode, exitMode } from './modes.ts'
 
-const MOUSE_ENABLE_SEQUENCES = '\x1b[?1003l\x1b[?1000h\x1b[?1002h\x1b[?1006h'
+const MOUSE_ENABLE_SEQUENCES = '\x1b[?1003l\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h'
 const MOUSE_DISABLE_SEQUENCES = '\x1b[?1003l\x1b[?1000l\x1b[?1002l\x1b[?1006l'
 
 /**
@@ -157,5 +157,39 @@ export function createMouseController(onEvent: (event: MouseEventData) => void):
       exitMode('mouse')
       process.stdin.off('data', onData)
     },
+  }
+}
+
+const HOVER_FRAME_MS = 16
+
+/**
+ * Motion coalescer: no-button moves arrive far faster than any paint cycle
+ * on some terminals, so only the latest position within a frame interval is
+ * dispatched. Every other event class passes through immediately; queued
+ * motion flushes first so a press lands after the hover it follows.
+ */
+export function createHoverThrottler(dispatch: (event: MouseEventData) => void): (event: MouseEventData) => void {
+  let pending: MouseEventData | undefined
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const flush = (): void => {
+    timer = undefined
+    const event = pending
+    pending = undefined
+    if (event !== undefined) dispatch(event)
+  }
+  return (event: MouseEventData): void => {
+    if (event.type !== 'move') {
+      const queued = pending
+      pending = undefined
+      if (timer !== undefined) {
+        clearTimeout(timer)
+        timer = undefined
+      }
+      if (queued !== undefined) dispatch(queued)
+      dispatch(event)
+      return
+    }
+    pending = event
+    if (timer === undefined) timer = setTimeout(flush, HOVER_FRAME_MS)
   }
 }

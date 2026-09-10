@@ -21,7 +21,7 @@ export interface PointerBuiltinDeps {
   setSelection(next: LineSelection | null | ((current: LineSelection | null) => LineSelection | null)): void
   getSelection(): LineSelection | null
   rowHasText(y: number): boolean
-  rowInfoAt(y: number): { messageId: string; clickable: boolean; selectable: boolean } | null | undefined
+  rowInfoAt(y: number): { messageId: string; clickable: boolean; selectable: boolean; hoverable?: boolean } | null | undefined
   inputClickAt(y: number, x: number): void
   panelClickAt(y: number, x: number): void
   dialogWheel(y: number, dir: -1 | 1): boolean

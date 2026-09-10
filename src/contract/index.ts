@@ -221,6 +221,12 @@ export interface PointerHandlerContribution {
   onDrag?(frame: PointerEventFrame): void
   onUp?(frame: PointerEventFrame): void
   onWheel?(frame: PointerEventFrame): boolean
+  /**
+   * No-button pointer motion (hover). Fired for every handler in order with
+   * no ownership semantics; handlers must stay cheap and must not mutate
+   * selection state.
+   */
+  onMove?(frame: PointerEventFrame): void
 }
 
 /** Builtin gesture handlers live at order 100..190; see registerPointerHandler. */

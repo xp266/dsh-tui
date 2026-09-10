@@ -62,6 +62,37 @@ export function initialTurnState(): TurnState {
   }
 }
 
+/**
+ * UI mirror window: the store keeps only the newest HISTORY_WINDOW messages.
+ * The agent seed and session log stay complete; this trims what the renderer
+ * lays out, so resuming a long session never pays body layout for history
+ * nobody is looking at. Eviction drops a prefix only — it never crosses a
+ * message the running turn still references or is still writing to.
+ */
+export const HISTORY_WINDOW = 200
+
+export function windowMessages(messages: Message[], turn: TurnState): Message[] {
+  if (messages.length <= HISTORY_WINDOW) return messages
+  const protectedIds = new Set<string>()
+  for (const map of [turn.thinkingIds, turn.assistantIds, turn.toolIds, turn.pendingTools, turn.commandNames, turn.compactions, turn.chatNodes]) {
+    for (const id of map.values()) protectedIds.add(id)
+  }
+  const isProtected = (message: Message): boolean =>
+    protectedIds.has(message.id)
+    || ('running' in message && message.running === true)
+    || ('streaming' in message && message.streaming === true)
+  const overflow = messages.length - HISTORY_WINDOW
+  let firstProtected = messages.length
+  for (let index = 0; index < overflow; index++) {
+    if (isProtected(messages[index]!)) {
+      firstProtected = index
+      break
+    }
+  }
+  const cut = Math.min(overflow, firstProtected)
+  return cut === 0 ? messages : messages.slice(cut)
+}
+
 function markRunning(turn: TurnState, running: boolean): void {
   turn.running = running
 }

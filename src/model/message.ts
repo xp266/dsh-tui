@@ -61,6 +61,12 @@ export interface ToolCardMessage {
   running: boolean
   streaming?: boolean
   startedAt?: number
+  /**
+   * User-applied collapse state. Undefined means "follow the size policy":
+   * bodies over the threshold render collapsed until toggled. Diff and read
+   * cards never collapse by policy regardless of this flag.
+   */
+  collapsed?: boolean
 }
 
 export interface CompactionMessage {

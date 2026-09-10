@@ -15,6 +15,7 @@ import { startHotTheme } from './hot-theme.ts'
 import { applyTheme } from './apply-theme.ts'
 import { registerPalette, subscribeDimState } from './theme.ts'
 import { bumpSurface } from './kernel/surface.ts'
+import { setCollapsePolicy } from './chat/collapse-policy.ts'
 import { resolveBackgroundMode } from './terminal/background.ts'
 import { warmLanguages, onLanguagesWarm, clearHighlightCache } from './ui/message/md/highlight.ts'
 import { clearMarkdownBlockCache } from './ui/message/md/engine.ts'
@@ -35,6 +36,8 @@ export interface Config {
   maxFps: number
   bootListTimeout: number
   alternateScreen: boolean
+  /** Tool-card fold policy: size threshold plus per-tool force lists (name match is case-insensitive). */
+  collapse: { maxLines: number; folded: string[]; expanded: string[] }
 }
 
 export const Config: z<Config> = z.object({
@@ -42,9 +45,14 @@ export const Config: z<Config> = z.object({
   maxFps: z.number().default(240),
   bootListTimeout: z.number().default(10000),
   alternateScreen: z.boolean().default(true),
+  collapse: z.object({
+    maxLines: z.number().default(8),
+    folded: z.array(z.string()).default([]),
+    expanded: z.array(z.string()).default([]),
+  }).default({ maxLines: 8, folded: [], expanded: [] }),
 })
 
-const DEFAULT_CONFIG: Config = { colors: {}, maxFps: 240, bootListTimeout: 10000, alternateScreen: true }
+const DEFAULT_CONFIG: Config = { colors: {}, maxFps: 240, bootListTimeout: 10000, alternateScreen: true, collapse: { maxLines: 8, folded: [], expanded: [] } }
 
 function registerConfigPalette(colors: Config['colors']): void {
   if (Object.keys(colors).length > 0) {
@@ -147,6 +155,7 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
       })
     }
     registerConfigPalette(config.colors)
+    setCollapsePolicy(config.collapse)
     openBootLog()
     emitBootLine('terminal: probing capabilities')
     void (async () => {

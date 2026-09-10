@@ -169,6 +169,9 @@ function buildPalette(ladder: GrayLadder, hues: SemanticHues, code: CodeHues, mo
     carouselButtonPressedBg: ladder.surface,
     carouselSelectedText: hues.accent,
 
+    /** Hovered collapsible tool card; interaction state, not content. */
+    hoverBackground: ladder.raised,
+
     sectionHeader: hues.accent,
 
     panelQuestionText: ladder.ink,
