@@ -30,11 +30,15 @@ export function subscribePalettes(listener: () => void): () => void {
 interface GrayLadder {
   /** Page background (dialog backdrop). */
   base: string
-  /** Sunken surface: tool cards, read bodies, terminal fills. */
+  /** Content-card surface: tool cards, compaction, system bubbles. */
+  card: string
+  /** Interactive surface: the input panel and user bubbles. */
+  control: string
+  /** Sunken chrome: scrollbar track, carousel buttons. */
   sunken: string
-  /** Panel surface: dialogs, permission strip, user bubble. */
+  /** Panel surface: dialogs, permission strip, carousel selection. */
   surface: string
-  /** Raised surface: inputs, hovered/selected rows. */
+  /** Raised surface: dialog inputs, hovered/selected rows. */
   raised: string
   /** Decorative gray: hr, quote bar, task markers, scroll thumb. */
   line: string
@@ -44,8 +48,12 @@ interface GrayLadder {
   ink: string
 }
 
+// In dark, card and sunken share the 10% step; the light theme keeps them
+// apart (card on surface, sunken lighter), so they stay separate rungs.
 const DARK_LADDER: GrayLadder = {
   base: '#0d0d0d',
+  card: '#1a1a1a',
+  control: '#1e1e1e',
   sunken: '#1a1a1a',
   surface: '#262626',
   raised: '#333333',
@@ -54,8 +62,12 @@ const DARK_LADDER: GrayLadder = {
   ink: '#cccccc',
 }
 
+// Light keeps card and control on the surface gray: the dark theme splits
+// them, but the light surfaces never needed the extra steps.
 const LIGHT_LADDER: GrayLadder = {
   base: '#ffffff',
+  card: '#e6e6e6',
+  control: '#e6e6e6',
   sunken: '#f2f2f2',
   surface: '#e6e6e6',
   raised: '#d9d9d9',
@@ -153,10 +165,10 @@ function buildPalette(ladder: GrayLadder, hues: SemanticHues, code: CodeHues, mo
   return {
     ink: ladder.ink,
 
-    userBubbleBackground: ladder.surface,
-    aiBubbleBackground: ladder.surface,
+    userBubbleBackground: ladder.control,
+    aiBubbleBackground: ladder.card,
 
-    permissionBackground: ladder.surface,
+    permissionBackground: ladder.control,
     workspaceWriteText: hues.info,
     dangerFullAccessText: hues.accent,
     readOnlyText: hues.success,
@@ -170,7 +182,7 @@ function buildPalette(ladder: GrayLadder, hues: SemanticHues, code: CodeHues, mo
     carouselSelectedText: hues.accent,
 
     /** Hovered collapsible tool card; interaction state, not content. */
-    hoverBackground: ladder.raised,
+    hoverBackground: mode === 'dark' ? '#262626' : ladder.raised,
 
     sectionHeader: hues.accent,
 

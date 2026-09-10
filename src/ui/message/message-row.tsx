@@ -59,7 +59,7 @@ export const MessageRow = memo(
   switch (info.kind) {
     case 'pad':
       return (
-        <Box marginLeft={2} width={info.backgroundWidth} backgroundColor={info.hoverable === true && hovered ? COLORS.hoverBackground : backgroundFor(info.role)}>
+        <Box marginLeft={2} width={info.backgroundWidth} backgroundColor={info.hoverable === true && hovered ? COLORS.hoverBackground : backgroundFor(info)}>
           <Text>{' '.repeat(info.backgroundWidth)}</Text>
         </Box>
       )
@@ -75,7 +75,7 @@ export const MessageRow = memo(
           marginLeft={marginLeft}
           width={info.backgroundWidth}
           paddingLeft={info.spinner ? 0 : paddingLeft}
-          backgroundColor={hoverBg ?? info.lineBg ?? (info.background ? backgroundFor(info.role) : undefined)}
+          backgroundColor={hoverBg ?? info.lineBg ?? (info.background ? backgroundFor(info) : undefined)}
         >
           {info.spinner && <TickGlyph y={row} col={col - 2} color={info.accent ?? baseColor} />}
           {info.wave && waveColor !== undefined ? (
@@ -134,6 +134,7 @@ export const MessageRow = memo(
       a.clickable === b.clickable &&
       a.collapsed === b.collapsed &&
       a.hoverable === b.hoverable &&
+      a.surface === b.surface &&
       a.segKey === b.segKey &&
       a.spinner === b.spinner &&
       a.wave === b.wave &&
@@ -143,6 +144,7 @@ export const MessageRow = memo(
   },
 )
 
-function backgroundFor(role: RowInfo['role']): string {
-  return role === 'user' ? COLORS.userBubbleBackground : COLORS.aiBubbleBackground
+function backgroundFor(info: RowInfo): string {
+  if (info.surface === 'card') return COLORS.aiBubbleBackground
+  return info.role === 'user' ? COLORS.userBubbleBackground : COLORS.aiBubbleBackground
 }

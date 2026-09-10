@@ -38,6 +38,8 @@ export interface RowInfo {
   label: string
   collapsed: boolean
   role: 'user' | 'assistant' | 'error' | undefined
+  /** Surface family for a painted background; 'card' keeps a user-shaped row on the card gray. */
+  surface?: 'card'
   /** Exclusive column bound: a clickable row toggles only left of it (header text). */
   clickEnd?: number
   /** Row of a collapsible tool card: hovering it lights the whole bubble. */
@@ -750,6 +752,9 @@ function rowInfo(message: Message, index: number, offset: number, width: number)
     label: '',
     collapsed: false,
     role: undefined,
+    // The load-earlier control borrows the user bubble geometry but paints the
+    // card surface, so it reads as a system bubble instead of a sent message.
+    ...(message.kind === 'bubble' && message.origin === 'earlier' ? { surface: 'card' as const } : {}),
   }
   if (plan === undefined) return base
   switch (plan.type) {

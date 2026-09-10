@@ -8,9 +8,11 @@ export const HINT_INPUT_GAP_ROWS = 1
 
 export const INPUT_WIDTH_OFFSET = CHROME_MARGIN_X * 2 + CHROME_PAD_X * 2
 
-export const BUBBLE_WIDTH_OFFSET = 8
+/** Bubble text inset: left margin + pad + the matching right margin. */
+export const BUBBLE_WIDTH_OFFSET = CHROME_MARGIN_X * 2 + CHROME_PAD_X
 export const HEADER_LABEL_COL = 4
-export const SCROLLBAR_COL_FROM_EDGE = 3
+/** The scrollbar rides the last column, one gap column right of the bubble. */
+export const SCROLLBAR_COL_FROM_EDGE = 1
 export const SCROLLBAR_GAP_COLS = 1
 
 export function inputFrameTop(rows: number, realRows: number): number {
