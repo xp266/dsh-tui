@@ -2,13 +2,15 @@ import type {} from '@deepseek-ai/dsh-tool-todo'
 import { useEffect, useRef, useState } from 'react'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ChatBridge, ChatToolPresenter, RegistryCommand } from '../../chat/bridge.ts'
-import { initialTurnState, reduceChatEvent } from '../../chat/store.ts'
+import { initialTurnState, reduceChatEvent, EARLIER_STEP } from '../../chat/store.ts'
 import { nextRetryStatus } from '../../chat/retry-status.ts'
 import type { RetryStatus } from '../../chat/retry-status.ts'
 import type { AgentActivity } from '../../chat/store.ts'
 import { normalizeTodos } from '../../chat/todo-view.ts'
 import type { TodoItemLike } from '../../chat/todo-view.ts'
 import type { Message } from '../../model/message.ts'
+import { EARLIER_MESSAGE_ID } from '../../chat/store.ts'
+import { rowCount } from '../message/layout.ts'
 import { windowMessages } from '../../chat/store.ts'
 import { releaseFields, hasFieldSlots, releaseUnreferenced } from '../../core/fields.ts'
 
@@ -23,6 +25,10 @@ function todosKey(todos: readonly TodoItemLike[]): string {
 
 export interface ChatEvents {
   messages: Message[]
+  /** Messages evicted from the active window, available for load-earlier. */
+  archiveCount: number
+  /** Prepend EARLIER_STEP archived messages; returns the row-height delta for scroll anchoring. */
+  loadEarlier(): number
   modelName: string
   setModelName(name: string): void
   updateMessages(fn: (messages: Message[]) => Message[]): void
@@ -34,8 +40,9 @@ export interface ChatEvents {
   registryCommands: readonly RegistryCommand[]
 }
 
-export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolean): ChatEvents {
+export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolean, columns: number): ChatEvents {
   const [messages, setMessages] = useState<Message[]>([])
+  const [archiveCount, setArchiveCount] = useState(0)
   const [modelName, setModelName] = useState('')
   const [activity, setActivity] = useState<AgentActivity>(IDLE_ACTIVITY)
   const [todos, setTodos] = useState<TodoItemLike[]>(NO_TODOS)
@@ -43,8 +50,11 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
   const [streamedChars, setStreamedChars] = useState(0)
   const [registryCommands, setRegistryCommands] = useState<readonly RegistryCommand[]>([])
   const streamedCharsRef = useRef(0)
-  const chatStateRef = useRef<{ messages: Message[]; turn: ReturnType<typeof initialTurnState> }>({
+  const columnsRef = useRef(columns)
+  columnsRef.current = columns
+  const chatStateRef = useRef<{ messages: Message[]; archive: Message[]; turn: ReturnType<typeof initialTurnState> }>({
     messages: [],
+    archive: [],
     turn: initialTurnState(),
   })
   const pendingEventsRef = useRef<SessionEvent[]>([])
@@ -52,6 +62,15 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
   const presenterRef = useRef<ChatToolPresenter | undefined>(undefined)
   const dialogOpenRef = useRef(false)
   dialogOpenRef.current = dialogOpen
+  // The load-earlier row is render-level only: a synthetic user bubble kept
+  // out of the store, so reduce/window/selection math never sees it.
+  const withEarlierRow = (list: Message[], count: number): Message[] =>
+    count > 0 ? [{ kind: 'bubble', id: EARLIER_MESSAGE_ID, role: 'user', origin: 'earlier', content: `↑ ${count} earlier messages · click to load` }, ...list] : list
+  const publish = (list: Message[], count: number): Message[] => {
+    const next = withEarlierRow(list, count)
+    setMessages(next)
+    return next
+  }
   useEffect(() => {
     presenterRef.current = bridge?.toolPresenter
     if (bridge === undefined) {
@@ -75,6 +94,7 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
       pendingEventsRef.current = []
       let state = chatStateRef.current
       let dirty = false
+      let archiveDirty = false
       let latestTodos: TodoItemLike[] | undefined
       let retry: RetryStatus | undefined = retryStatusRef.current
       let retryDirty = false
@@ -97,22 +117,29 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
         }
         const next = reduceChatEvent(state.messages, event, state.turn, presenterRef.current)
         dirty = dirty || next.changed
-        state = { messages: next.messages, turn: next.turn }
+        state = { ...state, messages: next.messages, turn: next.turn }
       }
-      const windowed = windowMessages(state.messages, state.turn)
-      if (windowed !== state.messages) dirty = true
-      state = { messages: windowed, turn: state.turn }
+      const split = windowMessages(state.messages, state.turn)
+      if (split.evicted.length > 0) {
+        state = { ...state, messages: split.active, archive: [...split.evicted, ...state.archive] }
+        dirty = true
+        archiveDirty = true
+      }
       chatStateRef.current = state
       if (dirty && hasFieldSlots('message')) {
         let keep = ''
         for (const message of state.messages) {
           if (message.kind === 'bubble') keep += message.content
         }
+        for (const message of state.archive) {
+          if (message.kind === 'bubble') keep += message.content
+        }
         releaseUnreferenced('message', keep)
       }
       retryStatusRef.current = retry
       setStreamedChars(previous => previous === streamedCharsRef.current ? previous : streamedCharsRef.current)
-      if (dirty) setMessages([...state.messages])
+      if (archiveDirty) setArchiveCount(state.archive.length)
+      if (dirty || archiveDirty) publish(state.messages, state.archive.length)
       if (retryDirty) setRetryStatus(retry)
       const turn = state.turn
       setActivity(previous => previous.running === turn.running && previous.phase === turn.phase && previous.compacting === turn.compacting
@@ -130,21 +157,37 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
   }, [bridge])
   return {
     messages,
+    archiveCount,
+    loadEarlier() {
+      const state = chatStateRef.current
+      const step = Math.min(EARLIER_STEP, state.archive.length)
+      if (step === 0) return 0
+      const older = state.archive.slice(state.archive.length - step)
+      const width = columnsRef.current
+      const rowsBefore = rowCount(state.messages, width)
+      const messages = [...older, ...state.messages]
+      const rowsAfter = rowCount(messages, width)
+      chatStateRef.current = { ...state, messages, archive: state.archive.slice(0, state.archive.length - step) }
+      setArchiveCount(chatStateRef.current.archive.length)
+      publish(messages, chatStateRef.current.archive.length)
+      return rowsAfter - rowsBefore
+    },
     modelName,
     setModelName,
     updateMessages(fn) {
       const next = fn(chatStateRef.current.messages)
       chatStateRef.current = { ...chatStateRef.current, messages: next }
-      setMessages(next)
+      publish(next, chatStateRef.current.archive.length)
     },
     resetChat() {
       setMessages([])
-      chatStateRef.current = { messages: [], turn: initialTurnState() }
+      chatStateRef.current = { messages: [], archive: [], turn: initialTurnState() }
       pendingEventsRef.current = []
       retryStatusRef.current = undefined
       streamedCharsRef.current = 0
       releaseFields('message')
       setStreamedChars(0)
+      setArchiveCount(0)
       setRetryStatus(undefined)
       setActivity(IDLE_ACTIVITY)
       setTodos(NO_TODOS)

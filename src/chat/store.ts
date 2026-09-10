@@ -63,16 +63,27 @@ export function initialTurnState(): TurnState {
 }
 
 /**
- * UI mirror window: the store keeps only the newest HISTORY_WINDOW messages.
- * The agent seed and session log stay complete; this trims what the renderer
- * lays out, so resuming a long session never pays body layout for history
- * nobody is looking at. Eviction drops a prefix only — it never crosses a
- * message the running turn still references or is still writing to.
+ * UI mirror window: the store keeps only the newest HISTORY_WINDOW messages
+ * active for layout; evicted messages move to the archive head (text-level
+ * objects, never laid out) and come back on demand via load-earlier. The
+ * agent seed and session log stay complete. Eviction drops a prefix only —
+ * it never crosses a message the running turn still references or is still
+ * writing to.
  */
-export const HISTORY_WINDOW = 200
+export const HISTORY_WINDOW = 100
 
-export function windowMessages(messages: Message[], turn: TurnState): Message[] {
-  if (messages.length <= HISTORY_WINDOW) return messages
+/** Synthetic id of the load-earlier bubble row (origin 'earlier'); clicks route to loadEarlier. */
+export const EARLIER_MESSAGE_ID = '__earlier__'
+export const EARLIER_STEP = 100
+
+export interface WindowSplit {
+  active: Message[]
+  /** Chronologically ordered messages evicted from the active window. */
+  evicted: Message[]
+}
+
+export function windowMessages(messages: Message[], turn: TurnState): WindowSplit {
+  if (messages.length <= HISTORY_WINDOW) return { active: messages, evicted: [] }
   const protectedIds = new Set<string>()
   for (const map of [turn.thinkingIds, turn.assistantIds, turn.toolIds, turn.pendingTools, turn.commandNames, turn.compactions, turn.chatNodes]) {
     for (const id of map.values()) protectedIds.add(id)
@@ -90,7 +101,8 @@ export function windowMessages(messages: Message[], turn: TurnState): Message[] 
     }
   }
   const cut = Math.min(overflow, firstProtected)
-  return cut === 0 ? messages : messages.slice(cut)
+  if (cut === 0) return { active: messages, evicted: [] }
+  return { active: messages.slice(cut), evicted: messages.slice(0, cut) }
 }
 
 function markRunning(turn: TurnState, running: boolean): void {

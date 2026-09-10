@@ -340,16 +340,21 @@ function planFor(message: Message, body: BodyRendered, width: number): PlanRow[]
   switch (message.kind) {
     case 'bubble': {
       // User bubbles sit inside the background box; assistant, error, and
-      // command output float without it.
+      // command output float without it. The earlier-row bubble mirrors the
+      // user format exactly (pad + text + pad + gap) and is fully clickable.
+      const earlier = message.origin === 'earlier'
       const floating = message.role === 'error' || message.role === 'assistant' || message.origin === 'command'
       const texts = bodyRows(body.lines.length, {
         colStart: 4,
         bg: !floating,
-        muted: false,
+        muted: earlier,
         selectable: true,
         role: message.role,
       })
-      return floating ? [...texts, blankRow()] : [padRow(message.role), ...texts, padRow(message.role), blankRow()]
+      if (!earlier) return floating ? [...texts, blankRow()] : [padRow(message.role), ...texts, padRow(message.role), blankRow()]
+      const clickable = (row: PlanRow): PlanRow =>
+        row.type === 'pad' || row.type === 'body' ? { ...row, toggle: true, hoverable: true } : row
+      return [clickable(padRow(message.role)), ...texts.map(clickable), clickable(padRow(message.role)), blankRow()]
     }
     case 'collapsible': {
       const header: PlanRow = {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { RefObject } from 'react'
 import { permissionModeInfo, setDialogDimmed } from '../theme.ts'
 import { setHoveredMessage } from './message/hover.ts'
+import { EARLIER_MESSAGE_ID } from '../chat/store.ts'
 import { writeClipboardText } from '../terminal/clipboard.ts'
 import { copySelection } from './selection/service.ts'
 import type { ChatBridge } from '../chat/bridge.ts'
@@ -78,7 +79,7 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
     if (dialogOpen) setHoveredMessage('')
   }, [dialogOpen])
   const [, setSessionTick] = useState(0)
-  const { messages, modelName, setModelName, updateMessages, resetChat, activity, todos, retryStatus, streamedChars, registryCommands } = useChatEvents(bridge, dialog !== null)
+  const { messages, archiveCount, loadEarlier, modelName, setModelName, updateMessages, resetChat, activity, todos, retryStatus, streamedChars, registryCommands } = useChatEvents(bridge, dialog !== null, columns)
   const windows = useAvailableWindows()
   useEffect(() => {
     if (bridge === undefined) return
@@ -204,7 +205,7 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
   const inputHeight = bottomHeight
   const messageHeight = Math.max(1, rows - inputHeight - MESSAGE_INPUT_GAP_ROWS)
   const total = rowIndexFor(messages, columns).total
-  const { scrollTop, applyScroll, getScroll } = useScroll(total, messageHeight)
+  const { scrollTop, applyScroll, getScroll, expandTop } = useScroll(total, messageHeight)
   const startNewSession = () => {
     if (!bridge) return
     resetChat()
@@ -265,11 +266,18 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
       }
     : null
   const handleToggle = (id: string) => {
+    if (id === EARLIER_MESSAGE_ID) {
+      handleLoadEarlier()
+      return
+    }
     updateMessages(current => current.map(message =>
       (message.kind === 'collapsible' || message.kind === 'tool-card') && message.id === id
         ? { ...message, collapsed: !(message.collapsed ?? true) }
         : message,
     ))
+  }
+  const handleLoadEarlier = (): void => {
+    expandTop(loadEarlier())
   }
   const hintIndexAt = (y: number): number | undefined => {
     const region = hintRegion(rows, hintState, dialog !== null, inputHeight)

@@ -326,12 +326,12 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
           // motion in order, like onWheel.
           const sel = selectionRef.current
           const dragging = sel !== null && (sel.anchorRow !== sel.focusRow || sel.anchorCol !== sel.focusCol)
-          if (dragging || frame.ui.dialogOpen || frame.ui.panelActive) {            setHoveredMessage('')
-            for (const entry of entries) entry.value.onMove?.(frame)
-            return
+          if (dragging || frame.ui.dialogOpen || frame.ui.panelActive) {
+            setHoveredMessage('')
+          } else {
+            const hit = rowInfoAt(messagesRef.current, widthRef.current, toContentRow(rawEvent.y))
+            setHoveredMessage(hit?.hoverable === true ? hit.messageId : '')
           }
-          const hit = rowInfoAt(messagesRef.current, widthRef.current, toContentRow(rawEvent.y))
-          setHoveredMessage(hit?.hoverable === true ? hit.messageId : '')
           for (const entry of entries) entry.value.onMove?.(frame)
           return
         }

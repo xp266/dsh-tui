@@ -9,6 +9,8 @@ export interface ScrollState {
   scrollTop: number
   getScroll(): ScrollSnapshot
   applyScroll(next: number): void
+  /** Anchor after rows were prepended: shift the offset without re-sticking to the bottom. */
+  expandTop(delta: number): void
 }
 
 /**
@@ -43,7 +45,21 @@ export function useScroll(total: number, messageHeight: number): ScrollState {
     commit(next === Infinity ? maxScrollRef.current : next, true)
   }, [commit])
 
+  /**
+   * After prepending `delta` rows above the viewport, keep the previously-top
+   * message at the same screen position. The clamps in commit() run against
+   * the pre-expand maxScroll, which would wrongly cut the anchor, so this
+   * shifts the offset directly and leaves the bottom-stick off: the user is
+   * reading history, not the tail.
+   */
+  const expandTop = useCallback((delta: number): void => {
+    if (delta <= 0) return
+    scrollTopRef.current += delta
+    stickToBottomRef.current = false
+    bump()
+  }, [bump])
+
   const getScroll = useCallback((): ScrollSnapshot => ({ top: scrollTopRef.current, maxScroll: maxScrollRef.current }), [])
 
-  return { scrollTop: scrollTopRef.current, getScroll, applyScroll }
+  return { scrollTop: scrollTopRef.current, getScroll, applyScroll, expandTop }
 }

@@ -8,7 +8,8 @@ export interface BubbleMessage {
   role: 'user' | 'assistant' | 'error'
   content: string
   streaming?: boolean
-  origin?: 'command'
+  /** 'command' floats without bubble padding; 'earlier' is the synthetic load-earlier row. */
+  origin?: 'command' | 'earlier'
 }
 
 export interface CollapsibleMessage {
