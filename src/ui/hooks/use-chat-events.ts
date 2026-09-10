@@ -67,7 +67,11 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
   const withEarlierRow = (list: Message[], count: number): Message[] =>
     count > 0 ? [{ kind: 'bubble', id: EARLIER_MESSAGE_ID, role: 'user', origin: 'earlier', content: `↑ ${count} earlier messages · click to load` }, ...list] : list
   const publish = (list: Message[], count: number): Message[] => {
-    const next = withEarlierRow(list, count)
+    // A fresh array per publish is load-bearing: the store mutates its list in
+    // place, and both React state equality and the row-index cache key on
+    // array identity, so reusing the reference would freeze the rendered
+    // conversation at its first snapshot.
+    const next = withEarlierRow([...list], count)
     setMessages(next)
     return next
   }
