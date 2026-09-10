@@ -1,6 +1,6 @@
 English | [中文](plugin-author-guide.zh.md)
 
-# @xp266/dshtui Extension Points
+# Extension Points
 
 Every user-facing surface of the TUI is a keyed contribution registry. Plugins
 mount through the standard cordis bundle mechanism, obtain the `tui` service,

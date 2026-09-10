@@ -1,6 +1,6 @@
-English | [中文](plugin-author-guide.md)
+[English](plugin-author-guide.md) | 中文
 
-# @xp266/dshtui 扩展点
+# 扩展点
 
 TUI 的每一个用户可见表面都是键控贡献注册表。插件通过标准 cordis bundle 机制
 挂载，取得 `tui` 服务后注册贡献项；所有注册都支持运行时添加、分层覆盖与卸载还原。
