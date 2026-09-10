@@ -3,7 +3,7 @@
 [English](README.md) | 中文
 
 <p align="center">
-  <img src="docs/main_logo.png" alt="dshtui" width="720">
+  <img src="docs/main_logo.jpg" alt="dshtui" width="720">
 </p>
 
 `dshtui` 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）的终端界面插件，基于 [Ink](https://github.com/vadimdemedes/ink) 渲染，opencode的tui风格。它以 bundle 插件形式挂载进 dsh profile，接管整个终端界面：流式对话、可折叠的工具卡片、各类对话框，以及覆盖全部可见表面的插件贡献 API。
@@ -54,7 +54,7 @@ dsh --profile <name>
 
 ## 插件开发
 
-界面的每一个可见表面都是 `tui` 服务背后的键控贡献注册表。完整的贡献点清单见[扩展点指南](docs/plugin-author-guide.zh.md)
+界面的每一个可见表面都是 `tui` 服务背后的键控贡献注册表。完整的贡献点清单见[扩展点指南](docs/plugin-author-guide.zh.md)。
 
 ## 从源码运行或开发
 
@@ -69,4 +69,4 @@ pnpm verify
 
 ## 许可证
 
-MIT
+[MIT](LICENSE)

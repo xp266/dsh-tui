@@ -3,7 +3,7 @@
 English | [中文](README.zh.md)
 
 <p align="center">
-  <img src="docs/main_logo.png" alt="dshtui" width="720">
+  <img src="docs/main_logo.jpg" alt="dshtui" width="720">
 </p>
 
 `dshtui` is a terminal UI plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`), built on [Ink](https://github.com/vadimdemedes/ink), in the TUI style of opencode. It mounts into a dsh profile as a bundle plugin and takes over the whole terminal interface: streaming chat, foldable tool cards, dialogs, and a plugin contribution API covering every visible surface.
@@ -69,4 +69,4 @@ pnpm verify
 
 ## License
 
-MIT
+[MIT](LICENSE)

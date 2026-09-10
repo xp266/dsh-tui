@@ -264,7 +264,7 @@ tui.tools.register({
 - Result shape: `{ kind: 'replace' | 'append', text, label?, bodyCol?, exitCode?, signal?, diff?, read? }`; `diff` renders as an inline diff block and `read` as a numbered, syntax-highlighted read card, each instead of the text body. `label` replaces the card header at settle time.
 - No tool is exempt: `write`, `edit`, `read`, `bash`, `todo_write`, `ask_user_question`, `exit_plan_mode` and every other builtin view can be overridden here. The builtin presenter only runs when no contribution is registered for that tool, or when your handler returns `undefined`.
 - `takeover: true` stops the fallback for tools whose builtin presentation you want to replace outright: a handler returning `undefined` then renders a bare card instead of falling through to the protocol presentation.
-- Diff-line backgrounds come from the diff payload itself (see below), not from the tool name, so a contributed `diff` gets the same red/green treatment as a builtin `edit`.
+- Diff-line backgrounds default to on for every tool but `write`; set `backgrounds` on a contributed `diff` to override that either way. The `+`/`-` marker renders in its own gutter, outside the diff fill and outside the selectable text.
 
 ### tui.content.nodes.register
 
@@ -599,15 +599,19 @@ The key is a `MessageKind` (`'bubble' | 'collapsible' | 'tool-card' |
 
 ```yaml
 - id: tui
-  name: @xp266/dshtui
+  name: '@xp266/dshtui'
   config:
-    theme: dark            # auto | dark | light
     colors:                # palette key -> override, layered over both dark and light themes
       modelText: '#e6e6e6'
       sectionHeader: '#ffae00'
-    maxFps: 120
+    maxFps: 240
     bootListTimeout: 10000
     alternateScreen: true
+    collapse:              # tool-card fold policy
+      maxLines: 16         # fold bodies over this many rendered rows
+      previewLines: 8      # rows kept visible while folded
+      folded: []           # tool names that always fold
+      expanded: []         # tool names that never fold
 ```
 
 Third-party plugins follow the cordis convention of exporting their own `Config` schema and `apply(ctx, config)`.

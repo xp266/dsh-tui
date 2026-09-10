@@ -6,5 +6,5 @@ lib/
 docs/*
 !docs/plugin-author-guide.md
 !docs/plugin-author-guide.zh.md
-!docs/main_logo.png
+!docs/main_logo.jpg
 .zcode/

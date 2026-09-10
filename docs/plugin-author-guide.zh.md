@@ -256,7 +256,7 @@ tui.tools.register({
 - 结果形态：`{ kind: 'replace' | 'append', text, label?, bodyCol?, exitCode?, signal?, diff?, read? }`；`diff` 渲染为内联 diff 块，`read` 渲染为带行号与语法高亮的读卡，均取代文本主体。`label` 在结算时替换卡片标题。
 - 没有任何工具被豁免：`write`、`edit`、`read`、`bash`、`todo_write`、`ask_user_question`、`exit_plan_mode` 及所有其他内置视图均可在此覆盖。内置呈现器仅在该工具无注册贡献、或你的处理器返回 `undefined` 时执行。
 - `takeover: true` 关闭回退：用于你想整体替换内置展示的工具，此时处理器返回 `undefined` 会渲染空卡片，而不再落到协议呈现。
-- diff 行的背景色由 diff 数据本身决定（见下文），与工具名无关，因此插件贡献的 `diff` 也能获得与内置 `edit` 相同的红/绿底色。
+- diff 行的背景色默认对除 `write` 外的所有工具开启；贡献的 `diff` 可显式设置 `backgrounds` 覆盖该默认。`+`/`-` 标记渲染在独立的一栏中，不铺差异底色，也不参与选取。
 
 ### tui.content.nodes.register
 
@@ -545,15 +545,19 @@ tui.content.renderers.register({
 
 ```yaml
 - id: tui
-  name: @xp266/dshtui
+  name: '@xp266/dshtui'
   config:
-    theme: dark            # auto | dark | light
     colors:                # 色板键 -> 覆盖值，作用在 dark/light 两套主题之上
       modelText: '#e6e6e6'
       sectionHeader: '#ffae00'
-    maxFps: 120
+    maxFps: 240
     bootListTimeout: 10000
     alternateScreen: true
+    collapse:              # 工具卡片折叠策略
+      maxLines: 16         # 渲染行数超过此值的正文默认折叠
+      previewLines: 8      # 折叠时保留的预览行数
+      folded: []           # 强制折叠的工具名列表
+      expanded: []         # 永不折叠的工具名列表
 ```
 
 第三方插件遵循 cordis 惯例：导出自己的 `Config` schema 与 `apply(ctx, config)`。
