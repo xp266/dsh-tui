@@ -63,9 +63,9 @@ export interface ToolCardMessage {
   streaming?: boolean
   startedAt?: number
   /**
-   * User-applied collapse state. Undefined means "follow the size policy":
-   * bodies over the threshold render collapsed until toggled. Diff and read
-   * cards never collapse by policy regardless of this flag.
+   * User-applied collapse state. Undefined means "follow the policy": text
+   * bodies over the size threshold render collapsed until toggled, read
+   * windows render collapsed with no preview, and diff cards never fold.
    */
   collapsed?: boolean
 }

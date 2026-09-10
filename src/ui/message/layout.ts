@@ -1,4 +1,4 @@
-import type { Message, ToolCardMessage } from '../../model/message.ts'
+import type { Message, ToolCardMessage, ToolReadView } from '../../model/message.ts'
 import type { CustomMessage } from '../../contract/index.ts'
 import { colToCharIndex, textWidth, truncate, wrapLines } from '../../core/text.ts'
 import { hasFieldChar } from '../../core/fields.ts'
@@ -37,8 +37,9 @@ export interface RowInfo {
   muted: boolean
   label: string
   collapsed: boolean
-  thinking: boolean
   role: 'user' | 'assistant' | 'error' | undefined
+  /** Exclusive column bound: a clickable row toggles only left of it (header text). */
+  clickEnd?: number
   /** Row of a collapsible tool card: hovering it lights the whole bubble. */
   hoverable?: boolean
   segments?: Segment[]
@@ -55,8 +56,8 @@ interface BodyRendered {
   bgs: (string | undefined)[] | null
   customLabel?: string
   customMuted?: boolean
-  /** Tool-card fold state; when set the hint row (last line) toggles the card. */
-  collapse?: { collapsed: boolean }
+  /** Tool-card fold state; present exactly when the card toggles on click. */
+  fold?: { collapsed: boolean }
 }
 
 type PlanRow =
@@ -104,10 +105,10 @@ export function clearLayoutCache(): void {
 const padRow = (role: RowInfo['role']): PlanRow => ({ type: 'pad', role })
 const blankRow = (): PlanRow => ({ type: 'blank' })
 
-function bodyRows(count: number, options: { colStart: number; bg: boolean; muted: boolean; selectable: boolean; role: RowInfo['role'] }, toggleLine = -1): PlanRow[] {
+function bodyRows(count: number, options: { colStart: number; bg: boolean; muted: boolean; selectable: boolean; role: RowInfo['role'] }): PlanRow[] {
   const out: PlanRow[] = []
   for (let line = 0; line < count; line++) {
-    out.push({ type: 'body', line, ...options, ...(line === toggleLine ? { toggle: true } : {}) })
+    out.push({ type: 'body', line, ...options })
   }
   return out
 }
@@ -171,16 +172,7 @@ function renderBody(message: Message, width: number): BodyRendered {
         }, inner)
         return { lines: rendered.lines, rows: rendered.rows, bgs: rendered.bgs }
       }
-      if (message.read !== undefined) {
-        const rendered = renderToolReadBody({
-          ...(message.read.path === undefined ? {} : { path: message.read.path }),
-          lines: message.read.lines,
-          ...(message.read.offset === undefined ? {} : { offset: message.read.offset }),
-          ...(message.read.totalLines === undefined ? {} : { totalLines: message.read.totalLines }),
-          ...(message.read.lang === undefined ? {} : { lang: message.read.lang }),
-        }, inner)
-        return { lines: rendered.lines, rows: rendered.rows, bgs: rendered.bgs }
-      }
+      if (message.read !== undefined) return renderReadCard(message, message.read, inner)
       const lines: string[] = []
       const rows: Segment[][] = []
       const push = (text: string, segments?: Segment[]): void => {
@@ -239,27 +231,8 @@ function renderBody(message: Message, width: number): BodyRendered {
         const text = truncate(message.error!, Math.max(8, inner))
         push(text, [{ text, style: { color: COLORS.errorText } }])
       }
-      if (toolCardCollapsible(message) && toolCardOverflow(message, lines, inner)) {
-        const collapsed = message.collapsed ?? true
-        const hint = collapsed ? 'click to expand' : 'click to collapse'
-        const hintRow: Segment[] = [{ text: hint, style: { color: COLORS.dialogHintText } }]
-        if (collapsed) {
-          const preview = lines.slice(0, Math.max(1, currentCollapsePolicy().maxLines))
-          preview.push('')
-          preview.push(hint)
-          const outRows: Segment[][] = []
-          for (let index = 0; index < preview.length; index++) {
-            const row = rows[index]
-            if (row !== undefined) outRows[index] = row
-          }
-          outRows[preview.length - 1] = hintRow
-          return { lines: preview, rows: outRows, bgs: null, collapse: { collapsed: true } }
-        }
-        lines.push('')
-        lines.push(hint)
-        rows[lines.length - 1] = hintRow
-        return { lines, rows, bgs: null, collapse: { collapsed: false } }
-      }
+      const folded = foldToolCard(message, lines, rows)
+      if (folded !== undefined) return folded
       return { lines, rows: rows.length === 0 ? null : rows, bgs: null }
     }
     case 'compaction': {
@@ -314,12 +287,13 @@ function firstLine(text: string): string {
 }
 
 /**
- * Cards whose body IS the payload never collapse by size: diffs and read
- * windows must show their content (compaction renders separately), while
- * running/streaming cards would flicker if the fold flipped mid-flight.
+ * Cards whose body IS the payload never collapse by size: diff windows must
+ * show their content (compaction renders separately), while running/streaming
+ * cards would flicker if the fold flipped mid-flight. Read windows do fold,
+ * but fully: their collapsed form carries no preview at all.
  */
 function toolCardCollapsible(message: ToolCardMessage): boolean {
-  if (message.diff !== undefined || message.read !== undefined) return false
+  if (message.diff !== undefined) return false
   if (message.running === true || message.streaming === true || message.error !== undefined) return false
   const policy = currentCollapsePolicy()
   const tool = message.tool.toLowerCase()
@@ -327,16 +301,73 @@ function toolCardCollapsible(message: ToolCardMessage): boolean {
   return true
 }
 
-function toolCardOverflow(message: ToolCardMessage, lines: readonly string[], inner: number): boolean {
+function toolCardOverflow(message: ToolCardMessage, lines: readonly string[]): boolean {
   if (message.collapsed !== undefined) return true
+  // Read cards always offer the fold: the collapsed form shows only the hint.
+  if (message.read !== undefined) return true
   const policy = currentCollapsePolicy()
   if (policy.folded.has(message.tool.toLowerCase())) return true
-  const previewLines = Math.max(1, policy.maxLines)
-  const chars = lines.reduce((sum, line) => sum + line.length, 0)
-  return lines.length > previewLines || chars > previewLines * Math.max(20, inner)
+  return lines.length > Math.max(1, policy.maxLines)
 }
 
-function planFor(message: Message, body: BodyRendered, width: number): PlanRow[] {
+function foldHint(collapsed: boolean): { text: string; row: Segment[] } {
+  const text = collapsed ? 'click to expand' : 'click to collapse'
+  return { text, row: [{ text, style: { color: COLORS.dialogHintText } }] }
+}
+
+/**
+ * Single fold decision for text tool cards, consumed by both the body render
+ * and the row plan (via the returned `fold` marker) so a card can never be
+ * clickable without being rendered folded, or vice versa.
+ */
+function foldToolCard(message: ToolCardMessage, lines: string[], rows: Segment[][]): BodyRendered | undefined {
+  if (!toolCardCollapsible(message) || !toolCardOverflow(message, lines)) return undefined
+  const collapsed = message.collapsed ?? true
+  const hint = foldHint(collapsed)
+  if (!collapsed) {
+    lines.push('')
+    lines.push(hint.text)
+    rows[lines.length - 1] = hint.row
+    return { lines, rows, bgs: null, fold: { collapsed: false } }
+  }
+  const preview = lines.slice(0, Math.max(1, currentCollapsePolicy().previewLines))
+  preview.push('')
+  preview.push(hint.text)
+  const outRows: Segment[][] = []
+  for (let index = 0; index < preview.length; index++) {
+    const row = rows[index]
+    if (row !== undefined) outRows[index] = row
+  }
+  outRows[preview.length - 1] = hint.row
+  return { lines: preview, rows: outRows, bgs: null, fold: { collapsed: true } }
+}
+
+/**
+ * A collapsed read card renders no body at all: the hidden window would
+ * otherwise pay for wrapping and syntax highlighting it never shows.
+ */
+function renderReadCard(message: ToolCardMessage, read: ToolReadView, inner: number): BodyRendered {
+  if (toolCardCollapsible(message) && (message.collapsed ?? true)) {
+    const hint = foldHint(true)
+    return { lines: [hint.text], rows: [hint.row], bgs: null, fold: { collapsed: true } }
+  }
+  const rendered = renderToolReadBody({
+    ...(read.path === undefined ? {} : { path: read.path }),
+    lines: read.lines,
+    ...(read.offset === undefined ? {} : { offset: read.offset }),
+    ...(read.totalLines === undefined ? {} : { totalLines: read.totalLines }),
+    ...(read.lang === undefined ? {} : { lang: read.lang }),
+  }, inner)
+  if (!toolCardCollapsible(message)) return { lines: rendered.lines, rows: rendered.rows, bgs: rendered.bgs }
+  const hint = foldHint(false)
+  const lines = rendered.lines
+  lines.push('')
+  lines.push(hint.text)
+  rendered.rows[lines.length - 1] = hint.row
+  return { lines, rows: rendered.rows, bgs: null, fold: { collapsed: false } }
+}
+
+function planFor(message: Message, body: BodyRendered): PlanRow[] {
   switch (message.kind) {
     case 'bubble': {
       // User bubbles sit inside the background box; assistant, error, and
@@ -385,7 +416,7 @@ function planFor(message: Message, body: BodyRendered, width: number): PlanRow[]
       if (body.lines.length === 0 && message.running === true) {
         return [padRow('assistant'), header, padRow('assistant'), blankRow()]
       }
-      const hoverable = toolCardCollapsible(message) && toolCardOverflow(message, body.lines, width) === true
+      const hoverable = body.fold !== undefined
       // Every bubble row participates: the whole card toggles and lights up,
       // not just the hint line. Selection starts by dragging, never by a
       // plain click on the bubble.
@@ -580,7 +611,7 @@ function renderFor(message: Message, width: number): MessageRender {
     return memo.render
   }
   const body = renderBody(message, width)
-  const render: MessageRender = { ...body, plan: planFor(message, body, width) }
+  const render: MessageRender = { ...body, plan: planFor(message, body) }
   renderMemo.set(message, { epoch: layoutEpoch, width, fingerprint: fingerprintOf(message), render })
   return render
 }
@@ -592,32 +623,81 @@ export function lineCount(message: Message, width: number): number {
 export interface RowIndex {
   total: number
   rowAt(row: number): RowInfo | null
+  /** Message owning a content row: id plus the row's offset inside that message. */
+  anchorOf(row: number): { id: string; line: number } | null
+  /** First content row of a message id in this index, or undefined when absent. */
+  startOf(id: string): number | undefined
+  /** Content row count of a message id in this index; 0 when absent. */
+  lineCountOf(id: string): number
 }
 
 export function buildRowIndex(messages: Message[], width: number): RowIndex {
   const starts = new Array<number>(messages.length)
   const counts = new Array<number>(messages.length)
+  const byId = new Map<string, number>()
   let total = 0
   for (let i = 0; i < messages.length; i++) {
     starts[i] = total
     const count = lineCount(messages[i]!, width)
     counts[i] = count
     total += count
+    byId.set(messages[i]!.id, i)
+  }
+  const messageAt = (row: number): number => {
+    let low = 0
+    let high = messages.length - 1
+    while (low < high) {
+      const mid = (low + high + 1) >> 1
+      if (starts[mid]! <= row) low = mid
+      else high = mid - 1
+    }
+    return low
   }
   return {
     total,
     rowAt(row: number): RowInfo | null {
       if (row < 0 || row >= total) return null
-      let low = 0
-      let high = messages.length - 1
-      while (low < high) {
-        const mid = (low + high + 1) >> 1
-        if (starts[mid]! <= row) low = mid
-        else high = mid - 1
-      }
-      return rowInfo(messages[low]!, low, row - starts[low]!, width)
+      const at = messageAt(row)
+      return rowInfo(messages[at]!, at, row - starts[at]!, width)
+    },
+    anchorOf(row: number): { id: string; line: number } | null {
+      if (row < 0 || row >= total) return null
+      const at = messageAt(row)
+      return { id: messages[at]!.id, line: row - starts[at]! }
+    },
+    startOf(id: string): number | undefined {
+      const at = byId.get(id)
+      return at === undefined ? undefined : starts[at]!
+    },
+    lineCountOf(id: string): number {
+      const at = byId.get(id)
+      return at === undefined ? 0 : counts[at]!
     },
   }
+}
+
+/**
+ * Follow content across a relayout. Selection rows are coordinates, so a fold,
+ * a streamed line, or a load-earlier prepend above the selection would leave
+ * the highlight parked on whatever text moved into those rows. Each end is
+ * re-anchored to its message id plus line offset, clamped to the message's new
+ * last line; a message that is gone drops the selection.
+ */
+export function remapSelection(selection: LineSelection, prev: RowIndex, next: RowIndex): LineSelection | null {
+  if (!selection.inMessage) return selection
+  const anchor = remapRow(selection.anchorRow, prev, next)
+  const focus = remapRow(selection.focusRow, prev, next)
+  if (anchor === null || focus === null) return null
+  if (anchor === selection.anchorRow && focus === selection.focusRow) return selection
+  return { ...selection, anchorRow: anchor, focusRow: focus }
+}
+
+function remapRow(row: number, prev: RowIndex, next: RowIndex): number | null {
+  const at = prev.anchorOf(row)
+  if (at === null) return null
+  const start = next.startOf(at.id)
+  if (start === undefined) return null
+  return start + Math.min(at.line, next.lineCountOf(at.id) - 1)
 }
 
 export function rowCount(messages: Message[], width: number): number {
@@ -669,7 +749,6 @@ function rowInfo(message: Message, index: number, offset: number, width: number)
     muted: false,
     label: '',
     collapsed: false,
-    thinking: false,
     role: undefined,
   }
   if (plan === undefined) return base
@@ -685,20 +764,24 @@ function rowInfo(message: Message, index: number, offset: number, width: number)
       }
     case 'blank':
       return base
-    case 'header':
+    case 'header': {
+      const label = fitLabel(plan.label, width)
       return {
         ...base,
         kind: 'header',
         colStart: HEADER_LABEL_COL,
         clickable: plan.clickable,
-        label: fitLabel(plan.label, width),
+        label,
         collapsed: plan.collapsed,
+        // Only the header text toggles; the empty rest of the row does not.
+        ...(plan.clickable ? { clickEnd: HEADER_LABEL_COL + textWidth(label) } : {}),
         ...(plan.hoverable === true ? { hoverable: true } : {}),
         spinner: Boolean(
           (message.kind === 'collapsible' || message.kind === 'custom')
           && (message.running || message.streaming),
         ) || undefined,
       }
+    }
     case 'lit':
       return {
         ...base,

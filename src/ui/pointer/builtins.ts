@@ -5,6 +5,14 @@ import { POINTER_BUILTIN_ORDER } from './registry.ts'
 
 const WHEEL_LINES = 3
 const STRIP_DRAG_SCROLL_INTERVAL_MS = 15
+/**
+ * Pointer travel (Manhattan cells) that still counts as a click rather than a
+ * drag. A trackpad tap jitters a cell or two; without the slack the press
+ * turns into a drag that eats the click and replaces the selection. The slop
+ * only applies to rows that are clickable at all — plain text rows start a
+ * selection from the first cell of travel.
+ */
+const CLICK_SLOP_CELLS = 2
 
 export interface PointerBuiltinDeps {
   inInputContent(y: number): boolean
@@ -21,7 +29,7 @@ export interface PointerBuiltinDeps {
   setSelection(next: LineSelection | null | ((current: LineSelection | null) => LineSelection | null)): void
   getSelection(): LineSelection | null
   rowHasText(y: number): boolean
-  rowInfoAt(y: number): { messageId: string; clickable: boolean; selectable: boolean; hoverable?: boolean } | null | undefined
+  rowInfoAt(y: number): { messageId: string; clickable: boolean; selectable: boolean; hoverable?: boolean; clickEnd?: number } | null | undefined
   inputClickAt(y: number, x: number): void
   panelClickAt(y: number, x: number): void
   dialogWheel(y: number, dir: -1 | 1): boolean
@@ -174,7 +182,9 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
       }
       const contentRow = deps.toContentRow(y)
       const hit = deps.rowInfoAt(y)
-      if (hit?.clickable) {
+      // clickEnd narrows a clickable row to its text: the header of a
+      // collapsible toggles only on the label, not on the trailing blank.
+      if (hit?.clickable === true && (hit.clickEnd === undefined || x < hit.clickEnd)) {
         clickCandidate.current = { messageId: hit.messageId, y, x, moved: false }
         owner = 'message'
         return true
@@ -240,6 +250,9 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
         case 'message': {
           const candidate = clickCandidate.current
           if (candidate !== null) {
+            // Press jitter within a cell must not turn a toggle click into a
+            // selection drag; only real travel abandons the click candidate.
+            if (Math.abs(y - candidate.y) + Math.abs(x - candidate.x) <= CLICK_SLOP_CELLS) return
             candidate.moved = true
             clickCandidate.current = null
             const anchorInMessage = deps.inMessageArea(candidate.y)
@@ -310,7 +323,12 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
         case 'message': {
           const candidate = clickCandidate.current
           clickCandidate.current = null
-          if (candidate !== null && !candidate.moved) deps.toggleMessage(candidate.messageId)
+          if (candidate === null || candidate.moved) return
+          // A toggle is an explicit action on the card: drop any text
+          // selection instead of leaving a highlight parked over the card
+          // whose rows are about to be re-laid-out.
+          deps.setSelection(null)
+          deps.toggleMessage(candidate.messageId)
           return
         }
         default:

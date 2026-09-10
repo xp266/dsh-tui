@@ -15,7 +15,7 @@ import { startHotTheme } from './hot-theme.ts'
 import { applyTheme } from './apply-theme.ts'
 import { registerPalette, subscribeDimState } from './theme.ts'
 import { bumpSurface } from './kernel/surface.ts'
-import { setCollapsePolicy } from './chat/collapse-policy.ts'
+import { DEFAULT_COLLAPSE_POLICY, setCollapsePolicy } from './chat/collapse-policy.ts'
 import { resolveBackgroundMode } from './terminal/background.ts'
 import { warmLanguages, onLanguagesWarm, clearHighlightCache } from './ui/message/md/highlight.ts'
 import { clearMarkdownBlockCache } from './ui/message/md/engine.ts'
@@ -36,8 +36,8 @@ export interface Config {
   maxFps: number
   bootListTimeout: number
   alternateScreen: boolean
-  /** Tool-card fold policy: size threshold plus per-tool force lists (name match is case-insensitive). */
-  collapse: { maxLines: number; folded: string[]; expanded: string[] }
+  /** Tool-card fold policy: row threshold, folded preview height, and per-tool force lists (name match is case-insensitive). */
+  collapse: { maxLines: number; previewLines: number; folded: string[]; expanded: string[] }
 }
 
 export const Config: z<Config> = z.object({
@@ -46,13 +46,16 @@ export const Config: z<Config> = z.object({
   bootListTimeout: z.number().default(10000),
   alternateScreen: z.boolean().default(true),
   collapse: z.object({
-    maxLines: z.number().default(8),
+    maxLines: z.number().default(DEFAULT_COLLAPSE_POLICY.maxLines),
+    previewLines: z.number().default(DEFAULT_COLLAPSE_POLICY.previewLines),
     folded: z.array(z.string()).default([]),
-    expanded: z.array(z.string()).default([]),
-  }).default({ maxLines: 8, folded: [], expanded: [] }),
+    // The config default must repeat the policy default: an always-present
+    // config field otherwise replaces it before setCollapsePolicy() runs.
+    expanded: z.array(z.string()).default([...DEFAULT_COLLAPSE_POLICY.expanded]),
+  }).default({ maxLines: DEFAULT_COLLAPSE_POLICY.maxLines, previewLines: DEFAULT_COLLAPSE_POLICY.previewLines, folded: [], expanded: [...DEFAULT_COLLAPSE_POLICY.expanded] }),
 })
 
-const DEFAULT_CONFIG: Config = { colors: {}, maxFps: 240, bootListTimeout: 10000, alternateScreen: true, collapse: { maxLines: 8, folded: [], expanded: [] } }
+const DEFAULT_CONFIG: Config = { colors: {}, maxFps: 240, bootListTimeout: 10000, alternateScreen: true, collapse: { maxLines: DEFAULT_COLLAPSE_POLICY.maxLines, previewLines: DEFAULT_COLLAPSE_POLICY.previewLines, folded: [], expanded: [...DEFAULT_COLLAPSE_POLICY.expanded] } }
 
 function registerConfigPalette(colors: Config['colors']): void {
   if (Object.keys(colors).length > 0) {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { pointerHandlerEntries, type PointerSession } from '../pointer/registry.ts'
 import type { PointerHandlerContribution, WindowHandle } from '../../contract/index.ts'
 import { createBuiltinPointerHandler, type BuiltinPointerHandler } from '../pointer/builtins.ts'
@@ -9,7 +9,8 @@ import { inputContentContains, hintSpan, scrollbarColumn } from '../layout-servi
 import { clampFocusRow, toScreenSelection } from '../../model/selection.ts'
 import type { LineSelection } from '../../model/selection.ts'
 import type { ScrollSnapshot } from './use-scroll.ts'
-import { rowInfoAt, rowCount, scrollbarGeometry } from '../message/layout.ts'
+import { remapSelection, rowIndexFor, rowInfoAt, rowCount, scrollbarGeometry } from '../message/layout.ts'
+import type { RowIndex } from '../message/layout.ts'
 import { setHoveredMessage } from '../message/hover.ts'
 import { POINTER_BUILTIN_ORDER } from '../pointer/registry.ts'
 import type { InputBarHandle } from '../input/input-bar.tsx'
@@ -95,6 +96,14 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
   const autoScrollDirRef = useRef<-1 | 1>(1)
   const pointerSessionRef = useRef({ inMessageArea: false })
   const scrollbarSessionRef = useRef<{ grabOffset: number } | null>(null)
+  // Last pointer cell, kept for hover refreshes that no mouse event triggers
+  // (wheel/keyboard scroll and content updates move rows under a still mouse).
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null)
+  const hoverRefreshRef = useRef<() => void>(() => {})
+  // Hover is suppressed only while a button is actually down; a finished text
+  // selection is not a reason to keep cards from lighting up.
+  const dragActiveRef = useRef(false)
+  const prevIndexRef = useRef<{ index: RowIndex; width: number } | null>(null)
   messagesRef.current = messages
   widthRef.current = columns
   rowsRef.current = rows
@@ -211,6 +220,20 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
     const toContentRow = (screenRow: number) =>
       inMessageArea(screenRow) ? screenRow + scrollTopRef.current : screenRow
     const activeHintRegion = () => hintRegion(rowsRef.current, hintStateRef.current, dialogOpenRef.current, inputHeightRef.current)
+    const hoverAt = (): void => {
+      const pointer = lastPointerRef.current
+      if (pointer === null || !inMessageArea(pointer.y)) {
+        setHoveredMessage('')
+        return
+      }
+      const hit = rowInfoAt(messagesRef.current, widthRef.current, pointer.y + scrollTopRef.current)
+      setHoveredMessage(hit?.hoverable === true ? hit.messageId : '')
+    }
+    const hoverRefresh = (): void => {
+      if (dragActiveRef.current) setHoveredMessage('')
+      else hoverAt()
+    }
+    hoverRefreshRef.current = hoverRefresh
     const focusRowFor = (current: LineSelection, eventY: number): number => {
       if (!current.inMessage) {
         const region = activeHintRegion()
@@ -284,6 +307,7 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
     let ownerId: string | null = null
     const throttled = createHoverThrottler(rawEvent => {
       const frame = { event: rawEvent, session, ui: uiContext() }
+      lastPointerRef.current = { x: rawEvent.x, y: rawEvent.y }
       // The builtin composite participates in the same dispatch chain as
       // plugin handlers, sorted by order (builtin at 100, plugin default 300).
       const entries = [
@@ -294,6 +318,7 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
       switch (rawEvent.type) {
         case 'down': {
           if (rawEvent.button !== 0) return
+          dragActiveRef.current = false
           builtinHandler.beginDown()
           ownerId = null
           for (const entry of entries) {
@@ -308,6 +333,8 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
           return
         }
         case 'drag': {
+          dragActiveRef.current = true
+          setHoveredMessage('')
           entryFor(ownerId)?.value.onDrag?.(frame)
           return
         }
@@ -316,22 +343,18 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
           pointerSessionRef.current = { inMessageArea: false }
           entryFor(ownerId)?.value.onUp?.(frame)
           ownerId = null
+          dragActiveRef.current = false
+          hoverRefresh()
           return
         }
         case 'move': {
           // No-button motion drives hover highlighting only: never touches
-          // selection, drag sessions, or handler ownership. A zero-length
-          // click-selection (any plain click) must not suppress it; only a
-          // real dragged range does. Plugin handlers observe the same
-          // motion in order, like onWheel.
-          const sel = selectionRef.current
-          const dragging = sel !== null && (sel.anchorRow !== sel.focusRow || sel.anchorCol !== sel.focusCol)
-          if (dragging || frame.ui.dialogOpen || frame.ui.panelActive) {
-            setHoveredMessage('')
-          } else {
-            const hit = rowInfoAt(messagesRef.current, widthRef.current, toContentRow(rawEvent.y))
-            setHoveredMessage(hit?.hoverable === true ? hit.messageId : '')
-          }
+          // selection, drag sessions, or handler ownership. The parser emits
+          // `move` exactly when no button is held, so it also ends a drag the
+          // terminal never closed with an `up`. Plugin handlers observe the
+          // same motion in order, like onWheel.
+          dragActiveRef.current = false
+          hoverRefresh()
           for (const entry of entries) entry.value.onMove?.(frame)
           return
         }
@@ -352,6 +375,24 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
       stopDragScroll()
     }
   }, [])
+  // Rows move under a stationary pointer when the view scrolls (wheel,
+  // PageUp/Down, drag auto-scroll) or the message list grows; no mouse event
+  // fires for any of those, so hover must be re-derived from the last
+  // pointer cell on every layout change.
+  useEffect(() => {
+    hoverRefreshRef.current()
+  }, [scrollTop, messages, columns, messageHeight, dialogOpen, hint])
+  // A fold, a streamed line, or a load-earlier prepend changes the row count
+  // above a selection; re-anchor it before the frame is painted so the
+  // highlight keeps covering the same text. A width change re-wraps every
+  // line, so line offsets stop meaning anything and the selection is left as is.
+  useLayoutEffect(() => {
+    const index = rowIndexFor(messages, columns)
+    const prev = prevIndexRef.current
+    prevIndexRef.current = { index, width: columns }
+    if (prev === null || prev.index === index || prev.width !== columns) return
+    setSelection(current => current === null ? current : remapSelection(current, prev.index, index))
+  }, [messages, columns])
   const screenSelection = useMemo(
     () => toScreenSelection(selection, scrollTop, messageHeight),
     [selection, scrollTop, messageHeight],

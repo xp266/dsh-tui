@@ -133,7 +133,7 @@ export const MessageRow = memo(
       a.selectable === b.selectable &&
       a.clickable === b.clickable &&
       a.collapsed === b.collapsed &&
-      a.thinking === b.thinking &&
+      a.hoverable === b.hoverable &&
       a.segKey === b.segKey &&
       a.spinner === b.spinner &&
       a.wave === b.wave &&
