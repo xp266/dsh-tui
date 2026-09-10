@@ -9,3 +9,16 @@ updates:
         update-types:
           - minor
           - patch
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Upstream harness packages move with the compatibility contract
+      # (src/contract/upstream.ts) and its peer branches, never by a bot bump.
+      - dependency-name: '@deepseek-ai/*'

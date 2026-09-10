@@ -1,8 +1,26 @@
 {
   "name": "@xp266/dshtui",
-  "version": "0.1.24",
+  "version": "0.1.25",
   "type": "module",
   "description": "ink-based terminal UI plugin for DeepSeek Harness",
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "tui",
+    "terminal",
+    "ink",
+    "plugin"
+  ],
+  "homepage": "https://github.com/xp266/dsh-tui#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xp266/dsh-tui.git"
+  },
+  "bugs": {
+    "url": "https://github.com/xp266/dsh-tui/issues"
+  },
+  "author": "xp266",
   "packageManager": "pnpm@11.2.2",
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
@@ -46,7 +64,10 @@
     "bin",
     "lib",
     "src",
-    "cordis.patch.yml"
+    "cordis.patch.yml",
+    "docs/main_logo.jpg",
+    "docs/plugin-author-guide.md",
+    "docs/plugin-author-guide.zh.md"
   ],
   "license": "MIT",
   "peerDependencies": {
