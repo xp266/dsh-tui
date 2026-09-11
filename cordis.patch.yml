@@ -1,8 +1,8 @@
 - insert:
     # The durable storage stack (storage, storage-json, storage-domain,
-    # session-projection-cache) is inserted by the dsh-base bundle since
-    # 0.1.2-rc.1 with the same configuration this file used to carry —
-    # re-inserting it here would collide with duplicate loader entry ids.
+    # session-projection-cache) is inserted by the dsh-base bundle with the
+    # same configuration this file used to carry — re-inserting it here would
+    # collide with duplicate loader entry ids.
     # The standard preset's subagent tool enables modelSelectionSettings,
     # which requires this settings service in the host scope (the web bundle
     # mounts the same row for its own roster).
@@ -38,8 +38,6 @@
 - id: tool-fs
   disabled: true
 - id: tool-fs-search
-  disabled: true
-- id: tool-str-replace-editor
   disabled: true
 - id: skill-filesystem
   disabled: true

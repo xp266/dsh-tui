@@ -497,10 +497,12 @@ tui.chat.send('see attachment', [[{ kind: 'path', path: '/tmp/diagram.png' }]])
 tui.chat.send('clipboard shot', [[{ kind: 'data', data: bytes, mediaType: 'image/png', name: 'clipboard' }]])
 await tui.chat.listSessions()
 const off = tui.chat.onEvent(event => {})
+const offStream = tui.chat.onStream(frame => {})
 ```
 
-- Methods: `send`/`interrupt`/`newSession`/`openSession`/`listSessions`/`onEvent`/`cwd`/`activeSessionId`.
+- Methods: `send`/`interrupt`/`newSession`/`openSession`/`listSessions`/`onEvent`/`onStream`/`cwd`/`activeSessionId`.
 - `send` accepts image groups: each inner array becomes one `[n images]` chip in the rendered message; a `path` image is read from disk, a `data` image is uploaded as-is. The model receives real image parts.
+- `onStream` delivers the live model stream (`start`/`chunk`/`end` frames); the durable `onEvent` settles each attempt afterwards. Both fire on the active agent only.
 
 ## Input, pointer, and selection
 

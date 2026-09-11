@@ -315,7 +315,7 @@ export function registerInteractionChannels(ctx: CtxLike, store: InteractionStor
   const offApproval = ctx.on('approval/request', async req => {
     return store.pushApproval(req.toolName, req.callId, req.reason, req.signal)
   })
-  // The 0.1.2 user-questions service routes asks through the scoped
+  // The user-questions service routes asks through the scoped
   // `user-questions/request` waterfall; answering without calling `next`
   // claims the request for this terminal.
   const offQuestions = ctx.on('user-questions/request', async request => {

@@ -459,10 +459,12 @@ tui.chat.send('see attachment', [[{ kind: 'path', path: '/tmp/diagram.png' }]])
 tui.chat.send('clipboard shot', [[{ kind: 'data', data: bytes, mediaType: 'image/png', name: 'clipboard' }]])
 await tui.chat.listSessions()
 const off = tui.chat.onEvent(event => {})
+const offStream = tui.chat.onStream(frame => {})
 ```
 
-- 方法：`send`/`interrupt`/`newSession`/`openSession`/`listSessions`/`onEvent`/`cwd`/`activeSessionId`。
+- 方法：`send`/`interrupt`/`newSession`/`openSession`/`listSessions`/`onEvent`/`onStream`/`cwd`/`activeSessionId`。
 - `send` 支持图片组：每个内层数组在消息中呈现为一个 `[n images]` chip；`path` 从磁盘读取，`data` 直接上传。模型收到真实图片块。
+- `onStream` 投递实时模型流（`start`/`chunk`/`end` 帧）；持久化的 `onEvent` 会在其后结算每次尝试。两者都只针对当前活动 agent。
 
 ## 输入、指针与选区
 
