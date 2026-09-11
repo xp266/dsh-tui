@@ -9,7 +9,6 @@ import { App } from './ui/app.tsx'
 import { createChatBridge } from './chat/bridge.ts'
 import type { ChatBridge } from './chat/bridge.ts'
 import { createScreenCapture } from './terminal/screen.ts'
-import { writeCursorShape } from './terminal/cursor-shape.ts'
 import { enterMode, restoreAllModes } from './terminal/modes.ts'
 import { startHotTheme } from './hot-theme.ts'
 import { applyTheme } from './apply-theme.ts'
@@ -23,10 +22,12 @@ import { clearLayoutCache } from './ui/message/layout.ts'
 import { warmRenderPipeline } from './ui/message/warmup.ts'
 import { createTuiExtensionPoint, exposeRuntimeFaces } from './ui/extension-point.ts'
 import { registerBuiltinToolViews } from './chat/builtin-tool-views.ts'
-import { closeBootLog, emitBootLine, openBootLog } from './boot-log.ts'
-import { configureLogs, error, error as logError, installCrashHandlers } from './log.ts'
+import { bootReady, bootWarning, emitBootLine, openBootLog } from './boot-log.ts'
+import { configureLogs, error, error as logError, installCrashHandlers, warn } from './log.ts'
 import { env } from './env.ts'
-import { upstreamDriftSummary, UPSTREAM_SUPPORTED_RANGE } from './contract/upstream.ts'
+import { logFilePath } from './log.ts'
+import { fatalFromCause, formatBootFatal } from './boot-fatal.ts'
+import { installedUpstreamVersions, probeHostContract, upstreamDriftSummary, UPSTREAM_CEILING_VERSION, UPSTREAM_FLOOR_VERSION, UPSTREAM_SUPPORTED_RANGE } from './contract/upstream.ts'
 
 export const name = '@xp266/dshtui'
 
@@ -68,18 +69,41 @@ function registerConfigPalette(colors: Config['colors']): void {
 // (fail-soft) instead of gating first paint on its initialization.
 export const inject = ['agentLoop', 'agents', 'sessions', 'llm', 'settings', 'credentials', 'agentDefaultModel']
 
+/**
+ * Print a boot failure to the invoking terminal and stop the process. This
+ * runs before the TUI mounts, so the message lands directly in the command
+ * line the user launched from — no alternate screen, no UI, no waiting.
+ */
+function failBoot(cause: unknown): never {
+  const fatal = fatalFromCause(cause)
+  const text = formatBootFatal(fatal, logFilePath(env.logDir))
+  error('boot', text.trim())
+  // Stderr keeps the report visible even when stdout is captured; the dsh
+  // CLI inherits stdio, so both reach the user's terminal.
+  process.stderr.write(`${text}\n`)
+  restoreAllModes()
+  process.exit(1)
+}
+
 export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
   ctx.effect(() => {
     configureLogs({ stderr: env.debug, file: env.logFile, dir: env.logDir, level: env.logLevel, maxFileBytes: env.logMaxBytes })
     const restorePerformance = startPerformanceGuard()
     const disposeCrashHandlers = installCrashHandlers({ exit: env.crashExit })
-    // Fail before any surface mounts: an out-of-range host breaks the bridge
-    // in ways that render as a dead interface instead of an actionable error.
+    // ---- Gate 1: harness version drift (numbers) — pure text, no UI ----
     const drift = upstreamDriftSummary()
-    if (drift !== undefined) {
-      const message = `dshtui requires dsh harness packages in ${UPSTREAM_SUPPORTED_RANGE} (found ${drift.kind}: ${drift.versions.join(', ')}); upgrade the dsh CLI with: npm install -g @deepseek-ai/dsh@latest`
-      error('boot', message)
-      throw new Error(message)
+    if (drift !== undefined && drift.kind !== 'newer') {
+      const message = `dshtui supports harness ${UPSTREAM_SUPPORTED_RANGE} (tested: ${UPSTREAM_FLOOR_VERSION}+, ceiling: ${UPSTREAM_CEILING_VERSION}); found ${drift.kind}: ${drift.versions.join(', ')}`
+      failBoot(new Error(message))
+    }
+    if (drift?.kind === 'newer') {
+      bootWarning('upstream-newer', `Harness is newer than this dshtui build was tested against (${drift.versions.join(', ')}); continuing — the calling-contract check below decides.`)
+      warn('boot', `harness newer than tested: ${drift.versions.join(', ')}`)
+    }
+    // ---- Gate 2: live calling-convention probes — pure text, no UI ----
+    const probeFailure = probeHostContract(ctx)
+    if (probeFailure !== undefined) {
+      failBoot(new Error(`host contract violated: ${probeFailure.message}`))
     }
     const capture = createScreenCapture()
     let bridge: ChatBridge | undefined
@@ -182,16 +206,16 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
         }),
       ])
       emitBootLine('ready: starting interface')
-      closeBootLog()
+      bootReady()
     })()
-      .catch(error => {
-        logError('boot', 'chat bridge init failed', {
-          message: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
-        })
-        closeBootLog()
+      .catch(cause => {
+        // A bridge failure must never degrade into an empty shell: report in
+        // the invoking terminal and exit, exactly like the pre-UI gates.
+        failBoot(cause)
       })
-      .finally(() => start())
+      .finally(() => {
+        if (!disposed) start()
+      })
     return () => {
       disposed = true
       restorePerformance()

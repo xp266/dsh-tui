@@ -17,6 +17,7 @@ import type { ScreenCapture } from '../terminal/screen.ts'
 import type { LineSelection } from '../model/selection.ts'
 import { SelectionContext, DialogPaletteContext } from './selection.tsx'
 import { useTerminalSize } from './hooks/use-terminal-size.ts'
+import { useBootState } from '../boot-log.ts'
 import { useChatEvents } from './hooks/use-chat-events.ts'
 import { useScroll } from './hooks/use-scroll.ts'
 import { useMouseSelection, hintRegion } from './hooks/use-mouse-selection.ts'
@@ -38,6 +39,7 @@ import { SpinnerTickProvider } from './spinner-tick.tsx'
 import { CloseGuardContext } from './dialog/dialog.tsx'
 import type { DialogHandle } from './dialog/dialog.tsx'
 import { registerBuiltinWindows } from './windows-builtin.tsx'
+import { BootWarningStrip, dismissBootWarnings } from './boot-notices.tsx'
 import { registerWindowServices, registerTodosService } from './window-services-bridge.ts'
 import { useAvailableWindows } from './use-available-windows.ts'
 import type { ActivePanel, InteractionStore } from '../chat/interactions.ts'
@@ -81,6 +83,7 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
   }, [dialogOpen])
   const [, setSessionTick] = useState(0)
   const { messages, archiveCount, loadEarlier, modelName, setModelName, updateMessages, resetChat, activity, todos, retryStatus, streamedChars, registryCommands } = useChatEvents(bridge, dialog !== null, columns)
+  const boot = useBootState()
   const windows = useAvailableWindows()
   useEffect(() => {
     if (bridge === undefined) return
@@ -339,6 +342,10 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
   useInput((input, key) => {
     if (isKeyConsumed() && !(key.ctrl && input === 'c' && selection !== null)) return
     if (dialog !== null && !selection) return
+    if (key.ctrl && input === 'w' && boot.warnings.length > 0) {
+      dismissBootWarnings()
+      return
+    }
     if (key.escape) {
       if (hintOpen) return
       if (panel === null && busy && bridge !== undefined) {
@@ -393,6 +400,7 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
       <SelectionContext.Provider value={messageAreaSelection}>
         <Box flexDirection="column" width={columns} height={rows}>
           <KeymapGate />
+          {boot.warnings.length > 0 && <BootWarningStrip />}
           <MessageList
             messages={messages}
             height={messageHeight}

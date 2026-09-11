@@ -83,6 +83,11 @@ function resolveLogFile(dir: string | undefined): string {
   return join(dir ?? join(resolveDshHome(), 'logs'), 'dshtui.log')
 }
 
+/** The absolute log path for the configured directory; shown on the boot screen. */
+export function logFilePath(dir?: string): string {
+  return resolveLogFile(dir)
+}
+
 function rotateIfNeeded(logFile: string): void {
   let size: number
   try {
