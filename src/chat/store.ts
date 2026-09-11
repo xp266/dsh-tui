@@ -1,4 +1,5 @@
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import type { AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
 import type { Message, ToolCardMessage } from '../model/message.ts'
 import { reasoningFromBlocks, textFromBlocks, userDisplayText } from './blocks.ts'
 import type { ChatToolPresenter, ToolResultLike } from './bridge.ts'
@@ -41,6 +42,12 @@ export interface TurnState {
   commandNames: Map<string, string>
   compactions: Map<string, string>
   chatNodes: Map<string, string>
+  /**
+   * Model step owning the live assistant stream. Only `start` frames carry it,
+   * so the opening frame records it here and the following chunk frames read
+   * it back; `end` clears it.
+   */
+  streamStep: number | undefined
   compacting: boolean
   running: boolean
   phase: AgentPhase
@@ -56,6 +63,7 @@ export function initialTurnState(): TurnState {
     commandNames: new Map(),
     compactions: new Map(),
     chatNodes: new Map(),
+    streamStep: undefined,
     compacting: false,
     running: false,
     phase: 'awaiting-request',
@@ -151,21 +159,13 @@ export function reduceChatEvent(
       messages.push({ kind: 'bubble', id: nextId('user'), role: 'user', content: userDisplayText(event.data.content) })
       return { messages, turn, changed: true }
     }
-    case 'assistant/chunk': {
-      const chunk = event.data.chunk
-      if (chunk.type === 'reasoning-delta') return appendChunk(messages, turn, chunk.text, event.data.step, 'thinking', event.time)
-      if (chunk.type === 'text-delta') return appendChunk(messages, turn, chunk.text, event.data.step, 'assistant', event.time)
-      if (chunk.type === 'tool-call-delta') {
-        return appendToolDelta(messages, turn, event.data.step, chunk.id, chunk.name, chunk.argumentsDelta, event.time)
-      }
-      return { messages, turn, changed: false }
-    }
     case 'turn/start': {
       markRunning(turn, true)
       markPhase(turn, 'awaiting-request')
       turn.thinkingIds.clear()
       turn.assistantIds.clear()
       turn.pendingText.clear()
+      turn.streamStep = undefined
       return { messages, turn, changed: true }
     }
     case 'tool/call': {
@@ -363,11 +363,11 @@ export function reduceChatEvent(
       return { messages, turn: { ...initialTurnState(), compactions: turn.compactions, compacting: turn.compacting }, changed }
     }
     default: {
-      if ((event.type as string) === 'tool/code-dispatch-start') {
-        return reduceCodeDispatch(messages, turn, event, false, presenter)
+      if ((event.type as string) === 'tool/ptc-dispatch-start') {
+        return reducePtcDispatch(messages, turn, event, false, presenter)
       }
-      if ((event.type as string) === 'tool/code-dispatch') {
-        return reduceCodeDispatch(messages, turn, event, true, presenter)
+      if ((event.type as string) === 'tool/ptc-dispatch') {
+        return reducePtcDispatch(messages, turn, event, true, presenter)
       }
       if ((event.type as string) === 'command/run') {
         const data = (event.data as unknown as { commandId: string; name: string })
@@ -428,6 +428,40 @@ export function reduceChatEvent(
         return { messages, turn, changed: true }
       }
       return { messages, turn, changed: CHROME_EVENTS.has(event.type) }
+    }
+  }
+}
+
+/**
+ * Fold one live assistant-stream frame. Only chunk frames carry model output;
+ * the opening `start` frame records the owning step that chunk frames omit, and
+ * the terminal `end` frame releases it. The durable `assistant/message` the
+ * loop appends after the end frame is what settles the streaming flag.
+ */
+export function reduceStreamFrame(
+  messages: Message[],
+  frame: AssistantStreamFrame,
+  turn: TurnState,
+): { messages: Message[]; turn: TurnState; changed: boolean } {
+  switch (frame.type) {
+    case 'start': {
+      turn.streamStep = frame.step
+      return { messages, turn, changed: false }
+    }
+    case 'end': {
+      turn.streamStep = undefined
+      return { messages, turn, changed: false }
+    }
+    default: {
+      const step = turn.streamStep
+      if (step === undefined) return { messages, turn, changed: false }
+      const chunk = frame.chunk
+      if (chunk.type === 'reasoning-delta') return appendChunk(messages, turn, chunk.text, step, 'thinking', frame.time)
+      if (chunk.type === 'text-delta') return appendChunk(messages, turn, chunk.text, step, 'assistant', frame.time)
+      if (chunk.type === 'tool-call-delta') {
+        return appendToolDelta(messages, turn, step, chunk.id, chunk.name, chunk.argumentsDelta, frame.time)
+      }
+      return { messages, turn, changed: false }
     }
   }
 }
@@ -578,7 +612,7 @@ function clearStreamingById(messages: Message[], id: string): void {
   }
 }
 
-interface CodeDispatchData {
+interface PtcDispatchData {
   rootCallId: string
   parentCallId: string
   subCallId: string
@@ -589,19 +623,19 @@ interface CodeDispatchData {
 }
 
 /**
- * Code-mode sub-dispatches render as child cards under the root `run_code`
+ * PTC sub-dispatches render as child cards under the root `run_code`
  * bubble: the start event commits a running placeholder, the settle event
  * pairs with it by `subCallId`. The root card is the render anchor, so a
  * settle whose start fell outside the turn still attaches to it.
  */
-function reduceCodeDispatch(
+function reducePtcDispatch(
   messages: Message[],
   turn: TurnState,
   event: SessionEvent,
   settled: boolean,
   presenter?: ChatToolPresenter,
 ): { messages: Message[]; turn: TurnState; changed: boolean } {
-  const data = (event.data as unknown as CodeDispatchData)
+  const data = (event.data as unknown as PtcDispatchData)
   const rootId = turn.toolIds.get(String(data.rootCallId))
   const argsText = stringifyDispatchArgs(data.arguments)
   if (!settled) {

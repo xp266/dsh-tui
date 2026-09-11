@@ -54,7 +54,7 @@ export interface ToolCardMessage {
   read?: ToolReadView
   /** True when the settled result reported isError without a structured error; the result text renders as the error. */
   failed?: boolean
-  /** Sub-calls dispatched under this call (code mode); rendered as a child list. */
+  /** Sub-calls dispatched under this call (PTC mode); rendered as a child list. */
   nested?: readonly ToolCardMessage[]
   error?: string
   exitCode?: number

@@ -1,5 +1,6 @@
 import type { ComponentType, ReactNode, Ref } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
+import type { AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { Token } from 'marked'
@@ -705,6 +706,13 @@ export interface TuiChatFace {
   cwd(): string
   activeSessionId(): string
   onEvent(listener: (event: SessionEvent) => void): () => void
+  /**
+   * Live assistant streaming for the active agent. Frames are transient and
+   * precede the durable `assistant/message`/`assistant/attempt` that settles
+   * them, so a consumer that renders incremental model output must interleave
+   * both channels by arrival order.
+   */
+  onStream(listener: (frame: AssistantStreamFrame) => void): () => void
   send(text: string, images?: ReadonlyArray<readonly PendingImage[]>): void
   interrupt(): void
   newSession(): Promise<void>

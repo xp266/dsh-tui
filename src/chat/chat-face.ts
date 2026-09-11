@@ -7,6 +7,7 @@ export function createChatFace(bridge: ChatBridge): TuiChatFace {
     cwd: () => bridge.cwd(),
     activeSessionId: () => bridge.activeSessionId(),
     onEvent: listener => bridge.subscribe(listener),
+    onStream: listener => bridge.subscribeStream(listener),
     send: (text, images) => bridge.send(text, images),
     interrupt: () => bridge.interrupt(),
     newSession: () => bridge.newSession(),
