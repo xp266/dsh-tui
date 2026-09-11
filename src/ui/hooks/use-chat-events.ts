@@ -13,7 +13,7 @@ import type { Message } from '../../model/message.ts'
 import { EARLIER_MESSAGE_ID } from '../../chat/store.ts'
 import { rowCount } from '../message/layout.ts'
 import { windowMessages } from '../../chat/store.ts'
-import { releaseFields, hasFieldSlots, releaseUnreferenced } from '../../core/fields.ts'
+import { releaseFields, hasFieldSlots, fieldCharsOf, releaseMissingChars } from '../../core/fields.ts'
 
 const FRAME_MS = 33
 
@@ -33,6 +33,14 @@ type PendingItem =
 
 function todosKey(todos: readonly TodoItemLike[]): string {
   return todos.map(item => `${item.status}:${item.content}`).join('\n')
+}
+
+/** True when any bubble content still carries the field char. */
+function containsChar(messages: readonly Message[], char: string): boolean {
+  for (const message of messages) {
+    if (message.kind === 'bubble' && message.content.includes(char)) return true
+  }
+  return false
 }
 
 export interface ChatEvents {
@@ -164,14 +172,10 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
       }
       chatStateRef.current = state
       if (dirty && hasFieldSlots('message')) {
-        let keep = ''
-        for (const message of state.messages) {
-          if (message.kind === 'bubble') keep += message.content
-        }
-        for (const message of state.archive) {
-          if (message.kind === 'bubble') keep += message.content
-        }
-        releaseUnreferenced('message', keep)
+        // Probe the live chars instead of concatenating every bubble: a long
+        // session pays O(live slots) here, not O(total message bytes) per frame.
+        releaseMissingChars('message', fieldCharsOf('message').filter(char =>
+          containsChar(state.messages, char) || containsChar(state.archive, char)))
       }
       retryStatusRef.current = retry
       setStreamedChars(previous => previous === streamedCharsRef.current ? previous : streamedCharsRef.current)

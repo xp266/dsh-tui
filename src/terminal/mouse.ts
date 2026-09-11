@@ -136,8 +136,18 @@ function decodeSgrEvent(rawButtonCode: number, wireX: number, wireY: number, pre
   }
 }
 
+/**
+ * SGR mouse sequences race past the mouse parser into ink's stdin pull, and
+ * ink strips the leading ESC before useInput handlers see the payload — the
+ * residue arrives as `[<0;11;6M`, so the ESC is optional in the pattern. The
+ * unclosed form (`[<0;11;`) covers pending-escape flushes that deliver a torn
+ * sequence. A bare ESC is the Escape key (parseKeypress yields input === '')
+ * and never reaches these guards, and Alt combos arrive ESC-stripped with
+ * key.meta set, so matching `[<` payloads cannot swallow a printable keypress:
+ * the ESC-introducer only appears inside SGR mouse input.
+ */
 export function isMouseResidue(input: string): boolean {
-  return input.includes('\x1b') || /^\[<\d+(;\d+)*[Mm]$/.test(input)
+  return /\x1b?\[<[\d;]*[Mm]?/.test(input)
 }
 
 export interface MouseController {

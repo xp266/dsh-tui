@@ -43,11 +43,14 @@ export function createScreenCapture(): ScreenCapture {
   function bufferChunk(chunk: string): void {
     buffered.push(chunk)
     bufferedBytes += chunk.length
-    if (bufferedBytes > BUFFER_MAX_BYTES) {
-      // A reader that never queries keeps the grid stale beyond this point;
-      // pointer queries still parse the most recent megabyte.
-      buffered.splice(0, buffered.length - 1)
-      bufferedBytes = buffered[0]?.length ?? 0
+    if (bufferedBytes <= BUFFER_MAX_BYTES) return
+    // A reader that never queries keeps the grid stale beyond this point;
+    // pointer queries still parse the most recent megabyte. The newest chunk
+    // always survives: an immediately following query must see the frame
+    // that triggered it, not the one before the cap.
+    while (buffered.length > 1 && bufferedBytes - buffered[0]!.length > BUFFER_MAX_BYTES) {
+      bufferedBytes -= buffered[0]!.length
+      buffered.shift()
     }
   }
 

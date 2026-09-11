@@ -1,4 +1,5 @@
-import { appendFileSync, chmodSync, mkdirSync, renameSync, statSync, unlinkSync } from 'node:fs'
+import { appendFileSync, mkdirSync } from 'node:fs'
+import { appendFile, stat, rename, unlink, chmod } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { resolveDshHome } from './harness-home.ts'
 import { restoreAllModes } from './terminal/modes.ts'
@@ -88,41 +89,44 @@ export function logFilePath(dir?: string): string {
   return resolveLogFile(dir)
 }
 
-function rotateIfNeeded(logFile: string): void {
-  let size: number
-  try {
-    size = statSync(logFile).size
-  } catch {
-    return
-  }
-  if (size < state.maxFileBytes) return
-  try {
-    unlinkSync(`${logFile}.1`)
-  } catch {
-    // No previous rotation to clear.
-  }
-  try {
-    renameSync(logFile, `${logFile}.1`)
-  } catch {
-    // Keep appending to the oversized file rather than losing diagnostics.
-  }
+/**
+ * A rotation decision is only needed on a write when the file may have crossed
+ * the cap; every other write skips the size stat entirely.
+ */
+const ROTATE_CHECK_INTERVAL_MS = 30_000
+
+interface RotationGate {
+  lastCheck: number
+  inflight: boolean
+}
+
+function rotateIfNeededAsync(logFile: string, gate: RotationGate): Promise<void> {
+  const now = Date.now()
+  if (gate.inflight || now - gate.lastCheck < ROTATE_CHECK_INTERVAL_MS) return Promise.resolve()
+  gate.inflight = true
+  return stat(logFile)
+    .then(stats => {
+      if (stats.size < state.maxFileBytes) return undefined
+      return unlink(`${logFile}.1`).catch(() => {})
+        .then(() => rename(logFile, `${logFile}.1`).catch(() => {}))
+        .then(() => chmod(logFile, 0o600).catch(() => {}))
+    })
+    .catch(() => {})
+    .finally(() => {
+      gate.lastCheck = Date.now()
+      gate.inflight = false
+    })
 }
 
 function fileSinkFor(logFile: string): LogSink {
+  const rotation: RotationGate = { lastCheck: 0, inflight: false }
   return {
     line(entry) {
       if (!state.fileEnabled) return
-      try {
-        rotateIfNeeded(logFile)
-        try {
-          chmodSync(logFile, 0o600)
-        } catch {
-          // The log may not exist yet; the create mode below still guards it.
-        }
-        appendFileSync(logFile, formatLine(entry), { mode: 0o600 })
-      } catch {
-        // Diagnostics must never take the UI down.
-      }
+      const line = formatLine(entry)
+      void rotateIfNeededAsync(logFile, rotation)
+        .then(() => appendFile(logFile, line, { mode: 0o600 }))
+        .catch(() => {})
       if (entry.level === 'warn' || entry.level === 'error') {
         writeStderr(`[dshtui] ${entry.message}${fieldsText(entry.fields)}\n`)
       }
@@ -130,13 +134,10 @@ function fileSinkFor(logFile: string): LogSink {
     crash(report) {
       if (!state.fileEnabled) return
       const line = formatCrash(report)
+      // Crash writes stay synchronous: the process may not survive the tick,
+      // and losing the only crash record to buffering defeats the report.
       try {
-        rotateIfNeeded(logFile)
-        try {
-          chmodSync(logFile, 0o600)
-        } catch {
-          // The log may not exist yet; the create mode below still guards it.
-        }
+        mkdirSync(dirname(logFile), { recursive: true, mode: 0o700 })
         appendFileSync(logFile, line, { mode: 0o600 })
       } catch {
         // Diagnostics must never take the UI down.

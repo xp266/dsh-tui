@@ -22,8 +22,10 @@ export interface PointerBuiltinDeps {
   focusRowFor(current: LineSelection, eventY: number): number
   clampMessageFocus(anchorInMessage: boolean, eventY: number): number
   setPointerArea(inMessageArea: boolean): void
-  onScrollbarDown(x: number, y: number): boolean
-  onScrollbarDrag(y: number): void
+  /** Hit the scrollbar: returns the thumb grab offset, or null when not hit. */
+  onScrollbarDown(x: number, y: number): number | null
+  /** Drag the scrollbar with the grab offset captured at press time. */
+  onScrollbarDrag(grabOffset: number, y: number): void
   stopDragScroll(): void
   updateDragScroll(eventY: number): void
   setSelection(next: LineSelection | null | ((current: LineSelection | null) => LineSelection | null)): void
@@ -56,7 +58,6 @@ export interface PointerBuiltinDeps {
  * candidates never survive into the next gesture.
  */
 export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
-  const scrollbarSession: { current: { grabOffset: number } | null } = { current: null }
   const hintGesture: { current: { x: number; y: number; dragged: boolean } | null } = { current: null }
   const clickCandidate: { current: { messageId: string; y: number; x: number; moved: boolean } | null } = { current: null }
   const dialogCandidate: { current: { x: number; y: number } | null } = { current: null }
@@ -64,8 +65,12 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
   const inputCandidate: { current: { x: number; y: number } | null } = { current: null }
   const stripAutoScroll: { current: ReturnType<typeof setInterval> | null } = { current: null }
   const lastStripY: { current: number } = { current: 0 }
-  // Which sub-handler owns the active gesture; '' means none.
+  // Which sub-handler owns the active gesture; '' means none. The scrollbar
+  // gesture keeps its press-time grab offset here: the drag handler needs the
+  // thumb-relative anchor, and a module-level session slot would race the
+  // dispatcher's beginDown() reset (the press handler runs after it).
   let owner = ''
+  const scrollbarGrab: { current: number } = { current: 0 }
 
   function stopStripAutoScroll(): void {
     if (stripAutoScroll.current !== null) {
@@ -123,14 +128,15 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
     id: 'builtin.pointer',
     beginDown(): void {
       clearCandidates()
-      scrollbarSession.current = null
       hintGesture.current = null
       stopStripAutoScroll()
       owner = ''
     },
     onDown(event: PointerEventFrame): boolean {
       const { x, y } = event.event
-      if (deps.onScrollbarDown(x, y)) {
+      const grabOffset = deps.onScrollbarDown(x, y)
+      if (grabOffset !== null) {
+        scrollbarGrab.current = grabOffset
         owner = 'scrollbar'
         return true
       }
@@ -205,7 +211,7 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
       const { x, y } = event.event
       switch (owner) {
         case 'scrollbar':
-          deps.onScrollbarDrag(y)
+          deps.onScrollbarDrag(scrollbarGrab.current, y)
           return
         case 'hint': {
           const gesture = hintGesture.current
@@ -287,7 +293,6 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
       const { x, y } = event.event
       switch (owner) {
         case 'scrollbar':
-          scrollbarSession.current = null
           return
         case 'hint': {
           const gesture = hintGesture.current

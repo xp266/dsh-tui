@@ -84,10 +84,6 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
   const onHintDragMoveRef = useRef(onHintDragMove)
   const onHintReleaseRef = useRef(onHintRelease)
   const onDialogWheelRef = useRef(onDialogWheel)
-  const clickCandidateRef = useRef<{ messageId: string; y: number; x: number; moved: boolean } | null>(null)
-  const dialogClickCandidateRef = useRef<{ x: number; y: number } | null>(null)
-  const panelClickCandidateRef = useRef<{ x: number; y: number } | null>(null)
-  const inputClickCandidateRef = useRef<{ x: number; y: number } | null>(null)
   const onScrollRef = useRef(onScroll)
   const onToggleMessageRef = useRef(onToggleMessage)
   const onDialogClickRef = useRef(onDialogClick)
@@ -95,7 +91,6 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
   const autoScrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const autoScrollDirRef = useRef<-1 | 1>(1)
   const pointerSessionRef = useRef({ inMessageArea: false })
-  const scrollbarSessionRef = useRef<{ grabOffset: number } | null>(null)
   // Last pointer cell, kept for hover refreshes that no mouse event triggers
   // (wheel/keyboard scroll and content updates move rows under a still mouse).
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null)
@@ -179,34 +174,26 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
       if (geom === null) return null
       return { geom, maxScroll: totalRows - mh, travel: Math.max(1, mh - geom.height) }
     }
-    const onScrollbarDown = (x: number, y: number): boolean => {
-      if (x !== scrollbarColumn(widthRef.current) || y >= messageHeightRef.current) return false
+    const onScrollbarDown = (x: number, y: number): number | null => {
+      if (x !== scrollbarColumn(widthRef.current) || y >= messageHeightRef.current) return null
       const info = scrollbarInfo()
-      if (info === null) return false
+      if (info === null) return null
       stopDragScroll()
       setSelection(null)
-      let grabOffset: number
+      // Grab offset relative to the thumb: dragging inside the thumb keeps the
+      // press point; a press on the track jumps the thumb there first.
       if (y >= info.geom.top && y < info.geom.top + info.geom.height) {
-        grabOffset = y - info.geom.top
-      } else {
-        const centered = Math.max(0, Math.min(info.maxScroll,
-          Math.round(((y - info.geom.height / 2) / info.travel) * info.maxScroll)))
-        onScrollRef.current(centered)
-        grabOffset = y - Math.round((info.travel * centered) / info.maxScroll)
+        return y - info.geom.top
       }
-      scrollbarSessionRef.current = { grabOffset }
-      pointerSessionRef.current = { inMessageArea: false }
-      return true
+      const centered = Math.max(0, Math.min(info.maxScroll,
+        Math.round(((y - info.geom.height / 2) / info.travel) * info.maxScroll)))
+      onScrollRef.current(centered)
+      return y - Math.round((info.travel * centered) / info.maxScroll)
     }
-    const onScrollbarDrag = (y: number): void => {
-      const session = scrollbarSessionRef.current
-      if (session === null) return
+    const onScrollbarDrag = (grabOffset: number, y: number): void => {
       const info = scrollbarInfo()
-      if (info === null) {
-        scrollbarSessionRef.current = null
-        return
-      }
-      const thumbTop = Math.max(0, Math.min(info.travel, y - session.grabOffset))
+      if (info === null) return
+      const thumbTop = Math.max(0, Math.min(info.travel, y - grabOffset))
       const target = Math.max(0, Math.min(info.maxScroll, Math.round((thumbTop / info.travel) * info.maxScroll)))
       onScrollRef.current(target)
     }
@@ -276,8 +263,8 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
       setPointerArea: (value: boolean) => {
         pointerSessionRef.current = { inMessageArea: value }
       },
-      onScrollbarDown,
-      onScrollbarDrag,
+      onScrollbarDown: (x: number, y: number) => onScrollbarDown(x, y),
+      onScrollbarDrag: (grabOffset: number, y: number) => onScrollbarDrag(grabOffset, y),
       stopDragScroll,
       updateDragScroll,
       setSelection,

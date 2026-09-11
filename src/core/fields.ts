@@ -171,11 +171,29 @@ export function hasFieldSlots(owner: FieldOwner): boolean {
   return false
 }
 
+/** Live slot chars for `owner`; the scan is O(live slots), not O(messages). */
+export function fieldCharsOf(owner: FieldOwner): string[] {
+  const chars: string[] = []
+  for (const [index, slot] of slots) {
+    if (slot.owner === owner) chars.push(String.fromCharCode(FIELD_CHAR_BASE + index))
+  }
+  return chars
+}
+
 export function releaseUnreferenced(owner: FieldOwner, keepText: string): void {
   for (const [index, slot] of slots) {
     if (slot.owner !== owner || slot.pins > 0) continue
     const char = String.fromCharCode(FIELD_CHAR_BASE + index)
     if (!keepText.includes(char)) slots.delete(index)
+  }
+}
+
+/** Release `owner` slots whose char is absent from both lists. */
+export function releaseMissingChars(owner: FieldOwner, present: readonly string[]): void {
+  const live = new Set(present)
+  for (const [index, slot] of slots) {
+    if (slot.owner !== owner || slot.pins > 0) continue
+    if (!live.has(String.fromCharCode(FIELD_CHAR_BASE + index))) slots.delete(index)
   }
 }
 

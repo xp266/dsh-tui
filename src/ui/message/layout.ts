@@ -713,18 +713,27 @@ export function rowCount(messages: Message[], width: number): number {
   return rowIndexFor(messages, width).total
 }
 
-let indexMessages: Message[] | undefined
-let indexWidth = -1
-let indexCache: RowIndex | undefined
+interface IndexCacheSlot {
+  messages: Message[]
+  width: number
+  index: RowIndex
+}
+
+// Two slots hold the alternating widths of a resize pair (N, N-1, N, ...); a
+// single slot would rebuild the whole row index every other frame during the
+// drag because App renders rowIndexFor(columns) while mouse handlers query
+// rowIndexFor(prevWidth) in the same tick.
+const INDEX_CACHE_SLOTS = 2
+const indexCache: IndexCacheSlot[] = []
 
 export function rowIndexFor(messages: Message[], width: number): RowIndex {
-  if (indexCache !== undefined && indexMessages === messages && indexWidth === width) {
-    return indexCache
+  for (const slot of indexCache) {
+    if (slot.messages === messages && slot.width === width) return slot.index
   }
-  indexMessages = messages
-  indexWidth = width
-  indexCache = buildRowIndex(messages, width)
-  return indexCache
+  const index = buildRowIndex(messages, width)
+  if (indexCache.length >= INDEX_CACHE_SLOTS) indexCache.shift()
+  indexCache.push({ messages, width, index })
+  return index
 }
 
 export function rowInfoAt(messages: Message[], width: number, row: number): RowInfo | null {
@@ -859,10 +868,13 @@ export interface ScrollbarGeometry {
 
 export function scrollbarGeometry(total: number, height: number, scrollTop: number): ScrollbarGeometry | null {
   if (total <= height || height < 1) return null
-  const thumbHeight = Math.max(1, Math.floor((height * height) / total))
   const maxScroll = total - height
-  const travel = height - thumbHeight
-  const top = maxScroll === 0 ? 0 : Math.min(travel, Math.round((travel * scrollTop) / maxScroll))
+  // Proportional thumb: visible share of content, floored at 1. The inverse
+  // mapping keeps thumb-top clamped inside [0, height-thumbHeight] at both
+  // scroll extremes (the squared form let the thumb overflow on short lists).
+  const thumbHeight = Math.max(1, Math.floor((height * height) / total))
+  const travel = Math.max(1, height - thumbHeight)
+  const top = Math.max(0, Math.min(travel, Math.round((scrollTop * travel) / maxScroll)))
   return { top, height: thumbHeight }
 }
 
