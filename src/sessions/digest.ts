@@ -13,7 +13,6 @@ export interface SessionHeaderRecord {
   cwd?: string
   createdAt: number
   origin?: string
-  seeded: boolean
 }
 
 export interface SessionTitle {
@@ -69,13 +68,11 @@ function headerOf(lines: readonly LogLine[]): SessionHeaderRecord | undefined {
   if (typeof id !== 'string' || id === '' || typeof createdAt !== 'number' || !Number.isSafeInteger(createdAt)) return undefined
   const cwd = record['cwd']
   const origin = record['origin']
-  const seedLength = record['seedLength']
   return {
     id,
     ...(typeof cwd === 'string' && cwd !== '' ? { cwd } : {}),
     createdAt,
     ...(origin === 'subagent' ? { origin } : {}),
-    seeded: typeof seedLength === 'number' && seedLength > 0,
   }
 }
 

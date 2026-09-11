@@ -2,7 +2,7 @@ import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { scheduler } from 'node:timers/promises'
 import { resolveDshHome } from '../harness-home.ts'
-import { fileFacts } from './frames.ts'
+import { fileFacts, newestLogPath } from './frames.ts'
 import { readWindowDigest, scanForTitle } from './digest.ts'
 import { readIndex, writeIndex } from './store.ts'
 import type { IndexEntry, SessionIndex } from './store.ts'
@@ -143,11 +143,11 @@ function candidates(root: string): Candidate[] {
     const projectDir = join(root, project)
     for (const session of directories(projectDir)) {
       const dir = join(projectDir, session)
-      const compressed = join(dir, 'session.jsonl.zstd')
-      const plain = join(dir, 'session.jsonl')
-      const compressedFacts = fileFacts(compressed)
-      const path = compressedFacts !== undefined ? compressed : plain
-      const facts = compressedFacts ?? fileFacts(plain)
+      // The newest committed generation is the authoritative log; a session
+      // directory can hold several immutable generations after a migration.
+      const path = newestLogPath(dir)
+      if (path === undefined) continue
+      const facts = fileFacts(path)
       if (facts === undefined) continue
       result.push({
         key: `${project}/${session}`,

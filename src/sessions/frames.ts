@@ -1,8 +1,66 @@
-import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
+import { closeSync, fstatSync, openSync, readSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { zstdDecompressSync } from 'node:zlib'
 
 const ZSTD_MAGIC = 0xfd2fb528
 const MAX_DECODED_FRAME_BYTES = 64 * 1024 * 1024
+
+/**
+ * Canonical basename of one committed JSONL log generation, mirroring
+ * `dsh-session-format`'s parser: the untagged `session.jsonl` is generation 0,
+ * every later generation carries a lowercase `.vN` before the suffix. A
+ * snapshot may hold several immutable generations at once (a migrated log
+ * keeps its v0 file beside the v3 it was migrated into), so a reader must pick
+ * the newest rather than a fixed name.
+ */
+const CANONICAL_LOG_FILENAME = /^session(?:\.v([1-9][0-9]*))?\.jsonl$/u
+const COMPRESSION_SUFFIX = '.zstd'
+
+export interface LogGeneration {
+  /** Session format generation; 0 for the untagged `session.jsonl` name. */
+  version: number
+  /** Physical encoding suffix, `''` or `.zstd`. */
+  compression: string
+}
+
+/** Parse one directory entry as a canonical log generation, or undefined. */
+export function parseLogFilename(filename: string): LogGeneration | undefined {
+  const compressed = filename.endsWith(COMPRESSION_SUFFIX)
+  const base = compressed ? filename.slice(0, -COMPRESSION_SUFFIX.length) : filename
+  const match = CANONICAL_LOG_FILENAME.exec(base)
+  if (match === null) return undefined
+  return {
+    version: match[1] === undefined ? 0 : Number(match[1]),
+    compression: compressed ? COMPRESSION_SUFFIX : '',
+  }
+}
+
+/**
+ * The newest committed log generation in one session directory, or undefined
+ * when it holds none. Compressed beats plain at the same version because the
+ * backend never keeps both current, so a leftover plain file is the stale one.
+ */
+export function newestLogPath(dir: string): string | undefined {
+  let best: { path: string; version: number; compressed: boolean } | undefined
+  let names: string[]
+  try {
+    names = readdirSync(dir)
+  } catch {
+    // An unreadable directory contributes nothing; the persistence backend
+    // owns surfacing real I/O faults on the write path.
+    return undefined
+  }
+  for (const name of names) {
+    const generation = parseLogFilename(name)
+    if (generation === undefined) continue
+    const compressed = generation.compression !== ''
+    const better = best === undefined
+      || generation.version > best.version
+      || (generation.version === best.version && compressed && !best.compressed)
+    if (better) best = { path: join(dir, name), version: generation.version, compressed }
+  }
+  return best?.path
+}
 
 export interface FrameRange {
   start: number
