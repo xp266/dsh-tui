@@ -13,7 +13,7 @@ import { readClipboardImage, readClipboardImageUris, readClipboardText } from '.
 import { claimPaste } from './composer-paste.ts'
 import { handleComposerKeyBindings } from './composer-keys.ts'
 import { setComposerInserter } from './composer-bus.ts'
-import { COMMANDS, filterHintEntries, literalHintArgs } from './commands.ts'
+import { filterHintEntries, literalHintArgs } from './commands.ts'
 import type { CommandHintItem } from './commands.ts'
 
 export interface ComposerState {
@@ -69,7 +69,7 @@ export function useComposer(
   cursorRef.current = cursor
   hintOpenRef.current = hintOpen
   commandIndexRef.current = commandIndex
-  const visibleFor = (text: string) => filterHintEntries(entriesRef.current ?? COMMANDS, text)
+  const visibleFor = (text: string) => filterHintEntries(entriesRef.current ?? [], text)
   const undoStackRef = useRef<EditState[]>([])
   const redoStackRef = useRef<EditState[]>([])
   const pushUndoSnapshot = (): void => {

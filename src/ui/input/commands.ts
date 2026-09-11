@@ -10,6 +10,9 @@ export type { CommandDef } from '../../contract/index.ts'
 export interface CommandHintItem {
   command: string
   description: string
+  /** Parameter tokens advertised by the command, if any. */
+  args?: HintToken[]
+  /** Raw hint string, retained for literal argument completion fallback. */
   hint?: string
 }
 
@@ -120,9 +123,14 @@ export function mergeCommandEntries(local: readonly CommandDef[], remote: readon
   for (const def of local) {
     if (taken.has(def.command)) continue
     taken.add(def.command)
+    // The strip shows the parsed `hint`; an explicit `args` list (used for Tab
+    // completion) stands in as literal tokens when there is no hint.
+    const parsed = parseHintTokens(def.hint)
+    const args = parsed.length > 0 ? parsed : (def.args ?? []).map(label => ({ label, literal: true }))
     entries.push({
       command: def.command,
       description: localizeText(def.descriptions, def.description, language) ?? def.description,
+      ...(args.length === 0 ? {} : { args }),
       ...(def.hint === undefined ? {} : { hint: def.hint }),
     })
   }
@@ -130,9 +138,11 @@ export function mergeCommandEntries(local: readonly CommandDef[], remote: readon
     const command = `/${entry.name}`
     if (taken.has(command)) continue
     taken.add(command)
+    const args = parseHintTokens(entry.hint)
     entries.push({
       command,
       description: entry.description,
+      ...(args.length === 0 ? {} : { args }),
       ...(entry.hint === undefined ? {} : { hint: entry.hint }),
     })
   }
@@ -144,22 +154,85 @@ export function filterHintEntries(entries: readonly CommandHintItem[], value: st
   return matchHintEntries(entries, value)
 }
 
+/** One parsed parameter token from a command hint: a literal choice or a free-form placeholder. */
+export interface HintToken {
+  /** Token text without any surrounding `<>`/`[]`/`()` marker. */
+  label: string
+  /** Placeholder (`<text>`) vs a concrete literal choice (`off`). */
+  literal: boolean
+}
+
+/**
+ * Split a raw hint into parameter tokens.
+ *
+ * Upstream hints are free-form strings; the shapes seen in practice are
+ * `[off|message]`, `[<objective>|clear|edit <objective>|pause|resume]`,
+ * `<text>`, and prose such as `text to echo`. A bracket group splits on `|` and
+ * nothing else, so a multi-word option stays whole (`edit <objective>` is one
+ * choice that itself takes an objective). A hint with no brackets is a single
+ * token. Only a token wrapped entirely in `<>` is a placeholder. Duplicates
+ * collapse, first occurrence wins.
+ */
+export function parseHintTokens(hint: string | undefined): HintToken[] {
+  if (hint === undefined) return []
+  const trimmed = hint.trim()
+  if (trimmed === '') return []
+  const inner = /^\[([\s\S]*)\]$/u.exec(trimmed)?.[1]
+  const parts = (inner ?? trimmed).split('|')
+  const tokens: HintToken[] = []
+  const seen = new Set<string>()
+  for (const part of parts) {
+    const label = part.trim()
+    if (label === '') continue
+    const placeholder = /^<([^<>]+)>$/u.exec(label)
+    const token: HintToken = placeholder === null ? { label, literal: true } : { label: placeholder[1]!, literal: false }
+    const key = `${token.literal ? 'l' : 'p'}:${token.label}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    tokens.push(token)
+  }
+  return tokens
+}
+
 /** Static literal arguments for registry commands whose hints mix literals with free-form prose. */
 export const KNOWN_COMMAND_ARGS: Record<string, readonly string[]> = {
   plan: ['off'],
 }
 
+/** Concrete keyword choices; a mixed token like `edit <objective>` contributes only `edit`. */
 export function literalHintArgs(hint: string | undefined): string[] {
-  if (hint === undefined || hint === '') return []
-  const body = hint.replace(/^\[/, '').replace(/\]$/, '')
-  return body
-    .split('|')
-    .map(part => part.trim())
-    .filter(part => part !== '' && !part.includes('<'))
+  return parseHintTokens(hint).filter(token => token.literal).map(token => token.label)
+}
+
+/**
+ * Parameter strip for a typed command line: resolves the leading command token
+ * against `entries` and returns its tokens when the line has moved past the
+ * command name (`/goal ` or `/goal o`). Returns undefined while the user is
+ * still picking the command itself, so the command menu owns that state.
+ */
+export function commandHintArgs(entries: readonly CommandHintItem[], value: string): CommandHintArgs | undefined {
+  const match = /^(\/\S+)(?:\s+([\s\S]*))?$/u.exec(value)
+  if (match === null) return undefined
+  const command = match[1]!
+  if (match[2] === undefined) return undefined
+  const entry = entries.find(candidate => candidate.command === command)
+  if (entry === undefined || entry.args === undefined || entry.args.length === 0) return undefined
+  return { command, tokens: entry.args }
 }
 
 export interface CommandHintState {
   commands: CommandHintItem[]
   selectedIndex: number
   startIndex?: number
+  /** Widest command name across the full filtered list, for a stable label column. */
+  nameWidth?: number
+}
+
+/**
+ * The parameter strip shown under the composer once a command with parameters
+ * is typed out (`/goal `). `tokens` are its columns.
+ */
+export interface CommandHintArgs {
+  command: string
+  tokens: HintToken[]
 }

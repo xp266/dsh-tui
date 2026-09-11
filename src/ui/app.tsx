@@ -25,7 +25,7 @@ import { KeymapGate } from './chrome/key-gate.tsx'
 import { useOverlayContribution } from './contributions.ts'
 import { InputBar, inputLayout, INPUT_WIDTH_OFFSET, HINT_MAX_ROWS } from './input/input-bar.tsx'
 import type { InputBarHandle } from './input/input-bar.tsx'
-import { COMMANDS, KNOWN_COMMAND_ARGS, commandArgHints, filterHintEntries, matchCommand, mergeCommandEntries, matchAvailableCommand, useCommandVersion } from './input/commands.ts'
+import { COMMANDS, KNOWN_COMMAND_ARGS, commandArgHints, commandHintArgs, filterHintEntries, matchCommand, mergeCommandEntries, matchAvailableCommand, useCommandVersion } from './input/commands.ts'
 import { hintArgsFor } from './chrome/hint-service.ts'
 import type { CommandAvailability, CommandDef } from './input/commands.ts'
 import { localizeText, useLanguage } from '../core/language.ts'
@@ -200,12 +200,16 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
     listCommandArgs,
   )
   const commands = useMemo(() => filterHintEntries(commandEntries, value), [commandEntries, value])
+  // The parameter strip owns the slot once a parameterized command is typed
+  // out; the command menu has already closed by then, so only one is ever set.
+  const hintArgs = dialog === null && commands.length === 0 ? commandHintArgs(commandEntries, value) ?? null : null
+  const argRows = hintArgs === null ? 0 : 1
   const layout = inputLayout(value, cursor, columns)
   const permissionMode = bridge?.permissionMode() ?? 'workspace-write'
   const permissionChrome = permissionModeInfo(permissionMode)
   const bottomHeight = panel === null ? layout.barHeight : panelHeight + 1
   const inputHeight = bottomHeight
-  const messageHeight = Math.max(1, rows - inputHeight - MESSAGE_INPUT_GAP_ROWS)
+  const messageHeight = Math.max(1, rows - inputHeight - MESSAGE_INPUT_GAP_ROWS - argRows)
   const total = rowIndexFor(messages, columns).total
   const { scrollTop, applyScroll, getScroll, expandTop } = useScroll(total, messageHeight)
   const startNewSession = () => {
@@ -265,6 +269,7 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
         commands: commands.slice(hintVisibleStart, hintVisibleStart + maxVisible),
         selectedIndex: commandIndex - hintVisibleStart,
         startIndex: hintVisibleStart,
+        nameWidth: Math.max(...commands.map(entry => entry.command.length)),
       }
     : null
   const handleToggle = (id: string) => {
@@ -414,6 +419,7 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
                 presetName={bridge?.presetName()}
                 interactive={composerInteractive}
                 hint={hintState}
+                args={hintArgs}
               />
             )}
             {panel !== null && bridge !== undefined && (() => {

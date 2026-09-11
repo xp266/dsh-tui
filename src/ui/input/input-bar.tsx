@@ -13,7 +13,7 @@ import { colToCharIndex, lineBreaks, textWidth, truncate, wrapLines } from '../.
 import { hasFieldChar } from '../../core/fields.ts'
 import { expandFieldChars, fieldRowSegments } from '../../core/field-view.ts'
 import type { ComposerApi } from './use-composer.ts'
-import type { CommandHintState } from './commands.ts'
+import type { CommandHintState, CommandHintArgs } from './commands.ts'
 import { SelectableText } from '../selection.tsx'
 import { Region } from '../region.tsx'
 
@@ -49,6 +49,8 @@ interface InputBarProps {
   interactive?: boolean
   statusReady?: boolean
   hint?: CommandHintState | null
+  /** Parameter strip for a typed command with parameters (`/goal `); mutually exclusive with `hint`. */
+  args?: CommandHintArgs | null
 }
 
 export function InputBar({
@@ -66,6 +68,7 @@ export function InputBar({
   interactive = true,
   statusReady = true,
   hint = null,
+  args = null,
 }: InputBarProps) {
   const { setCursorPosition } = useCaret()
   const contentWidth = width - INPUT_WIDTH_OFFSET
@@ -157,9 +160,18 @@ export function InputBar({
       used += textWidth(text)
     }
   }
-  const blockTop = hintCount > 0 ? Math.max(0, hintBlockTop(rows, barHeight, hintCount) - 1) : firstRealY - 1
+  const argTokens = args?.tokens ?? []
+  const argsCount = argTokens.length === 0 ? 0 : 1
+  // The parameter row is a header band of the same input block, exactly like
+  // the command menu: both stack above the frame's top cap, inside the gap row
+  // the block reserves, so the block keeps one cap and never opens a hole.
+  const bandRows = hintCount + argsCount
+  // `hintBlockTop` anchors the top of the band stack; the cap shares that row,
+  // so content starts one row below it.
+  const blockTop = bandRows > 0 ? hintBlockTop(rows, barHeight, bandRows) - 1 : firstRealY - 1
+  const hintTop = blockTop + 1
+  const argsTop = blockTop + 1 + hintCount
   const statusLocalY = inputStatusRow(rows) - blockTop
-  const hintTop = hintCount > 0 ? hintBlockTop(rows, barHeight, hintCount) : 0
   return (
     <Region y={blockTop}>
       <Box position="absolute" top={0} left={0} width={columns} height={rows}>
@@ -168,12 +180,15 @@ export function InputBar({
         </Box>
         {hintCount > 0 && hint?.commands.map((command, index) => {
           const selected = index === hint.selectedIndex
-          const leftWidth = Math.max(1, Math.floor((blockWidth * 2) / 5))
-          const label = command.hint === undefined ? command.command : `${command.command} ${command.hint}`
-          const labelPiece = truncate(label, leftWidth - 1)
-          const descriptionPiece = truncate(command.description, Math.max(1, blockWidth - leftWidth - 2))
-          const gap = Math.max(1, leftWidth - textWidth(labelPiece))
-          const trail = Math.max(0, blockWidth - 2 - leftWidth - textWidth(descriptionPiece))
+          // The command column sizes to the widest name across the filtered
+          // list (commands carry no inline parameter text), so every
+          // description starts at the same column and moves well forward.
+          const nameWidth = hint!.nameWidth ?? Math.max(...hint!.commands.map(entry => textWidth(entry.command)))
+          const labelWidth = Math.min(nameWidth, Math.max(1, blockWidth - 6))
+          const labelPiece = truncate(command.command, labelWidth)
+          const descriptionPiece = truncate(command.description, Math.max(1, blockWidth - labelWidth - 4))
+          const gap = Math.max(2, labelWidth - textWidth(labelPiece) + 2)
+          const trail = Math.max(0, blockWidth - 2 - textWidth(labelPiece) - gap - textWidth(descriptionPiece))
           return (
             <Box
               key={command.command}
@@ -187,13 +202,13 @@ export function InputBar({
                 <Text inverse={selected} color={COLORS.ink}>{'  '}</Text>
                 <SelectableText y={hintTop + index - blockTop} col={CHROME_MARGIN_X + 2} text={labelPiece} inverse={selected} />
                 <Text inverse={selected} color={COLORS.ink}>{' '.repeat(gap)}</Text>
-                <SelectableText y={hintTop + index - blockTop} col={CHROME_MARGIN_X + 2 + leftWidth} text={descriptionPiece} inverse={selected} />
+                <SelectableText y={hintTop + index - blockTop} col={CHROME_MARGIN_X + 2 + textWidth(labelPiece) + gap} text={descriptionPiece} inverse={selected} />
                 <Text inverse={selected} color={COLORS.ink}>{' '.repeat(trail)}</Text>
               </Box>
             </Box>
           )
         })}
-        {hintCount > 0 && (
+        {bandRows > 0 && (
           <Box
             position="absolute"
             top={firstRealY - 1}
@@ -204,6 +219,46 @@ export function InputBar({
             backgroundColor={permission.color}
           >
             <Text>{' '}</Text>
+          </Box>
+        )}
+        {argsCount > 0 && (
+          <Box
+            position="absolute"
+            top={argsTop}
+            left={CHROME_MARGIN_X}
+            width={blockWidth}
+            height={1}
+            backgroundColor={permission.color}
+          >
+            <Box flexDirection="row">
+              <Text color={COLORS.ink}>{'  '}</Text>
+              {(() => {
+                let col = CHROME_MARGIN_X + 2
+                let used = 0
+                return argTokens.flatMap((token, index) => {
+                  const remaining = blockWidth - 4 - used
+                  if (remaining <= 0) return []
+                  const text = truncate(token.literal ? token.label : `<${token.label}>`, remaining)
+                  if (text === '') return []
+                  used += textWidth(text) + 3
+                  const nodes = [
+                    <SelectableText
+                      key={`arg-${index}`}
+                      y={argsTop - blockTop}
+                      col={col}
+                      text={text}
+                      color={COLORS.ink}
+                    />,
+                  ]
+                  col += textWidth(text)
+                  if (index < argTokens.length - 1) {
+                    nodes.push(<Text key={`sep-${index}`} color={COLORS.ink}>{' | '}</Text>)
+                    col += 3
+                  }
+                  return nodes
+                })
+              })()}
+            </Box>
           </Box>
         )}
         {Array.from({ length: realRows }, (_, row) => {

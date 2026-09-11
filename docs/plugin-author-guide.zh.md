@@ -201,11 +201,14 @@ tui.commands.register({
 ```
 
 - 不带 `run` 时，指令打开同 `id` 的窗口或覆盖层。
-- `args` 提供字面量参数补全；`hint` 显示在输入提示里。
+- `hint` 描述指令的参数；`args` 提供显式的字面量参数补全。
+- 指令菜单不再内联参数：只列出指令名与描述。输入带参数的指令并加空格（`/deploy `）后，输入框下方出现一行参数提示条——所有 token 统一灰色，自由占位符保留 `<name>` 标记，字面量选项原样显示。
+- hint token 形态：`[off|message]` 拆成两个字面量；`[<objective>|clear|edit <objective>|pause|resume]` 混合完整选项（`edit <objective>` 这类多词选项保持整体）；`<text>` 是单个占位符；不带方括号的 hint 视为单个 token。只有 `|` 切分 token；只有整体包裹在 `<>` 中的 token 才按占位符处理。
+- `args` 用于 Tab 补全；未设置 `hint` 时也用于生成参数提示条。
 - `descriptions` 按当前语言本地化提示行描述；缺失变体回退到 `description`。
 - `command` 必须匹配 `/^\/[a-z][a-z0-9-]*$/`，`id` 不能为空；格式错误的注册在注册时即抛错，而不是分发时静默失败。
 - 两个注册声明同一指令 token 时，按注册顺序先到者胜出，后者被丢弃并写入一条警告日志——不会产生重复的提示行。
-- 精确输入指令后按 Enter：无 `hint` 的指令直接执行；带参数的指令第一次 Enter 补全为 `command `（提示 UI），第二次 Enter 执行。
+- 精确输入指令后按 Enter：无 `hint` 的指令直接执行；带参数的指令第一次 Enter 补全为 `command `（参数提示条），第二次 Enter 执行。
 
 ### tui.language.register
 

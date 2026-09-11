@@ -209,11 +209,14 @@ tui.commands.register({
 ```
 
 - Without `run`, the command opens the window or overlay registered under the same `id`.
-- `args` supplies literal argument completions; `hint` shows in the input hints.
+- `hint` describes the command's parameters; `args` supplies explicit literal argument completions.
+- The command menu never inlines parameters: it lists the command name and its description only. Once you type a parameterized command and add a space (`/deploy `), a one-line parameter strip appears under the composer — every token renders in one gray, free-form placeholders keep their `<name>` markers, and literal choices stay verbatim.
+- Hint token shapes: `[off|message]` splits into literals, `[<objective>|clear|edit <objective>|pause|resume]` mixes complete options (a multi-word option such as `edit <objective>` stays whole), `<text>` is a single placeholder, and a hint with no brackets is one token. Only `|` separates tokens; only a token wrapped entirely in `<>` is treated as a placeholder.
+- `args` is used for Tab completion and, when no `hint` is set, also seeds the parameter strip.
 - `descriptions` localizes the hint-row description against the active language; a missing variant falls back to `description`.
 - `command` must match `/^\/[a-z][a-z0-9-]*$/` and `id` must be non-empty; a malformed registration throws at register time instead of failing silently at dispatch.
 - When two registrations claim the same command token, the first (by registry order) wins and the later one is dropped with a warning log — it never produces a duplicate hint row.
-- Typing a command exactly and pressing Enter runs it directly when the command has no `hint`; commands with arguments complete to `command ` on the first Enter (the hint UI) and run on the second.
+- Typing a command exactly and pressing Enter runs it directly when the command has no `hint`; commands with arguments complete to `command ` on the first Enter (the parameter strip) and run on the second.
 
 ### tui.language.register
 
