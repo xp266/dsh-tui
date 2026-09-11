@@ -199,9 +199,29 @@ export const KNOWN_COMMAND_ARGS: Record<string, readonly string[]> = {
   plan: ['off'],
 }
 
-/** Concrete keyword choices; a mixed token like `edit <objective>` contributes only `edit`. */
+/** Leading word of a token: `edit` for the mixed option `edit <objective>`. */
+function leadingWord(label: string): string {
+  return label.split(/\s+/, 1)[0] ?? ''
+}
+
+/**
+ * Completion candidates for a command's arguments. A hint option may be a
+ * keyword plus its own free-form placeholder (`edit <objective>`); only the
+ * keyword is a literal choice, so completion inserts `edit` and whatever the
+ * option takes is typed (or completed) afterwards. Falling back to the whole
+ * label would paste the placeholder text itself and then keep offering it.
+ */
 export function literalHintArgs(hint: string | undefined): string[] {
-  return parseHintTokens(hint).filter(token => token.literal).map(token => token.label)
+  const seen = new Set<string>()
+  const args: string[] = []
+  for (const token of parseHintTokens(hint)) {
+    if (!token.literal) continue
+    const word = leadingWord(token.label)
+    if (word === '' || seen.has(word)) continue
+    seen.add(word)
+    args.push(word)
+  }
+  return args
 }
 
 /**
@@ -226,6 +246,18 @@ export interface CommandHintState {
   startIndex?: number
   /** Widest command name across the full filtered list, for a stable label column. */
   nameWidth?: number
+}
+
+/**
+ * The candidate one Tab press moves to, cycling through the list. A full match
+ * advances to the next candidate; a partial one jumps to the first prefix match,
+ * or to the head when nothing matches.
+ */
+export function nextHintCompletion(candidates: readonly string[], current: string): string | undefined {
+  if (candidates.length === 0) return undefined
+  const exactIndex = candidates.indexOf(current)
+  if (exactIndex >= 0) return candidates[(exactIndex + 1) % candidates.length]
+  return candidates.find(candidate => candidate.startsWith(current)) ?? candidates[0]
 }
 
 /**
