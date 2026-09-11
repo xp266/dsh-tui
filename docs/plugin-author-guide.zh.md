@@ -101,6 +101,7 @@ React 组件的唯一受支持来源。注意：以 `link:` 方式安装的插�
 | `tui.windows` | 对话框窗口（可带斜杠指令） |
 | `tui.services` | 窗口消费的数据存储 |
 | `tui.commands` | 斜杠指令，支持提示与参数补全 |
+| `tui.language` | `/language` 窗口可切换的指令描述语言 |
 | `tui.chrome.statusLine` | 状态栏文本行 |
 | `tui.chrome.overlays` | 全屏覆盖层 |
 | `tui.chrome.widgets` | 对话框条目控件类型 |
@@ -140,15 +141,21 @@ React 组件的唯一受支持来源。注意：以 `link:` 方式安装的插�
 ```ts
 tui.windows.register({
   id: 'metrics',
-  title: 'Metrics',
-  command: { name: 'metrics', description: 'Show metrics' },
+  title: { en: 'Metrics', zh: '指标' },
+  command: {
+    name: 'metrics',
+    description: 'Show metrics',
+    descriptions: { zh: '显示指标' },
+  },
   required: ['metrics'],
   component: ({ open, onClose }) => <MetricsDialog visible={open} onClose={onClose} />,
 })
 ```
 
-- 组件 props：`{ open, onClose, handleRef? }`；渲染在对话框层（复用关闭守卫与鼠标选区）。
+- 组件 props：`{ open, onClose, title?, handleRef? }`；渲染在对话框层（复用关闭守卫与鼠标选区）。`title` 是按当前语言解析后的标签，用它代替你自己硬编码的标题。
+- `title` 可以是普通字符串，也可以是 `{ 语言: 标签 }` 映射；当前语言来自 `/language`，缺失变体回退到第一个声明的变体。
 - `command` 生成同名斜杠指令；`required` 声明窗口依赖的窗口服务——服务就绪前不渲染。
+- `command.descriptions` 按语言 id 提供翻译描述；当前语言来自 `/language`，缺失变体回退到 `description`，因此纯英文插件无需额外处理。
 
 ### tui.chrome.widgets.register
 
@@ -186,6 +193,7 @@ tui.commands.register({
   id: 'deploy',
   command: '/deploy',
   description: 'Run the deploy pipeline',
+  descriptions: { zh: '运行部署流水线' },
   hint: '[env]',
   args: ['staging|production'],
   run: () => {},
@@ -194,7 +202,25 @@ tui.commands.register({
 
 - 不带 `run` 时，指令打开同 `id` 的窗口或覆盖层。
 - `args` 提供字面量参数补全；`hint` 显示在输入提示里。
+- `descriptions` 按当前语言本地化提示行描述；缺失变体回退到 `description`。
+- `command` 必须匹配 `/^\/[a-z][a-z0-9-]*$/`，`id` 不能为空；格式错误的注册在注册时即抛错，而不是分发时静默失败。
+- 两个注册声明同一指令 token 时，按注册顺序先到者胜出，后者被丢弃并写入一条警告日志——不会产生重复的提示行。
 - 精确输入指令后按 Enter：无 `hint` 的指令直接执行；带参数的指令第一次 Enter 补全为 `command `（提示 UI），第二次 Enter 执行。
+
+### tui.language.register
+
+```ts
+tui.language.register({
+  id: 'pt',
+  language: 'pt',
+  label: 'Português',
+  order: 10,
+})
+```
+
+- 在 `/language` 窗口中新增一行可选语言。`language` 是所有 `descriptions` 映射使用的键，必须匹配 `^[a-z][a-z0-9_-]{0,15}$`，否则注册抛错。
+- 行按 `order` 升序排列；内置两种语言（`en`、`zh`）位于 500+ 的回退层。
+- 选择插件语言后即成为当前会话的描述语言；下一次启动时若插件缺失，持久化存储仍回退到内置 id。
 
 ### tui.composer.paste.register
 

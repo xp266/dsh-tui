@@ -26,6 +26,8 @@ export interface SessionsDialogProps {
   onBeforeSessionSelected?: () => void
   onSessionSelected: (session: SessionSummary) => void
   onNewSession?: () => void
+  /** Window label resolved by the shell against the active language. */
+  windowTitle?: string
   ref?: Ref<DialogHandle>
 }
 
@@ -46,7 +48,7 @@ interface ArmedRow {
   id: string
 }
 
-export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessionSelected, onNewSession, ref }: SessionsDialogProps) {
+export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessionSelected, onNewSession, windowTitle = 'sessions', ref }: SessionsDialogProps) {
   const { error, clearError, run } = useAsyncAction()
   const [armedKey, setArmedKey] = useState<string | null>(null)
   const armedRef = useRef<string | null>(null)
@@ -146,7 +148,7 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
   return (
     <Dialog
       ref={ref}
-      title="sessions"
+      title={windowTitle}
       width={DIALOG_WIDTH_LARGE}
       maxHeight={DIALOG_MAX_HEIGHT}
       rows={rows}

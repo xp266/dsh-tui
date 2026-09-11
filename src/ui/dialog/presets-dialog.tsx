@@ -15,11 +15,12 @@ export interface PresetsApi {
 export interface PresetsDialogProps {
   api: PresetsApi
   onClose: () => void
+  title?: string
   ref?: Ref<DialogHandle>
 }
 
 
-export function PresetsDialog({ api, onClose, ref }: PresetsDialogProps) {
+export function PresetsDialog({ api, onClose, title = 'preset', ref }: PresetsDialogProps) {
   const { error, run } = useAsyncAction()
   const current = api.currentPreset()
   const selectPreset = async (id: string) => {
@@ -31,7 +32,7 @@ export function PresetsDialog({ api, onClose, ref }: PresetsDialogProps) {
   return (
     <ListDialog
       ref={ref}
-      title="preset"
+      title={title}
       width={DIALOG_WIDTH_MEDIUM}
       maxHeight={DIALOG_MAX_HEIGHT}
       load={api.listPresets}

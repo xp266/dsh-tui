@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type { Ref } from 'react'
 import { errorLine, loadingLine } from './status-lines.ts'
 import { useAsyncList } from '../hooks/use-async-list.ts'
@@ -10,6 +11,11 @@ export interface ListDialogProps<T> {
   width: number
   maxHeight: number
   load: () => Promise<T[]>
+  /**
+   * Optional external change source: when it fires, the list reloads. Lets a
+   * dialog track a registry that can grow while it is open.
+   */
+  reloadOn?(listener: () => void): () => void
   search?: boolean
   searchRight?: boolean
   labelOf(item: T): string
@@ -26,6 +32,7 @@ export function ListDialog<T>({
   width,
   maxHeight,
   load,
+  reloadOn,
   search = false,
   searchRight = false,
   labelOf,
@@ -35,7 +42,8 @@ export function ListDialog<T>({
   footerLines,
   errors,
 }: ListDialogProps<T>) {
-  const { items, loading, error } = useAsyncList(load)
+  const { items, loading, error, reload } = useAsyncList(load)
+  useEffect(() => reloadOn?.(reload), [reloadOn, reload])
   const itemRows: DialogRow[] = items.map(item => {
     const button: DialogItem = { type: 'button', label: labelOf(item), right: rightOf?.(item), onPress: () => onSelect(item) }
     return { items: [button] }

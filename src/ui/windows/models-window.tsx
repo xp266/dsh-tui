@@ -8,8 +8,8 @@ export interface ModelsWindowProps extends WindowProps {
   onAddProvider(): void
 }
 
-export function ModelsWindow({ onModelSelected, onAddProvider, handleRef, ...props }: ModelsWindowProps) {
+export function ModelsWindow({ onModelSelected, onAddProvider, handleRef, title, ...props }: ModelsWindowProps) {
   const api = useWindowService<ModelApi>('models')
   if (api === undefined) return null
-  return <ModelsDialog ref={handleRef} api={api} onModelSelected={onModelSelected} onAddProvider={onAddProvider} {...props} />
+  return <ModelsDialog ref={handleRef} api={api} onModelSelected={onModelSelected} onAddProvider={onAddProvider} windowTitle={title} {...props} />
 }

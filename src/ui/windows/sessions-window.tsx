@@ -9,7 +9,7 @@ export interface SessionsWindowProps extends WindowProps {
   onNewSession?(): void
 }
 
-export function SessionsWindow({ onBeforeSessionSelected, onSessionSelected, onNewSession, handleRef, ...props }: SessionsWindowProps) {
+export function SessionsWindow({ onBeforeSessionSelected, onSessionSelected, onNewSession, handleRef, title, ...props }: SessionsWindowProps) {
   const api = useWindowService<SessionsApi>('sessions')
   if (api === undefined) return null
   return (
@@ -19,6 +19,7 @@ export function SessionsWindow({ onBeforeSessionSelected, onSessionSelected, onN
       onBeforeSessionSelected={onBeforeSessionSelected}
       onSessionSelected={onSessionSelected}
       onNewSession={onNewSession}
+      windowTitle={title}
       {...props}
     />
   )

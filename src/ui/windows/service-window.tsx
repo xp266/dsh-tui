@@ -6,13 +6,15 @@ import type { WindowProps } from '../windows.ts'
 export interface ServiceDialogProps<Api> {
   api: Api
   onClose(): void
+  /** Window label resolved by the shell against the active language. */
+  title?: string
   ref?: Ref<DialogHandle>
 }
 
 export function createServiceWindow<Api>(name: string, Dialog: ComponentType<ServiceDialogProps<Api>>): ComponentType<WindowProps> {
-  return function ServiceWindow({ handleRef, onClose }: WindowProps) {
+  return function ServiceWindow({ handleRef, onClose, title }: WindowProps) {
     const api = useWindowService<Api>(name)
     if (api === undefined) return null
-    return <Dialog ref={handleRef} api={api} onClose={onClose} />
+    return <Dialog ref={handleRef} api={api} onClose={onClose} title={title} />
   }
 }

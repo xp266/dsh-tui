@@ -11,9 +11,9 @@ import type { Message, MessageKind } from '../model/message.ts'
 export type { MessageKind } from '../model/message.ts'
 import type { MouseEventData } from '../terminal/mouse.ts'
 import type { ScrollSnapshot } from '../ui/hooks/use-scroll.ts'
-import type { LanguageText } from '../core/language.ts'
+import type { LanguageText, LocalizedText } from '../core/language.ts'
 
-export type { LanguageId, LanguageText } from '../core/language.ts'
+export type { LanguageId, LanguageText, LocalizedText } from '../core/language.ts'
 export type { PendingImage } from '../core/paste.ts'
 export type { LineSelection } from '../model/selection.ts'
 export type { MouseEventData, MouseEventType } from '../terminal/mouse.ts'
@@ -33,6 +33,8 @@ export interface WindowHandle {
 export interface WindowProps {
   open: boolean
   onClose(): void
+  /** Window label resolved against the active language; falls back to the builtin title. */
+  title?: string
   handleRef?: Ref<WindowHandle>
 }
 
@@ -45,7 +47,8 @@ export interface WindowCommandSpec {
 
 export interface WindowContribution {
   id: string
-  title: string
+  /** Window label; a variant map follows the active language. */
+  title: LocalizedText
   component: ComponentType<WindowProps>
   order?: number
   command?: WindowCommandSpec

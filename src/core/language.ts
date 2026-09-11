@@ -6,6 +6,8 @@ import { env } from '../env.ts'
 
 export type LanguageId = string
 export type LanguageText = Readonly<Partial<Record<LanguageId, string>>>
+/** Text that is either language-invariant or carries per-language variants. */
+export type LocalizedText = string | LanguageText
 
 const SCHEMA_VERSION = 1
 const STORE_DIR = join(resolveDshHome(), 'storages')
@@ -98,12 +100,14 @@ export function useLanguage(): LanguageId {
 }
 
 /**
- * Resolve a language variant map against `language`. A missing variant falls
- * back to the caller's default text, then to the other declared variant; a map
- * with no text at all resolves to the fallback so callers can measure before
- * they render.
+ * Resolve localized text against `language`. A plain string is already final;
+ * a variant map falls back to the caller's default text, then to the other
+ * declared variant. Text that is absent, empty, or maps to nothing resolves to
+ * the fallback so callers can measure before they render.
  */
-export function localizeText(text: LanguageText | undefined, fallback: string | undefined, language: LanguageId): string | undefined {
-  if (text === undefined || Object.keys(text).length === 0) return fallback
+export function localizeText(text: LocalizedText | undefined, fallback: string | undefined, language: LanguageId): string | undefined {
+  if (text === undefined) return fallback
+  if (typeof text === 'string') return text
+  if (Object.keys(text).length === 0) return fallback
   return text[language] ?? fallback ?? Object.values(text)[0]
 }

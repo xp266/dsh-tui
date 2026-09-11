@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react'
 import { keyedRegistry } from '../../kernel/registry.ts'
 import { localizeText } from '../../core/language.ts'
 import { matchHintEntries } from '../chrome/hint-service.ts'
+import { warn } from '../../log.ts'
 import type { CommandDef } from '../../contract/index.ts'
 
 export type { CommandDef } from '../../contract/index.ts'
@@ -23,12 +24,33 @@ const registry = keyedRegistry<CommandDef>()
 
 export const COMMANDS: CommandDef[] = []
 
+/** Command-name grammar shared by registration validation and unknown-command detection. */
+export const COMMAND_NAME_PATTERN = /^\/[a-z][a-z0-9-]*$/u
+
 let version = 0
+let diagnostics: readonly string[] = []
 
 function refresh(): void {
   version += 1
+  const seen = new Map<string, string>()
+  const conflicts: string[] = []
+  const accepted: CommandDef[] = []
+  // First entry wins by registry order; a later command claiming a token that
+  // already resolved would render a duplicate row and shadow-dispatch, so it is
+  // dropped and recorded instead of quietly duplicating.
+  for (const def of registry.values()) {
+    const owner = seen.get(def.command)
+    if (owner !== undefined) {
+      conflicts.push(`command "${def.command}" from "${def.id}" conflicts with "${owner}" and is ignored`)
+      continue
+    }
+    seen.set(def.command, def.id)
+    accepted.push(def)
+  }
   COMMANDS.length = 0
-  COMMANDS.push(...registry.values())
+  COMMANDS.push(...accepted)
+  diagnostics = conflicts
+  for (const conflict of conflicts) warn('commands', conflict)
 }
 
 registry.register('new', {
@@ -48,8 +70,15 @@ registry.subscribe(refresh)
 
 export function registerCommand(def: CommandDef): () => void {
   if (def.id === '') throw new Error('command id must not be empty')
-  if (!def.command.startsWith('/')) throw new Error(`command must start with "/": ${def.command}`)
+  if (!COMMAND_NAME_PATTERN.test(def.command)) {
+    throw new Error(`invalid command name "${def.command}": must match ${COMMAND_NAME_PATTERN.source}`)
+  }
   return registry.register(def.id, def, { order: def.order })
+}
+
+/** Conflicting local command registrations dropped by the last refresh. */
+export function commandDiagnostics(): readonly string[] {
+  return diagnostics
 }
 
 export function subscribeCommands(listener: () => void): () => void {
@@ -86,15 +115,17 @@ export function commandArgHints(name: string): readonly string[] | undefined {
  * rows keyed by `name`.
  */
 export function mergeCommandEntries(local: readonly CommandDef[], remote: readonly RegistryCommandHint[], language: string): CommandHintItem[] {
-  const taken = new Set(local.map(command => command.command))
-  const entries: CommandHintItem[] = local.map(def => {
-    const { command, hint } = def
-    return {
-      command,
+  const taken = new Set<string>()
+  const entries: CommandHintItem[] = []
+  for (const def of local) {
+    if (taken.has(def.command)) continue
+    taken.add(def.command)
+    entries.push({
+      command: def.command,
       description: localizeText(def.descriptions, def.description, language) ?? def.description,
-      ...(hint === undefined ? {} : { hint }),
-    }
-  })
+      ...(def.hint === undefined ? {} : { hint: def.hint }),
+    })
+  }
   for (const entry of remote) {
     const command = `/${entry.name}`
     if (taken.has(command)) continue

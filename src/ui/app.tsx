@@ -28,7 +28,7 @@ import type { InputBarHandle } from './input/input-bar.tsx'
 import { COMMANDS, KNOWN_COMMAND_ARGS, commandArgHints, filterHintEntries, matchCommand, mergeCommandEntries, matchAvailableCommand, useCommandVersion } from './input/commands.ts'
 import { hintArgsFor } from './chrome/hint-service.ts'
 import type { CommandAvailability, CommandDef } from './input/commands.ts'
-import { useLanguage } from '../core/language.ts'
+import { localizeText, useLanguage } from '../core/language.ts'
 import { MESSAGE_INPUT_GAP_ROWS } from '../core/metrics.ts'
 import { useComposer } from './input/use-composer.ts'
 import type { ComposerSubmission } from './input/composer-fields.ts'
@@ -478,7 +478,7 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
                   return (
                     <CloseGuardContext.Provider value={selection !== null}>
                       <SelectionContext.Provider value={chromeSelection}>
-                        <Window open handleRef={dialogRef} onClose={() => overlays.pop()} />
+                        <Window open title={localizeText(entry.title, undefined, language)} handleRef={dialogRef} onClose={() => overlays.pop()} />
                       </SelectionContext.Provider>
                     </CloseGuardContext.Provider>
                   )

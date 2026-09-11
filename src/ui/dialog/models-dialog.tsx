@@ -33,6 +33,8 @@ export interface ModelsDialogProps {
   onClose: () => void
   onModelSelected: (provider: string, model: string) => void
   onAddProvider: () => void
+  /** Window label resolved by the shell against the active language. */
+  windowTitle?: string
   ref?: Ref<DialogHandle>
 }
 
@@ -41,7 +43,7 @@ type Window =
   | { kind: 'configure-model' }
 
 
-export function ModelsDialog({ api, onClose, onModelSelected, onAddProvider, ref }: ModelsDialogProps) {
+export function ModelsDialog({ api, onClose, onModelSelected, onAddProvider, windowTitle = 'models', ref }: ModelsDialogProps) {
   const [window, setWindow] = useState<Window>({ kind: 'list' })
   const { error, clearError, run } = useAsyncAction()
   const { items: models, loading, error: loadError, reload } = useAsyncList(api.listModels)
@@ -185,7 +187,7 @@ export function ModelsDialog({ api, onClose, onModelSelected, onAddProvider, ref
       ref={ref}
       width={DIALOG_WIDTH_MEDIUM}
       maxHeight={DIALOG_MAX_HEIGHT}
-      title="models"
+      title={windowTitle}
       rows={listRows}
       footer={listFooter}
       errors={listErrors}

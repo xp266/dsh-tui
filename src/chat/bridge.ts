@@ -387,6 +387,14 @@ export interface RegistryCommand {
   hint?: string
 }
 
+function sameRegistryCommands(a: readonly RegistryCommand[], b: readonly RegistryCommand[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((entry, index) => {
+    const other = b[index]
+    return other !== undefined && entry.name === other.name && entry.description === other.description && entry.hint === other.hint
+  })
+}
+
 interface CommandsServiceLike {
   list(agent: unknown): readonly { name: string; description: string; input?: { hint: string } }[]
   execute(agent: unknown, line: string, images: readonly unknown[], signal: AbortSignal): Promise<unknown>
@@ -442,11 +450,14 @@ export interface ChatBridge {
 }
 
 let sessionCounter = 0
+let commandFailureCounter = 0
 
 const SESSION_LIST_TTL_MS = 2000
 const EFFORT_LIST_TTL_MS = 30000
 const PRESET_LIST_TTL_MS = 2000
 const MODEL_LIST_TTL_MS = 30000
+/** Fallback cadence for the command roster when the host exposes no change event. */
+const REGISTRY_POLL_MS = 5000
 
 interface CachedList<T> {
   get(force?: boolean): Promise<T[]>
@@ -552,27 +563,41 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   const commandsService = ctx.get('commands') as CommandsServiceLike | undefined
   const registryListeners = new Set<() => void>()
   let registryCommands: RegistryCommand[] = []
+  let registryPoll: ReturnType<typeof setInterval> | undefined
   const syncRegistry = (): void => {
     if (commandsService === undefined) return
+    let next: RegistryCommand[]
     try {
-      registryCommands = commandsService.list(activeAgent).map(entry => ({
+      next = commandsService.list(activeAgent).map(entry => ({
         name: entry.name,
         description: entry.description,
         ...(entry.input?.hint === undefined ? {} : { hint: entry.input.hint }),
       }))
     } catch {
-      registryCommands = []
+      next = []
     }
+    // A poll must not churn React state: only publish when the roster changed.
+    if (sameRegistryCommands(registryCommands, next)) return
+    registryCommands = next
     for (const listener of [...registryListeners]) listener()
   }
-  try {
-    ;(ctx as unknown as { on(name: string, listener: () => void): void }).on('commands/change', () => syncRegistry())
-  } catch (cause) {
-    // The commands service does not emit change events on this host; the sync stays one-shot.
-    warn('bridge', 'commands/change subscription failed', {
-      message: cause instanceof Error ? cause.message : String(cause),
-    })
+  const subscribeRegistryChanges = (): void => {
+    const on = (ctx as { on?: (name: string, listener: () => void) => unknown }).on
+    if (typeof on === 'function') {
+      try {
+        on.call(ctx, 'commands/change', () => syncRegistry())
+      } catch (cause) {
+        warn('bridge', 'commands/change subscription failed', {
+          message: cause instanceof Error ? cause.message : String(cause),
+        })
+      }
+    }
+    // Safety net: hosts that expose no change event, or drop it, still pick up
+    // runtime-registered commands. The change guard keeps each poll render-free.
+    registryPoll = setInterval(syncRegistry, REGISTRY_POLL_MS)
+    registryPoll.unref?.()
   }
+  subscribeRegistryChanges()
   syncRegistry()
   const llm = ctx.llm
   const efforts = cachedList(() => resolveEffortSummaries(currentSelection()), EFFORT_LIST_TTL_MS)
@@ -587,6 +612,19 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
 
   function emit(event: SessionEvent): void {
     for (const handler of [...handlers]) handler(event)
+  }
+
+  /**
+   * Surface a command failure that the host did not turn into a session event.
+   * The synthetic `command/done` pair goes through the same store reducer as a
+   * real command result, so the failure renders as a command bubble and never
+   * reaches the model.
+   */
+  function emitCommandFailure(line: string, message: string): void {
+    const commandId = `dshtui-command-${++commandFailureCounter}`
+    const name = line.replace(/^\//, '').split(/\s+/, 1)[0] ?? ''
+    emit({ type: 'command/run', data: { commandId, name } } as unknown as SessionEvent)
+    emit({ type: 'command/done', data: { commandId, kind: 'error', text: message } } as unknown as SessionEvent)
   }
 
   const offSessionEvents = ctx.on('session/event', (session, event) => {
@@ -980,12 +1018,18 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       }
     },
     async executeCommandLine(line: string) {
-      if (commandsService === undefined) return
+      if (commandsService === undefined) {
+        emitCommandFailure(line, 'commands are unavailable in this profile')
+        return
+      }
       const controller = new AbortController()
       try {
         await commandsService.execute(activeAgent, line, [], controller.signal)
-      } catch {
-        // Command failures already surface as session events; nothing further to report here.
+      } catch (cause) {
+        // The host usually reports failures as command/done events, but a
+        // throw from execute() (validation, missing handler) would otherwise be
+        // invisible; surface it as a command bubble.
+        emitCommandFailure(line, cause instanceof Error ? cause.message : String(cause))
       }
     },
     listSessions,
@@ -1079,6 +1123,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       interactionChannels?.()
       interactions.dispose()
       offSessionEvents()
+      if (registryPoll !== undefined) clearInterval(registryPoll)
     },
   }
 }

@@ -15,11 +15,12 @@ export interface EffortsApi {
 export interface EffortDialogProps {
   api: EffortsApi
   onClose: () => void
+  title?: string
   ref?: Ref<DialogHandle>
 }
 
 
-export function EffortDialog({ api, onClose, ref }: EffortDialogProps) {
+export function EffortDialog({ api, onClose, title = 'reasoning effort', ref }: EffortDialogProps) {
   const { error, run } = useAsyncAction()
   const current = api.currentEffort()
   const selectEffort = async (id: string) => {
@@ -31,7 +32,7 @@ export function EffortDialog({ api, onClose, ref }: EffortDialogProps) {
   return (
     <ListDialog
       ref={ref}
-      title="reasoning effort"
+      title={title}
       width={DIALOG_WIDTH_MEDIUM}
       maxHeight={DIALOG_MAX_HEIGHT}
       load={api.listEfforts}

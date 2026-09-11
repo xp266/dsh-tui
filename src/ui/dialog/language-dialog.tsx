@@ -1,6 +1,8 @@
+import { useEffect } from 'react'
 import type { Ref } from 'react'
 import { errorLine } from './status-lines.ts'
 import { useAsyncAction } from '../hooks/use-async-action.ts'
+import { subscribeLanguages } from '../languages.ts'
 import { ListDialog } from './list-dialog.tsx'
 import { DIALOG_WIDTH_MEDIUM, DIALOG_MAX_HEIGHT } from './sizes.ts'
 import type { DialogHandle, DialogFooterLine } from './dialog.tsx'
@@ -19,10 +21,11 @@ export interface LanguageApi {
 export interface LanguageDialogProps {
   api: LanguageApi
   onClose: () => void
+  title?: string
   ref?: Ref<DialogHandle>
 }
 
-export function LanguageDialog({ api, onClose, ref }: LanguageDialogProps) {
+export function LanguageDialog({ api, onClose, title = 'language', ref }: LanguageDialogProps) {
   const { error, run } = useAsyncAction()
   const current = api.currentLanguage()
   const selectLanguage = async (id: string) => {
@@ -34,10 +37,13 @@ export function LanguageDialog({ api, onClose, ref }: LanguageDialogProps) {
   return (
     <ListDialog
       ref={ref}
-      title="language"
+      title={title}
       width={DIALOG_WIDTH_MEDIUM}
       maxHeight={DIALOG_MAX_HEIGHT}
       load={api.listLanguages}
+      // Plugin languages may register while the window is open; reload the rows
+      // on every registry change instead of freezing the list at first open.
+      reloadOn={subscribeLanguages}
       labelOf={option => option.label}
       rightOf={option => (option.id === current ? 'current' : undefined)}
       onSelect={option => void selectLanguage(option.id)}

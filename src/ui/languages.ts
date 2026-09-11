@@ -22,6 +22,10 @@ export function listLanguages(): LanguageContribution[] {
   return inner.values()
 }
 
+export function subscribeLanguages(listener: () => void): () => void {
+  return inner.subscribe(listener)
+}
+
 export function hasLanguage(id: string): boolean {
   return inner.values().some(entry => entry.language === id)
 }

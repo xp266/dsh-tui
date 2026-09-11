@@ -28,7 +28,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
   const disposers = [
     registerWindow({
       id: 'models',
-      title: 'models',
+      title: { en: 'models', zh: '模型' },
       order: BUILTIN_WINDOW_ORDER + 0,
       required: ['models'],
       component: props => <ModelsWindow {...props} onModelSelected={deps.onModelSelected} onAddProvider={deps.onAddProvider} />,
@@ -36,7 +36,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
     }),
     registerWindow({
       id: 'providers',
-      title: 'providers',
+      title: { en: 'providers', zh: '服务商' },
       order: BUILTIN_WINDOW_ORDER + 5,
       required: ['models'],
       component: props => <ProvidersWindow {...props} onModelSelected={deps.onModelSelected} />,
@@ -44,7 +44,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
     }),
     registerWindow({
       id: 'sessions',
-      title: 'sessions',
+      title: { en: 'sessions', zh: '会话' },
       order: BUILTIN_WINDOW_ORDER + 10,
       required: ['sessions'],
       component: props => (
@@ -59,7 +59,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
     }),
     registerWindow({
       id: 'preset',
-      title: 'preset',
+      title: { en: 'preset', zh: '代理预设' },
       order: BUILTIN_WINDOW_ORDER + 20,
       required: ['presets'],
       component: createServiceWindow('presets', PresetsDialog),
@@ -67,7 +67,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
     }),
     registerWindow({
       id: 'effort',
-      title: 'reasoning effort',
+      title: { en: 'reasoning effort', zh: '推理强度' },
       order: BUILTIN_WINDOW_ORDER + 30,
       required: ['efforts'],
       component: createServiceWindow('efforts', EffortDialog),
@@ -75,7 +75,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
     }),
     registerWindow({
       id: 'defaults',
-      title: 'defaults',
+      title: { en: 'defaults', zh: '默认设置' },
       order: BUILTIN_WINDOW_ORDER + 40,
       required: ['defaults'],
       component: createServiceWindow('defaults', DefaultsDialog),
@@ -83,7 +83,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
     }),
     registerWindow({
       id: 'language',
-      title: 'language',
+      title: { en: 'language', zh: '语言' },
       order: BUILTIN_WINDOW_ORDER + 45,
       required: ['language'],
       component: createServiceWindow('language', LanguageDialog),
@@ -91,7 +91,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
     }),
     registerWindow({
       id: 'todo',
-      title: 'todo',
+      title: { en: 'todo', zh: '任务' },
       order: BUILTIN_WINDOW_ORDER + 50,
       required: ['todos'],
       component: createServiceWindow('todos', TodoDialog),

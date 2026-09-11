@@ -16,6 +16,8 @@ export interface ProvidersDialogProps {
   api: ModelApi
   onClose: () => void
   onModelSelected: (provider: string, model: string) => void
+  /** Window label resolved by the shell against the active language. */
+  windowTitle?: string
   ref?: Ref<DialogHandle>
 }
 
@@ -44,7 +46,7 @@ function sourceOf(entry: OfficialProvider): string {
   return entry.declared === true ? 'custom' : entry.settingsNs
 }
 
-export function ProvidersDialog({ api, onClose, onModelSelected, ref }: ProvidersDialogProps) {
+export function ProvidersDialog({ api, onClose, onModelSelected, windowTitle = 'providers', ref }: ProvidersDialogProps) {
   const [window, setWindow] = useState<Window>({ kind: 'providers' })
   const { error, setError, clearError, run } = useAsyncAction()
   const [form, setForm] = useState<CustomProviderForm>(EMPTY_FORM)
@@ -312,7 +314,7 @@ export function ProvidersDialog({ api, onClose, onModelSelected, ref }: Provider
       ref={ref}
       width={DIALOG_WIDTH_MEDIUM}
       maxHeight={DIALOG_MAX_HEIGHT}
-      title="providers"
+      title={windowTitle}
       rows={providerRows}
       footer={providerFooter}
       errors={providerErrors}

@@ -21,6 +21,7 @@ export interface DefaultsApi {
 export interface DefaultsDialogProps {
   api: DefaultsApi
   onClose: () => void
+  title?: string
   ref?: Ref<DialogHandle>
 }
 
@@ -43,7 +44,7 @@ function useSavedChoice<T>(read: () => T, write: (value: T) => Promise<void>): {
   return { value, save, error }
 }
 
-export function DefaultsDialog({ api, onClose, ref }: DefaultsDialogProps) {
+export function DefaultsDialog({ api, onClose, title = 'defaults', ref }: DefaultsDialogProps) {
   const { items, loading, error } = useAsyncList<DefaultsData>(async () => {
     const [presetList, permissionList] = await Promise.all([api.listPresets(), api.listPermissionPresets()])
     return [{ presets: presetList, permissions: permissionList }]
@@ -122,7 +123,7 @@ export function DefaultsDialog({ api, onClose, ref }: DefaultsDialogProps) {
       ref={ref}
       width={DIALOG_WIDTH_MEDIUM}
       maxHeight={DIALOG_MAX_HEIGHT}
-      title="defaults"
+      title={title}
       rows={rows}
       footer={footer}
       errors={errors}

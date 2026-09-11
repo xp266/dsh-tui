@@ -9,17 +9,18 @@ export interface TodoDialogProps {
   ref?: Ref<DialogHandle>
   api: readonly TodoItemLike[]
   onClose: () => void
+  title?: string
 }
 
 export function todoRows(todos: readonly TodoItemLike[]): DialogRow[] {
   return todos.map(item => ({ items: [{ type: 'static', label: `${todoSymbol(item.status)} ${item.content}` }] }))
 }
 
-export function TodoDialog({ ref, api, onClose }: TodoDialogProps) {
+export function TodoDialog({ ref, api, onClose, title = 'todo' }: TodoDialogProps) {
   return (
     <Dialog
       ref={ref}
-      title="todo"
+      title={title}
       width={DIALOG_WIDTH_MEDIUM}
       maxHeight={DIALOG_MAX_HEIGHT}
       rows={todoRows(api)}

@@ -149,7 +149,7 @@ static import resolves.
 ```ts
 tui.windows.register({
   id: 'metrics',
-  title: 'Metrics',
+  title: { en: 'Metrics', zh: '指标' },
   command: {
     name: 'metrics',
     description: 'Show metrics',
@@ -160,7 +160,8 @@ tui.windows.register({
 })
 ```
 
-- Component props: `{ open, onClose, handleRef? }`; rendered in the dialog layer (reuses the close guard and mouse selection).
+- Component props: `{ open, onClose, title?, handleRef? }`; rendered in the dialog layer (reuses the close guard and mouse selection). `title` is the label resolved against the active language — render it in place of your own hardcoded heading.
+- `title` is either a plain string or a `{ language: label }` map; the active language comes from `/language`, falling back to the first declared variant.
 - `command` becomes a slash command of the same name; `required` lists window services the window depends on — it renders only once they exist.
 - `command.descriptions` maps a language id to a translated description. The active language comes from `/language`; a missing variant falls back to `description`, so English-only plugins need no extra work.
 
@@ -210,7 +211,8 @@ tui.commands.register({
 - Without `run`, the command opens the window or overlay registered under the same `id`.
 - `args` supplies literal argument completions; `hint` shows in the input hints.
 - `descriptions` localizes the hint-row description against the active language; a missing variant falls back to `description`.
-- `command` must begin with `/`, and `id` must be non-empty; a malformed registration throws at register time instead of failing silently at dispatch.
+- `command` must match `/^\/[a-z][a-z0-9-]*$/` and `id` must be non-empty; a malformed registration throws at register time instead of failing silently at dispatch.
+- When two registrations claim the same command token, the first (by registry order) wins and the later one is dropped with a warning log — it never produces a duplicate hint row.
 - Typing a command exactly and pressing Enter runs it directly when the command has no `hint`; commands with arguments complete to `command ` on the first Enter (the hint UI) and run on the second.
 
 ### tui.language.register
