@@ -15,6 +15,8 @@ interface RetryEventData {
 }
 
 export function nextRetryStatus(current: RetryStatus | undefined, event: SessionEvent): RetryStatus | undefined {
+  // `llm/retry*` are plugin-merged event types; the local build's session
+  // typings do not include them, so the discriminant is compared as a string.
   const type = event.type as string
   if (type === 'llm/retry') {
     const data = event.data as unknown as RetryEventData
@@ -28,6 +30,9 @@ export function nextRetryStatus(current: RetryStatus | undefined, event: Session
   if (type === 'llm/retry-started') {
     return current === undefined ? undefined : { ...current, untilTs: 0 }
   }
-  if (event.type === 'assistant/chunk' || event.type === 'turn/end') return undefined
+  // The retry banner lives only until the retried attempt produces its
+  // settlement: an `assistant/message` means the retry succeeded, an
+  // `assistant/attempt` means it failed and was abandoned.
+  if (type === 'assistant/message' || type === 'assistant/attempt') return undefined
   return current
 }

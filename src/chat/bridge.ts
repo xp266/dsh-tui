@@ -6,7 +6,7 @@ import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-agent-presets'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
-import type { Agent, AgentHandle, AgentOptions, ModelSelection, ModelSelectionRef } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentHandle, AgentOptions, AssistantStreamFrame, ModelSelection, ModelSelectionRef } from '@deepseek-ai/dsh-agent'
 import type { ContentBlock, LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
@@ -405,6 +405,13 @@ export interface ChatBridge {
   send(text: string, images?: ReadonlyArray<readonly PendingImage[]>): void
   interrupt(): void
   subscribe(handler: (event: SessionEvent) => void): () => void
+  /**
+   * Live assistant streaming frames for the active agent, ordered after the
+   * durable `session/event` that opened the attempt. The transcript reducer
+   * needs both in one queue: the frames are the only live source of the model's
+   * incremental text, and the durable events settle them.
+   */
+  subscribeStream(handler: (frame: AssistantStreamFrame) => void): () => void
   listSessions(): Promise<SessionSummary[]>
   onSessionListChanged(listener: () => void): () => void
   openSession(id: string): Promise<void>
@@ -546,6 +553,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     return { provider: selection.provider, model: selection.model }
   }
   const handlers = new Set<(event: SessionEvent) => void>()
+  const streamHandlers = new Set<(frame: AssistantStreamFrame) => void>()
   const presets = ctx.get('agentPresets')
   const selections = new WeakMap<Agent, ModelSelectionRef>()
   const effortNames = new Map<string, string>()
@@ -614,6 +622,10 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     for (const handler of [...handlers]) handler(event)
   }
 
+  function emitStream(frame: AssistantStreamFrame): void {
+    for (const handler of [...streamHandlers]) handler(frame)
+  }
+
   /**
    * Surface a command failure that the host did not turn into a session event.
    * The synthetic `command/done` pair goes through the same store reducer as a
@@ -634,9 +646,16 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     emit(event)
   })
 
-  function installSelection(agentCtx: Context): void {
-    const agent = agentCtx.agent
-    if (agent === undefined) return
+  // Live model output is an agent-scoped notification, not a session event: the
+  // host no longer appends `assistant/chunk`, it compacts one attempt into the
+  // durable `assistant/message`/`assistant/attempt` at settlement. A root
+  // listener (no scope tag) receives every descendant agent's frames.
+  const offAssistantStream = ctx.on('agent/assistant-stream', ({ agent, frame }) => {
+    if (agent.id !== activeAgent.id) return
+    emitStream(frame)
+  })
+
+  function installSelection(agent: Agent): void {
     selectionFor(agent)
   }
 
@@ -700,8 +719,8 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     }
   }
 
-  // The 0.1.2 presets package dropped its resolveSessionPreset helper, so the
-  // session log is read directly: the newest selection event wins over the
+  // The presets package exposes no resolveSessionPreset helper, so the session
+  // log is read directly: the newest selection event wins over the
   // creation-time header value, matching the upstream semantics on every
   // host version the peer range admits.
   function resolveSessionPreset(session: PresetSessionLike): string | undefined {
@@ -719,42 +738,28 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   async function createAgent(cwd: string, presetId?: string): Promise<AgentHandle> {
     const resolved = presetId ?? (await presets?.resolve())?.id
     const meta = { cwd, ...(resolved === undefined ? {} : { agentPreset: resolved }) }
-    const setup = async (agentCtx: Context) => {
-      installSelection(agentCtx)
+    // The host mints `agentCtx` and hands over the unpublished Agent before
+    // publication, so both the model selection and the preset mount land on a
+    // world no observer has seen yet.
+    const setup = async (agentCtx: Context, agent: Agent) => {
+      installSelection(agent)
       await presets?.mount(agentCtx, resolved)
     }
-    if (typeof ctx.agentLoop.createAgent === 'function') {
-      return ctx.agentLoop.createAgent(ctx, {
-        sessionId: SessionId(`tui-${Date.now()}-${++sessionCounter}`),
-        meta,
-        agentOptions: agentOptions(),
-        setup,
-      })
-    }
-    const agent = ctx.agentLoop.create(
-      SessionId(`tui-${Date.now()}-${++sessionCounter}`),
-      agentOptions(),
-      { cwd },
-    )
-    installSelection(agent.ctx)
-    await presets?.mount(agent.ctx, resolved)
-    return {
-      agent,
-      dispose: async () => {
-        agent.cancel({ kind: 'disposed' })
-        await agent.whenIdle()
-      },
-    }
+    return ctx.agentLoop.createAgent(ctx, {
+      sessionId: SessionId(`tui-${Date.now()}-${++sessionCounter}`),
+      meta,
+      agentOptions: agentOptions(),
+      setup,
+    })
   }
 
   async function resumeAgent(id: string): Promise<AgentHandle> {
     const query = ctx.get('sessionQuery') as {
       readSession?(id: string): Promise<{ session: { cwd?: string }; events: SessionEvent[] }>
     } | undefined
-    const setup = async (agentCtx: Context) => {
-      installSelection(agentCtx)
-      const session = agentCtx.agent?.session
-      const resolved = session === undefined ? undefined : resolveSessionPreset(session)
+    const setup = async (agentCtx: Context, agent: Agent) => {
+      installSelection(agent)
+      const resolved = resolveSessionPreset(agent.session)
       try {
         await presets?.mount(agentCtx, resolved)
       } catch (cause) {
@@ -775,16 +780,14 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
         setup,
       })
     }
-    if (typeof ctx.agentLoop.resume === 'function') {
-      try {
-        return await ctx.agentLoop.resume(ctx, { resumeSessionId: SessionId(id), agentOptions: agentOptions(), setup })
-      } catch (error) {
-        if (query?.readSession === undefined) throw error
-        return spawnResumedAgent(await query.readSession(String(id)))
-      }
+    try {
+      return await ctx.agentLoop.resume(ctx, { resumeSessionId: SessionId(id), agentOptions: agentOptions(), setup })
+    } catch (error) {
+      // A host without session persistence rejects resume; the session-query
+      // read path still reconstructs the history for a fresh agent.
+      if (query?.readSession === undefined) throw error
+      return spawnResumedAgent(await query.readSession(String(id)))
     }
-    if (query?.readSession !== undefined) return spawnResumedAgent(await query.readSession(String(id)))
-    throw new Error('cannot resume session: session persistence is not configured')
   }
 
   async function activateAgent(handle: AgentHandle | undefined, agent: Agent): Promise<void> {
@@ -1010,6 +1013,12 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
         handlers.delete(handler)
       }
     },
+    subscribeStream(handler: (frame: AssistantStreamFrame) => void) {
+      streamHandlers.add(handler)
+      return () => {
+        streamHandlers.delete(handler)
+      }
+    },
     listRegistryCommands: () => registryCommands,
     onRegistryChanged(listener: () => void) {
       registryListeners.add(listener)
@@ -1123,6 +1132,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       interactionChannels?.()
       interactions.dispose()
       offSessionEvents()
+      offAssistantStream()
       if (registryPoll !== undefined) clearInterval(registryPoll)
     },
   }

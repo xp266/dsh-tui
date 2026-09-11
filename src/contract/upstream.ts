@@ -18,12 +18,17 @@ import { fileURLToPath } from 'node:url'
  * Adding support for a new harness line means: bump the dev pins + peer
  * branches in package.json, add the line to TESTED_VERSIONS, and extend
  * probeHostContract when a calling convention changed.
+ *
+ * The 0.1.5 line is a hard floor, not a preference: 0.1.5-alpha.1 replaced
+ * `Context.agent` with the second `setup(agentCtx, agent)` parameter and moved
+ * live streaming from `session/event`'s `assistant/chunk` to the agent-scoped
+ * `agent/assistant-stream` notification, so no 0.1.2 host can run this build.
  */
 
 /** Every harness line this build was verified against, sorted ascending. */
 export const TESTED_VERSIONS: readonly string[] = [
-  '0.1.2-rc.1',
-  '0.1.2-rc.2',
+  '0.1.5-rc.1',
+  '0.1.5-rc.2',
 ]
 
 /**
@@ -267,7 +272,7 @@ export function upstreamDriftSummary(
 /**
  * Calling conventions dshtui relies on, probed against the live host at
  * boot. A version number can sit inside the supported range while the host
- * moved its internal contract (that is exactly what 0.1.5-rc.2 did to the
+ * moved its internal contract (that is exactly what the 0.1.5 line did to the
  * agent-loop setup callback); the probes catch that directly.
  *
  * Each probe throws a `ProbeFailure` describing what is missing so the boot
@@ -285,23 +290,18 @@ function requireObject(ctx: unknown, what: string): Record<string, unknown> {
   return ctx as Record<string, unknown>
 }
 
-function requireFunction(owner: Record<string, unknown>, path: string): (...args: never[]) => unknown {
-  const [head, ...rest] = path.split('.')
-  let value: unknown = owner[head!]
-  for (const part of rest) {
-    if (value === null || typeof value !== 'object') throw new ProbeFailure(`host is missing ${path}`)
-    value = (value as Record<string, unknown>)[part!]
-  }
-  if (typeof value !== 'function') throw new ProbeFailure(`host is missing ${path}`)
-  return value as (...args: never[]) => unknown
-}
-
 /**
  * The live-contract probes. They run before any UI mounts and stay in lockstep
  * with what src/chat/bridge.ts actually calls:
- * - agentLoop.createAgent: the async createAgent path used by the bridge;
+ * - agentLoop.createAgent: the async createAgent(ownerCtx, options) path the
+ *   bridge uses for both create and resume;
  * - agents/session registries: the services the bridge resolves at boot;
  * - llm/agentDefaultModel/settings: injected services read during bridge setup.
+ *
+ * The 0.1.5 line narrowed the surface enough to name directly: `createAgent`
+ * replaced the sync `create()` fallback the bridge once kept, and the setup
+ * callback receives the unpublished Agent as its second argument instead of
+ * `agentCtx.agent` (a field 0.1.5 removed).
  */
 export const HOST_CONTRACT_PROBES: readonly HostContractProbe[] = [
   {
@@ -310,10 +310,8 @@ export const HOST_CONTRACT_PROBES: readonly HostContractProbe[] = [
       const loop = requireObject(ctx, 'host context').agentLoop
       if (loop === undefined || typeof loop !== 'object') throw new ProbeFailure('host is missing the agentLoop service')
       const loopRecord = loop as Record<string, unknown>
-      // dshtui uses the async createAgent(ctx, options) form; hosts without it
-      // fall back to the sync create() path, so either must exist.
-      if (typeof loopRecord.createAgent !== 'function' && typeof loopRecord.create !== 'function') {
-        throw new ProbeFailure('host agentLoop exposes neither createAgent() nor create()')
+      if (typeof loopRecord.createAgent !== 'function') {
+        throw new ProbeFailure('host agentLoop exposes no createAgent(ownerCtx, options)')
       }
     },
   },
