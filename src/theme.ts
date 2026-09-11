@@ -203,6 +203,12 @@ function buildPalette(ladder: GrayLadder, hues: SemanticHues, code: CodeHues, mo
     specialFieldText: mode === 'dark' ? '#1a1a1a' : '#3d2800',
     specialFieldBackground: hues.accent,
 
+    // The busy-Enter delivery chips are always blue, in both modes: they are
+    // the only chip that schedules rather than summarizes, and the blue keeps
+    // them distinct from the amber paste/image chips.
+    deliveryChipText: mode === 'dark' ? '#f2f7ff' : '#ffffff',
+    deliveryChipBackground: mode === 'dark' ? '#2563eb' : '#1d4ed8',
+
     toolLabel: mode === 'dark' ? '#2fc0e0' : '#0092b8',
     toolBodyText: ladder.text,
 

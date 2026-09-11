@@ -5,6 +5,7 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { Token } from 'marked'
 import type { MarkStyle, Segment } from '../core/segments.ts'
+import type { DeliveryMode } from '../core/delivery.ts'
 import type { MdPalette } from '../ui/message/md/palette.ts'
 import type { PendingImage } from '../core/paste.ts'
 import type { LineSelection } from '../model/selection.ts'
@@ -713,7 +714,7 @@ export interface TuiChatFace {
    * both channels by arrival order.
    */
   onStream(listener: (frame: AssistantStreamFrame) => void): () => void
-  send(text: string, images?: ReadonlyArray<readonly PendingImage[]>): void
+  send(text: string, images?: ReadonlyArray<readonly PendingImage[]>, mode?: DeliveryMode): void
   interrupt(): void
   newSession(): Promise<void>
   openSession(id: string): Promise<void>

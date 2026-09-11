@@ -1,5 +1,6 @@
 import stringWidth from 'string-width'
 import { COLORS } from '../theme.ts'
+import type { DeliveryMode } from './delivery.ts'
 
 const FIELD_CHAR_BASE = 0xe000
 const FIELD_CHAR_END = 0xf8ff
@@ -135,6 +136,18 @@ export function releaseField(char: string): void {
 }
 
 /**
+ * Release a field only when it belongs to `owner`. Plain `release` is
+ * unconditional, so a caller holding a char the user deleted and reallocated
+ * would free another component's live chip; the owner check makes abandoned
+ * cleanup safe.
+ */
+export function releaseOwnedField(char: string, owner: FieldOwner): void {
+  const slot = fieldSlotOf(char)
+  if (slot === undefined || slot.owner !== owner) return
+  releaseField(char)
+}
+
+/**
  * Hold a field slot against the automatic reclaim scans (composer edits and
  * message-list rebuilds drop every slot whose char is absent from the live
  * text). Callers that create chips outside the composer value — custom
@@ -182,4 +195,13 @@ export function linesChipLabel(count: number): string {
 
 export function charactersChipLabel(count: number): string {
   return `[${count} characters]`
+}
+
+/**
+ * Chip text for one busy-Enter delivery mode. These labels name the scheduling
+ * mode itself, so they stay English in every language, exactly like the `/goal`
+ * keyword options a user types.
+ */
+export function deliveryChipLabel(mode: DeliveryMode): string {
+  return mode === 'interrupt' ? 'Interrupt' : 'Queue'
 }

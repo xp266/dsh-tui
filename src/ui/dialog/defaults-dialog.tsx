@@ -1,6 +1,9 @@
 import { useRef, useState } from 'react'
 import type { Ref } from 'react'
 import { permissionModeInfo } from '../../theme.ts'
+import { deliveryChipLabel } from '../../core/fields.ts'
+import { DELIVERY_MODES } from '../../core/delivery.ts'
+import type { DeliveryMode } from '../../core/delivery.ts'
 import { errorLine, loadingLine } from './status-lines.ts'
 import type { PresetSummary } from '../../chat/presets.ts'
 import { useAsyncAction } from '../hooks/use-async-action.ts'
@@ -16,6 +19,8 @@ export interface DefaultsApi {
   listPermissionPresets(): Promise<string[]>
   defaultPermission(): string
   setDefaultPermission(id: string): Promise<void>
+  defaultDeliveryMode(): DeliveryMode
+  setDefaultDeliveryMode(mode: DeliveryMode): Promise<void>
 }
 
 export interface DefaultsDialogProps {
@@ -51,7 +56,8 @@ export function DefaultsDialog({ api, onClose, title = 'defaults', ref }: Defaul
   })
   const presetChoice = useSavedChoice(() => api.defaultPresetId(), api.setDefaultPreset)
   const permissionChoice = useSavedChoice(() => api.defaultPermission(), api.setDefaultPermission)
-  const saveError = presetChoice.error ?? permissionChoice.error
+  const deliveryChoice = useSavedChoice(() => api.defaultDeliveryMode(), api.setDefaultDeliveryMode)
+  const saveError = presetChoice.error ?? permissionChoice.error ?? deliveryChoice.error
   const presets = items[0]?.presets ?? []
   const permissionIds = items[0]?.permissions ?? []
   const presetIds = presets.map(preset => preset.id)
@@ -59,12 +65,19 @@ export function DefaultsDialog({ api, onClose, title = 'defaults', ref }: Defaul
   const presetValue = presetNames[presetIds.indexOf(presetChoice.value)] ?? presetChoice.value
   const permissionNames = permissionIds.map(id => permissionModeInfo(id).name)
   const permissionValue = permissionNames[permissionIds.indexOf(permissionChoice.value)] ?? permissionChoice.value
-  const originalRef = useRef({ preset: api.defaultPresetId(), permission: api.defaultPermission() })
+  const deliveryNames = DELIVERY_MODES.map(deliveryChipLabel)
+  const deliveryValue = deliveryChipLabel(deliveryChoice.value)
+  const originalRef = useRef({
+    preset: api.defaultPresetId(),
+    permission: api.defaultPermission(),
+    delivery: api.defaultDeliveryMode(),
+  })
   const revertAndClose = async () => {
     const original = originalRef.current
     try {
       if (presetChoice.value !== original.preset) await api.setDefaultPreset(original.preset)
       if (permissionChoice.value !== original.permission) await api.setDefaultPermission(original.permission)
+      if (deliveryChoice.value !== original.delivery) await api.setDefaultDeliveryMode(original.delivery)
     } catch {
       // A failed revert still closes the dialog; the values were already applied live.
     }
@@ -96,6 +109,21 @@ export function DefaultsDialog({ api, onClose, title = 'defaults', ref }: Defaul
           onChange: name => {
             const id = permissionIds[permissionNames.indexOf(name)]
             if (id !== undefined) permissionChoice.save(id)
+          },
+          spaced: true,
+        },
+      ],
+    },
+    {
+      items: [
+        {
+          type: 'select',
+          label: 'Interjection Mode',
+          value: deliveryValue,
+          options: deliveryNames,
+          onChange: name => {
+            const mode = DELIVERY_MODES[deliveryNames.indexOf(name)]
+            if (mode !== undefined) deliveryChoice.save(mode)
           },
           spaced: true,
         },

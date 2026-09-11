@@ -1,15 +1,30 @@
 import {
   allocateField,
   charactersChipLabel,
+  deliveryChipLabel,
   fieldExpandOf,
   imageChipLabel,
   isFieldChar,
   linesChipLabel,
+  releaseOwnedField,
   releaseUnreferenced,
 } from '../../core/fields.ts'
 import { classifyPaste, summarizePaste } from '../../core/paste.ts'
 import type { PendingImage } from '../../core/paste.ts'
+import type { DeliveryMode } from '../../core/delivery.ts'
 import type { ClipboardImage } from '../../terminal/clipboard.ts'
+
+export type { DeliveryMode } from '../../core/delivery.ts'
+
+/** Field kinds carrying a delivery mode; the chip is display-only and never sent. */
+export const DELIVERY_MODE_KINDS: Readonly<Record<DeliveryMode, string>> = {
+  interrupt: 'interrupt',
+  queue: 'queue',
+}
+
+export function isDeliveryKind(kind: string): kind is DeliveryMode {
+  return kind === 'interrupt' || kind === 'queue'
+}
 
 export interface ComposerField {
   kind: string
@@ -89,14 +104,56 @@ export function reconcileComposerFields(value: string, fields: ComposerFieldMap)
   releaseUnreferenced('composer', value)
 }
 
+/** The delivery chip currently held in `value`, whichever mode it carries. */
+export function deliveryFieldOf(value: string, fields: ComposerFieldMap): { char: string; mode: DeliveryMode } | undefined {
+  for (const char of value) {
+    const field = isFieldChar(char) ? fields.get(char) : undefined
+    if (field === undefined || !isDeliveryKind(field.kind)) continue
+    return { char, mode: field.kind }
+  }
+  return undefined
+}
+
+/**
+ * Append or replace the delivery chip at the end of the composer. At most one
+ * chip exists at a time. A mode change must allocate a new chip because the
+ * field kind carries the label and style, so the old chip is released first.
+ */
+export function insertDeliveryModeField(
+  value: string,
+  fields: ComposerFieldMap,
+  mode: DeliveryMode,
+): string | undefined {
+  const existing = deliveryFieldOf(value, fields)
+  if (existing !== undefined && existing.mode === mode) return value
+  const without = existing === undefined ? value : removeDeliveryModeField(value, fields)
+  const label = deliveryChipLabel(mode)
+  const char = allocateField(DELIVERY_MODE_KINDS[mode], label, 'composer')
+  if (char === null) return undefined
+  fields.set(char, { kind: DELIVERY_MODE_KINDS[mode], label })
+  return `${without}${char}`
+}
+
+/** Drop the delivery chip from `value`, releasing its field char. */
+export function removeDeliveryModeField(value: string, fields: ComposerFieldMap): string {
+  const existing = deliveryFieldOf(value, fields)
+  if (existing === undefined) return value
+  fields.delete(existing.char)
+  releaseOwnedField(existing.char, 'composer')
+  return value.replace(existing.char, '')
+}
+
 export interface ComposerSubmission {
   text: string
   images: PendingImage[][]
+  /** Delivery mode carried by a chip, or undefined for an ordinary prompt. */
+  mode?: DeliveryMode
 }
 
 export function expandComposerValue(value: string, fields: ComposerFieldMap): ComposerSubmission {
   let text = ''
   const images: PendingImage[][] = []
+  let mode: DeliveryMode | undefined
   for (const char of value) {
     const field = isFieldChar(char) ? fields.get(char) : undefined
     if (field === undefined) {
@@ -105,7 +162,10 @@ export function expandComposerValue(value: string, fields: ComposerFieldMap): Co
     }
     if (field.kind === 'paste') text += field.text ?? ''
     else if (field.kind === 'image' && (field.images ?? []).length > 0) images.push(field.images!)
+    // The delivery chip is display-only: it selects how the message is
+    // delivered and contributes no text to it.
+    else if (isDeliveryKind(field.kind)) mode = field.kind
     else text += fieldExpandOf(field.kind)?.(field.data) ?? field.label
   }
-  return { text: text.trim(), images }
+  return { text: text.trim(), images, ...(mode === undefined ? {} : { mode }) }
 }

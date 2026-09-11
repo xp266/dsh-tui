@@ -13,6 +13,7 @@ import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import type { DeliveryMode } from '../core/delivery.ts'
 import { textFromBlocks } from './blocks.ts'
 import { imageMediaTypeOf } from '../core/paste.ts'
 import type { PendingImage } from '../core/paste.ts'
@@ -83,9 +84,19 @@ export interface ImageAttachmentInput {
 }
 interface AgentLike {
   followup(message: unknown): void
+  steer(message: unknown): void
 }
 
 const EMPTY_TEXT = { type: 'text' as const, text: '' }
+
+/**
+ * How a message reaches a busy agent: `followup` queues its own next turn
+ * (waits for the running turn), `steer` inserts it at the nearest step boundary.
+ */
+function deliver(agent: AgentLike, mode: DeliveryMode | undefined, message: unknown): void {
+  if (mode === 'interrupt') agent.steer(message)
+  else agent.followup(message)
+}
 
 async function sendContent(
   agent: AgentLike,
@@ -93,15 +104,16 @@ async function sendContent(
   hasText: boolean,
   groups: ReadonlyArray<readonly PendingImage[]>,
   ctx: Context,
+  mode?: DeliveryMode,
 ): Promise<void> {
   if (groups.length === 0) {
-    agent.followup(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
+    deliver(agent, mode, createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
     return
   }
   const attachments = attachmentsService(ctx)
   if (attachments === undefined) {
     const note = 'image attachments require the attachment service, which is not mounted'
-    agent.followup(createUserMessage({
+    deliver(agent, mode, createUserMessage({
       content: [{ type: 'text', text: hasText ? `${text}\n\n${note}` : note }],
       source: { kind: 'user' },
     }))
@@ -126,10 +138,10 @@ async function sendContent(
   const hasImage = content.some(block => block.type === 'image')
   if (!hasImage) {
     const joined = content.map(block => block.type === 'text' ? block.text : '').join('').trim()
-    agent.followup(createUserMessage({ content: [{ type: 'text', text: joined }], source: { kind: 'user' } }))
+    deliver(agent, mode, createUserMessage({ content: [{ type: 'text', text: joined }], source: { kind: 'user' } }))
     return
   }
-  agent.followup(createUserMessage({ content, source: { kind: 'user' } }))
+  deliver(agent, mode, createUserMessage({ content, source: { kind: 'user' } }))
 }
 
 interface PresetSessionLike {
@@ -402,7 +414,11 @@ interface CommandsServiceLike {
 
 export interface ChatBridge {
   modelName(): string
-  send(text: string, images?: ReadonlyArray<readonly PendingImage[]>): void
+  /**
+   * Send a prompt. `mode` selects how a busy agent receives it; omit it while
+   * idle, when both modes are equivalent (`followup` starts the turn).
+   */
+  send(text: string, images?: ReadonlyArray<readonly PendingImage[]>, mode?: DeliveryMode): void
   interrupt(): void
   subscribe(handler: (event: SessionEvent) => void): () => void
   /**
@@ -1000,9 +1016,9 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
 
   return {
     modelName: () => currentSelection()?.model ?? '',
-    send(text: string, images?: ReadonlyArray<readonly PendingImage[]>) {
+    send(text: string, images?: ReadonlyArray<readonly PendingImage[]>, mode?: DeliveryMode) {
       const hasText = text !== ''
-      sendContent(activeAgent, text, hasText, images ?? [], ctx)
+      sendContent(activeAgent, text, hasText, images ?? [], ctx, mode)
     },
     interrupt() {
       activeAgent.cancel({ kind: 'user' })

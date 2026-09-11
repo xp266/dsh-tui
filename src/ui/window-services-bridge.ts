@@ -1,6 +1,7 @@
 import { registerWindowService } from './window-services.ts'
 import { hasLanguage, listLanguages } from './languages.ts'
 import { currentLanguage, setLanguage } from '../core/language.ts'
+import { currentDeliveryMode, setDeliveryMode } from '../core/delivery.ts'
 import type { ChatBridge } from '../chat/bridge.ts'
 import type { ModelApi } from './dialog/models-dialog.tsx'
 import type { SessionsApi } from './dialog/sessions-dialog.tsx'
@@ -54,6 +55,12 @@ export function registerWindowServices(bridge: ChatBridge): () => void {
     listPermissionPresets: bridge.listPermissionPresets,
     defaultPermission: bridge.defaultPermission,
     setDefaultPermission: bridge.setDefaultPermission,
+    // The interjection preference is owned by the TUI itself, like the language
+    // choice: it never reaches the harness, so it is stored by core/delivery.
+    defaultDeliveryMode: currentDeliveryMode,
+    setDefaultDeliveryMode: async mode => {
+      setDeliveryMode(mode)
+    },
   }
   const language: LanguageApi = {
     listLanguages: async () => listLanguages().map(entry => ({ id: entry.language, label: entry.label })),
