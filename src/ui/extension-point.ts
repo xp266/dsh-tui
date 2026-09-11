@@ -2,6 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { registerOverlay, registerStatusLine } from './contributions.ts'
 import { registerWindow } from './windows.ts'
 import { registerWindowService } from './window-services.ts'
+import { registerLanguage } from './languages.ts'
 import { registerWidget } from './widgets/registry.ts'
 import { registerCommand } from './input/commands.ts'
 import { registerKeyBinding } from './keymap.ts'
@@ -44,6 +45,7 @@ export type {
   TuiHomeLogoFace,
   TuiInteractionsFace,
   TuiKeymapFace,
+  TuiLanguageFace,
   TuiPaletteFace,
   TuiServicesFace,
   TuiToolsFace,
@@ -79,6 +81,7 @@ export function createTuiExtensionPoint(ctx: Context, hooks: TuiExtensionPointHo
       logo: { register: registerHomeLogo },
     },
     commands: { register: registerCommand },
+    language: { register: registerLanguage },
     tools: { register: registerToolView },
     content: {
       nodes: { register: registerChatNode },

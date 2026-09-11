@@ -1,14 +1,20 @@
 import { useSyncExternalStore } from 'react'
 import { keyedRegistry } from '../../kernel/registry.ts'
+import { localizeText } from '../../core/language.ts'
 import { matchHintEntries } from '../chrome/hint-service.ts'
 import type { CommandDef } from '../../contract/index.ts'
 
 export type { CommandDef } from '../../contract/index.ts'
 
-export type CommandId = string
-
 export interface CommandHintItem {
   command: string
+  description: string
+  hint?: string
+}
+
+/** Registry-command row as delivered by the bridge (domain `name`, no slash). */
+export interface RegistryCommandHint {
+  name: string
   description: string
   hint?: string
 }
@@ -25,12 +31,24 @@ function refresh(): void {
   COMMANDS.push(...registry.values())
 }
 
-registry.register('new', { id: 'new', command: '/new', description: 'Start a new conversation in current directory' })
-registry.register('todo', { id: 'todo', command: '/todo', description: 'Show the current task list' })
+registry.register('new', {
+  id: 'new',
+  command: '/new',
+  description: 'Start a new conversation in current directory',
+  descriptions: { zh: '在当前目录开始一个新会话' },
+})
+registry.register('todo', {
+  id: 'todo',
+  command: '/todo',
+  description: 'Show the current task list',
+  descriptions: { zh: '显示当前任务列表' },
+})
 refresh()
 registry.subscribe(refresh)
 
 export function registerCommand(def: CommandDef): () => void {
+  if (def.id === '') throw new Error('command id must not be empty')
+  if (!def.command.startsWith('/')) throw new Error(`command must start with "/": ${def.command}`)
   return registry.register(def.id, def, { order: def.order })
 }
 
@@ -61,16 +79,22 @@ export function commandArgHints(name: string): readonly string[] | undefined {
   return def?.args
 }
 
-export function mergeCommandEntries(
-  local: CommandDef[],
-  remote: readonly { name: string; description: string; hint?: string }[],
-): CommandHintItem[] {
+/**
+ * Merge local (registered + window) commands with registry commands, resolving
+ * every local description against `language`. Local entries always win on a
+ * command collision, and registry entries arrive as already-resolved remote
+ * rows keyed by `name`.
+ */
+export function mergeCommandEntries(local: readonly CommandDef[], remote: readonly RegistryCommandHint[], language: string): CommandHintItem[] {
   const taken = new Set(local.map(command => command.command))
-  const entries: CommandHintItem[] = local.map(({ command, description, hint }) => ({
-    command,
-    description,
-    ...(hint === undefined ? {} : { hint }),
-  }))
+  const entries: CommandHintItem[] = local.map(def => {
+    const { command, hint } = def
+    return {
+      command,
+      description: localizeText(def.descriptions, def.description, language) ?? def.description,
+      ...(hint === undefined ? {} : { hint }),
+    }
+  })
   for (const entry of remote) {
     const command = `/${entry.name}`
     if (taken.has(command)) continue
@@ -82,14 +106,6 @@ export function mergeCommandEntries(
     })
   }
   return entries
-}
-
-function isSubsequence(query: string, text: string): boolean {
-  let at = 0
-  for (let index = 0; index < text.length && at < query.length; index++) {
-    if (text[index] === query[at]) at += 1
-  }
-  return at === query.length
 }
 
 export function filterHintEntries(entries: readonly CommandHintItem[], value: string): CommandHintItem[] {

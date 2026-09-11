@@ -50,7 +50,7 @@ The plugin reads its config from the matching profile row:
       expanded: []        # tool names that never fold
 ```
 
-Environment variables: `DSH_TUI_PROFILE`, `DSH_TUI_COLOR`, `DSH_TUI_ASCII`, `DSH_TUI_WIDTH`, `DSH_TUI_BG`, `DSH_TUI_HOT_THEME`, `DSH_TUI_THEME_PATH`, `DSH_TUI_DEBUG`, and the `DSH_TUI_LOG_*` family.
+Environment variables: `DSH_TUI_PROFILE`, `DSH_TUI_COLOR`, `DSH_TUI_ASCII`, `DSH_TUI_WIDTH`, `DSH_TUI_BG`, `DSH_TUI_LANG`, `DSH_TUI_HOT_THEME`, `DSH_TUI_THEME_PATH`, `DSH_TUI_DEBUG`, and the `DSH_TUI_LOG_*` family.
 
 ## Plugin development
 

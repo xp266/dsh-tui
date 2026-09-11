@@ -28,6 +28,7 @@ import type { InputBarHandle } from './input/input-bar.tsx'
 import { COMMANDS, KNOWN_COMMAND_ARGS, commandArgHints, filterHintEntries, matchCommand, mergeCommandEntries, matchAvailableCommand, useCommandVersion } from './input/commands.ts'
 import { hintArgsFor } from './chrome/hint-service.ts'
 import type { CommandAvailability, CommandDef } from './input/commands.ts'
+import { useLanguage } from '../core/language.ts'
 import { MESSAGE_INPUT_GAP_ROWS } from '../core/metrics.ts'
 import { useComposer } from './input/use-composer.ts'
 import type { ComposerSubmission } from './input/composer-fields.ts'
@@ -155,18 +156,19 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
   const [panelHeight, setPanelHeight] = useState(7)
   const composerInteractive = dialog === null && panel === null
   const commandVersion = useCommandVersion()
+  const language = useLanguage()
   const windowCommands = useMemo(
     () => {
       const staticNames = new Set(COMMANDS.map(command => command.command))
       return windows
         .filter(contribution => contribution.command !== undefined && !staticNames.has(`/${contribution.command.name}`))
-        .map(contribution => ({ id: contribution.id, command: `/${contribution.command!.name}`, description: contribution.command!.description }))
+        .map(contribution => ({ id: contribution.id, command: `/${contribution.command!.name}`, description: contribution.command!.description, descriptions: contribution.command!.descriptions }))
     },
     [windows],
   )
   const commandEntries = useMemo(
-    () => mergeCommandEntries([...COMMANDS.filter(isCommandAvailable), ...windowCommands], registryCommands),
-    [isCommandAvailable, windowCommands, registryCommands, commandVersion],
+    () => mergeCommandEntries([...COMMANDS.filter(isCommandAvailable), ...windowCommands], registryCommands, language),
+    [isCommandAvailable, windowCommands, registryCommands, commandVersion, language],
   )
   const registryNames = useMemo(
     () => new Set(registryCommands.map(entry => `/${entry.name}`)),

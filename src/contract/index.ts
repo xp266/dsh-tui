@@ -11,7 +11,9 @@ import type { Message, MessageKind } from '../model/message.ts'
 export type { MessageKind } from '../model/message.ts'
 import type { MouseEventData } from '../terminal/mouse.ts'
 import type { ScrollSnapshot } from '../ui/hooks/use-scroll.ts'
+import type { LanguageText } from '../core/language.ts'
 
+export type { LanguageId, LanguageText } from '../core/language.ts'
 export type { PendingImage } from '../core/paste.ts'
 export type { LineSelection } from '../model/selection.ts'
 export type { MouseEventData, MouseEventType } from '../terminal/mouse.ts'
@@ -37,6 +39,8 @@ export interface WindowProps {
 export interface WindowCommandSpec {
   name: string
   description: string
+  /** Language variants; the description is the fallback for any missing variant. */
+  descriptions?: LanguageText
 }
 
 export interface WindowContribution {
@@ -338,6 +342,8 @@ export interface CommandDef {
   id: string
   command: string
   description: string
+  /** Language variants; the description is the fallback for any missing variant. */
+  descriptions?: LanguageText
   hint?: string
   args?: readonly string[]
   run?: () => void
@@ -346,6 +352,19 @@ export interface CommandDef {
 
 export interface TuiCommandsFace {
   register(def: CommandDef): () => void
+}
+
+export interface LanguageContribution {
+  id: string
+  /** Language id used as a key in every `descriptions` map, e.g. `zh`. */
+  language: string
+  /** Label shown in the /language window. */
+  label: string
+  order?: number
+}
+
+export interface TuiLanguageFace {
+  register(contribution: LanguageContribution): () => void
 }
 
 export type DiffLineKind = 'ctx' | 'del' | 'add'
@@ -695,6 +714,7 @@ export interface TuiExtensionPoint {
   services: TuiServicesFace
   chrome: TuiChromeFace
   commands: TuiCommandsFace
+  language: TuiLanguageFace
   tools: TuiToolsFace
   content: TuiContentFace
   startup: TuiStartupFace

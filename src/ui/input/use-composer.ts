@@ -311,6 +311,9 @@ export function useComposer(
         // An argument provider failure abandons the completion quietly.
         return
       }
+      // A provider may resolve after the user kept typing; a stale result must
+      // never overwrite the newer buffer.
+      if (valueRef.current !== v) return
       if (candidates.length === 0) candidates = literalHintArgs(entry.hint)
       if (candidates.length === 0) return
       const exactIndex = candidates.indexOf(currentArg)

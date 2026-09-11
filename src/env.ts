@@ -22,6 +22,8 @@ export const env = {
   width: process.env.DSH_TUI_WIDTH,
   /** Force background mode: 'dark' or 'light'. */
   background: process.env.DSH_TUI_BG,
+  /** Force the command-description language id (defaults to the persisted choice). */
+  language: process.env.DSH_TUI_LANG,
   /** Reload theme.ts on every save (path relative to cwd, default src/theme.ts). */
   hotTheme: process.env.DSH_TUI_HOT_THEME === '1',
   themePath: process.env.DSH_TUI_THEME_PATH,

@@ -108,6 +108,7 @@ static import resolves.
 | `tui.windows` | dialog windows (with optional slash commands) |
 | `tui.services` | data stores consumed by windows |
 | `tui.commands` | slash commands with hints and argument completion |
+| `tui.language` | command-description language variants for the `/language` window |
 | `tui.chrome.statusLine` | status bar lines |
 | `tui.chrome.overlays` | full-screen overlays |
 | `tui.chrome.widgets` | dialog item widget kinds |
@@ -149,7 +150,11 @@ static import resolves.
 tui.windows.register({
   id: 'metrics',
   title: 'Metrics',
-  command: { name: 'metrics', description: 'Show metrics' },
+  command: {
+    name: 'metrics',
+    description: 'Show metrics',
+    descriptions: { zh: '显示指标' },
+  },
   required: ['metrics'],
   component: ({ open, onClose }) => <MetricsDialog visible={open} onClose={onClose} />,
 })
@@ -157,6 +162,7 @@ tui.windows.register({
 
 - Component props: `{ open, onClose, handleRef? }`; rendered in the dialog layer (reuses the close guard and mouse selection).
 - `command` becomes a slash command of the same name; `required` lists window services the window depends on — it renders only once they exist.
+- `command.descriptions` maps a language id to a translated description. The active language comes from `/language`; a missing variant falls back to `description`, so English-only plugins need no extra work.
 
 ### tui.chrome.widgets.register
 
@@ -194,6 +200,7 @@ tui.commands.register({
   id: 'deploy',
   command: '/deploy',
   description: 'Run the deploy pipeline',
+  descriptions: { zh: '运行部署流水线' },
   hint: '[env]',
   args: ['staging|production'],
   run: () => {},
@@ -202,7 +209,24 @@ tui.commands.register({
 
 - Without `run`, the command opens the window or overlay registered under the same `id`.
 - `args` supplies literal argument completions; `hint` shows in the input hints.
+- `descriptions` localizes the hint-row description against the active language; a missing variant falls back to `description`.
+- `command` must begin with `/`, and `id` must be non-empty; a malformed registration throws at register time instead of failing silently at dispatch.
 - Typing a command exactly and pressing Enter runs it directly when the command has no `hint`; commands with arguments complete to `command ` on the first Enter (the hint UI) and run on the second.
+
+### tui.language.register
+
+```ts
+tui.language.register({
+  id: 'pt',
+  language: 'pt',
+  label: 'Português',
+  order: 10,
+})
+```
+
+- Adds a selectable row to the `/language` window. `language` is the id used as a key in every `descriptions` map; it must match `^[a-z][a-z0-9_-]{0,15}$` or registration throws.
+- Rows are ordered ascending; the two built-in languages (`en`, `zh`) sit in the 500+ fallback layer.
+- Selecting a plugin language makes it the active description language for the session; the persisted store still defaults to a built-in id on the next boot when the plugin is absent.
 
 ### tui.composer.paste.register
 

@@ -4,6 +4,7 @@ import { SessionsWindow } from './windows/sessions-window.tsx'
 import { PresetsDialog } from './dialog/presets-dialog.tsx'
 import { EffortDialog } from './dialog/effort-dialog.tsx'
 import { DefaultsDialog } from './dialog/defaults-dialog.tsx'
+import { LanguageDialog } from './dialog/language-dialog.tsx'
 import { TodoDialog } from './dialog/todo-dialog.tsx'
 import { createServiceWindow } from './windows/service-window.tsx'
 import { registerWindow } from './windows.ts'
@@ -31,7 +32,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
       order: BUILTIN_WINDOW_ORDER + 0,
       required: ['models'],
       component: props => <ModelsWindow {...props} onModelSelected={deps.onModelSelected} onAddProvider={deps.onAddProvider} />,
-      command: { name: 'models', description: 'Switch the active model' },
+      command: { name: 'models', description: 'Switch the active model', descriptions: { zh: '切换当前模型' } },
     }),
     registerWindow({
       id: 'providers',
@@ -39,7 +40,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
       order: BUILTIN_WINDOW_ORDER + 5,
       required: ['models'],
       component: props => <ProvidersWindow {...props} onModelSelected={deps.onModelSelected} />,
-      command: { name: 'providers', description: 'Manage providers and API keys' },
+      command: { name: 'providers', description: 'Manage providers and API keys', descriptions: { zh: '管理服务商与 API 密钥' } },
     }),
     registerWindow({
       id: 'sessions',
@@ -54,7 +55,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
           onNewSession={deps.onNewSession}
         />
       ),
-      command: { name: 'sessions', description: 'Resume a previous session' },
+      command: { name: 'sessions', description: 'Resume a previous session', descriptions: { zh: '恢复此前的会话' } },
     }),
     registerWindow({
       id: 'preset',
@@ -62,7 +63,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
       order: BUILTIN_WINDOW_ORDER + 20,
       required: ['presets'],
       component: createServiceWindow('presets', PresetsDialog),
-      command: { name: 'preset', description: 'Select agent preset' },
+      command: { name: 'preset', description: 'Select agent preset', descriptions: { zh: '选择代理预设' } },
     }),
     registerWindow({
       id: 'effort',
@@ -70,7 +71,7 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
       order: BUILTIN_WINDOW_ORDER + 30,
       required: ['efforts'],
       component: createServiceWindow('efforts', EffortDialog),
-      command: { name: 'effort', description: "Select the current model's reasoning effort" },
+      command: { name: 'effort', description: "Select the current model's reasoning effort", descriptions: { zh: '选择当前模型的推理强度' } },
     }),
     registerWindow({
       id: 'defaults',
@@ -78,7 +79,15 @@ export function registerBuiltinWindows(deps: BuiltinWindowDeps): () => void {
       order: BUILTIN_WINDOW_ORDER + 40,
       required: ['defaults'],
       component: createServiceWindow('defaults', DefaultsDialog),
-      command: { name: 'defaults', description: 'Set default permission and agent preset' },
+      command: { name: 'defaults', description: 'Set default permission and agent preset', descriptions: { zh: '设置默认权限与代理预设' } },
+    }),
+    registerWindow({
+      id: 'language',
+      title: 'language',
+      order: BUILTIN_WINDOW_ORDER + 45,
+      required: ['language'],
+      component: createServiceWindow('language', LanguageDialog),
+      command: { name: 'language', description: 'Switch the interface language', descriptions: { zh: '切换界面语言' } },
     }),
     registerWindow({
       id: 'todo',

@@ -50,7 +50,7 @@ dsh --profile <name>
       expanded: []        # 永不折叠的工具名列表
 ```
 
-环境变量：`DSH_TUI_PROFILE`、`DSH_TUI_COLOR`、`DSH_TUI_ASCII`、`DSH_TUI_WIDTH`、`DSH_TUI_BG`、`DSH_TUI_HOT_THEME`、`DSH_TUI_THEME_PATH`、`DSH_TUI_DEBUG`，以及 `DSH_TUI_LOG_*` 系列。
+环境变量：`DSH_TUI_PROFILE`、`DSH_TUI_COLOR`、`DSH_TUI_ASCII`、`DSH_TUI_WIDTH`、`DSH_TUI_BG`、`DSH_TUI_LANG`、`DSH_TUI_HOT_THEME`、`DSH_TUI_THEME_PATH`、`DSH_TUI_DEBUG`，以及 `DSH_TUI_LOG_*` 系列。
 
 ## 插件开发
 
