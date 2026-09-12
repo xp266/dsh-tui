@@ -4,6 +4,7 @@ import type { Segment } from '../../../core/segments.ts'
 import { renderBlockRows } from './block.ts'
 import type { BlockContext } from './block.ts'
 import { createMdPalette } from './palette.ts'
+import { registerSurfaceCacheClear } from '../../../kernel/surface.ts'
 
 export interface MarkdownRenderResult {
   rows: Segment[][]
@@ -96,6 +97,8 @@ export function clearMarkdownBlockCache(): void {
   blockCache.clear()
   blockCacheBytes = 0
 }
+
+registerSurfaceCacheClear(clearMarkdownBlockCache)
 
 function evictBlockCacheIfNeeded(): void {
   while (blockCache.size > 0 && (blockCache.size >= BLOCK_CACHE_MAX || blockCacheBytes >= BLOCK_CACHE_MAX_BYTES)) {

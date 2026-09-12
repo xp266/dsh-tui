@@ -18,6 +18,7 @@ import { BUBBLE_WIDTH_OFFSET, HEADER_LABEL_COL } from '../../core/metrics.ts'
 import { messageBackgroundWidth } from '../layout-service.ts'
 import { messageRendererOf } from './renderers.ts'
 import { currentCollapsePolicy } from '../../chat/collapse-policy.ts'
+import { registerSurfaceCacheClear } from '../../kernel/surface.ts'
 
 export { HEADER_LABEL_COL }
 
@@ -107,6 +108,8 @@ export function clearLayoutCache(): void {
   layoutEpoch += 1
   clearMarkdownStreamStates()
 }
+
+registerSurfaceCacheClear(clearLayoutCache)
 
 const padRow = (role: RowInfo['role']): PlanRow => ({ type: 'pad', role })
 const blankRow = (): PlanRow => ({ type: 'blank' })
@@ -283,6 +286,7 @@ function describeCustomData(data: unknown): string {
   try {
     return JSON.stringify(data, null, 2) ?? ''
   } catch {
+    // Cyclic or unserializable view data degrades to its String form.
     return String(data)
   }
 }

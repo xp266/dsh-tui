@@ -23,7 +23,7 @@ import { warmRenderPipeline } from './ui/message/warmup.ts'
 import { createTuiExtensionPoint, exposeRuntimeFaces } from './ui/extension-point.ts'
 import { registerBuiltinToolViews } from './chat/builtin-tool-views.ts'
 import { bootReady, bootWarning, emitBootLine, openBootLog } from './boot-log.ts'
-import { configureLogs, error, error as logError, installCrashHandlers, warn } from './log.ts'
+import { configureLogs, error, installCrashHandlers, warn } from './log.ts'
 import { env } from './env.ts'
 import { logFilePath } from './log.ts'
 import { fatalFromCause, formatBootFatal } from './boot-fatal.ts'
@@ -200,6 +200,7 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
       exposeFaces = exposeRuntimeFaces(extensionPoint, bridge)
       emitBootLine('sessions: loading session list')
       await Promise.race([
+        // A slow or failing roster must not hold the interface: bootListTimeout wins the race.
         bridge.listSessions().catch(() => {}),
         new Promise<void>(resolve => {
           setTimeout(resolve, config.bootListTimeout).unref()
@@ -227,6 +228,7 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
       offDialogDim?.()
       bridge?.dispose()
       app?.unmount()
+      capture.dispose()
       restoreAllModes()
       disposeCrashHandlers()
     }

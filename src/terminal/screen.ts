@@ -16,6 +16,8 @@ export interface ScreenCapture {
   extract(rect: ScreenRect): string
   extractSelection(selection: LineSelection): string
   rowHasText(y: number): boolean
+  /** Detach the resize relay from the real stdout; safe to call more than once. */
+  dispose(): void
 }
 
 export function createScreenCapture(): ScreenCapture {
@@ -300,9 +302,7 @@ export function createScreenCapture(): ScreenCapture {
       super()
       // Re-emit the real terminal's resize events onto the capture stream so
       // subscribers that registered locally (below) observe them too.
-      ;(real as unknown as EventEmitter).on('resize', () => {
-        this.emit('resize')
-      })
+      ;(real as unknown as EventEmitter).on('resize', onRealResize)
     }
     write(chunk: string | Buffer): boolean {
       bufferChunk(typeof chunk === 'string' ? chunk : chunk.toString('utf8'))
@@ -348,5 +348,20 @@ export function createScreenCapture(): ScreenCapture {
     }
   }
 
-  return { stream: new CaptureStream() as unknown as NodeJS.WriteStream, feed, extract, extractSelection, rowHasText }
+  const onRealResize = (): void => {
+    captureStream.emit('resize')
+  }
+
+  // The relay handler lives outside the constructor so dispose() can detach it.
+  const captureStream = new CaptureStream()
+  return {
+    stream: captureStream as unknown as NodeJS.WriteStream,
+    feed,
+    extract,
+    extractSelection,
+    rowHasText,
+    dispose() {
+      ;(real as unknown as EventEmitter).off('resize', onRealResize)
+    },
+  }
 }
