@@ -31,6 +31,7 @@ function normalizeHost(baseURL: string): string | undefined {
   try {
     return new URL(baseURL).host.toLowerCase()
   } catch {
+    // A malformed baseURL simply matches no known effort table.
     return undefined
   }
 }

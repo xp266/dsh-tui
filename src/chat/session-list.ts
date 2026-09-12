@@ -2,7 +2,7 @@ import { stat } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { textFromBlocks } from './blocks.ts'
-import { error as logError } from '../log.ts'
+import { error } from '../log.ts'
 import { isBlankSession } from './presets.ts'
 import { listColdRows } from '../sessions/list.ts'
 
@@ -30,9 +30,9 @@ export function sessionTime(session: SessionSummary): number {
 export async function computeSessionList(ctx: Context): Promise<SessionSummary[]> {
   try {
     return await computeSessionListInner(ctx)
-  } catch (error) {
-    logError('boot', `session list failed: ${error instanceof Error ? error.message : String(error)}`)
-    throw error
+  } catch (cause) {
+    error('boot', `session list failed: ${cause instanceof Error ? cause.message : String(cause)}`)
+    throw cause
   }
 }
 

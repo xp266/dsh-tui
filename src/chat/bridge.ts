@@ -44,7 +44,8 @@ import { builtInPresetName, isBlankSession, presetDisplayName } from './presets.
 import type { PresetSummary } from './presets.ts'
 import type { EffortSummary } from './efforts.ts'
 import { InteractionStore, registerInteractionChannels } from './interactions.ts'
-import { error as logError, warn } from '../log.ts'
+import { syntheticEvent } from './host-events.ts'
+import { error, warn } from '../log.ts'
 
 interface AttachmentsServiceLike {
   saveImage(input: { data: Uint8Array; mediaType: string; name?: string }): Promise<ImageAttachmentRef>
@@ -71,6 +72,7 @@ export async function resolvePendingImages(images: readonly PendingImage[]): Pro
       const { readFile } = await import('node:fs/promises')
       ok.push({ name: image.path, mediaType, data: new Uint8Array(await readFile(image.path)) })
     } catch {
+      // An unreadable image file is reported to the model as a failed path.
       failed.push(image.path)
     }
   }
@@ -130,6 +132,7 @@ async function sendContent(
         const ref = await attachments.saveImage({ data: image.data, mediaType: image.mediaType, name: image.name })
         content.push({ type: 'image', attachment: ref })
       } catch {
+        // A rejected upload degrades to an inline note instead of dropping the message.
         content.push({ type: 'text', text: `[image failed: ${image.name}]` })
       }
     }
@@ -241,6 +244,7 @@ function parseArgumentsRaw(argumentsRaw: string): unknown {
   try {
     return JSON.parse(argumentsRaw) as unknown
   } catch {
+    // Non-JSON arguments are passed through as the raw string for display.
     return argumentsRaw
   }
 }
@@ -489,7 +493,15 @@ interface CachedList<T> {
   onRefresh(listener: () => void): () => void
 }
 
-const INVALIDATE_REFRESH_DELAY_MS = 100
+  const INVALIDATE_REFRESH_DELAY_MS = 100
+
+  /**
+   * Fire-and-forget prefetch: a failed warm-up leaves the list empty and the
+   * next `get()` retries, so the rejection carries no recovery path.
+   */
+  const voidPrefetch = (promise: Promise<unknown>): void => {
+    promise.catch(() => {})
+  }
 
 function cachedList<T>(
   load: () => Promise<T[]>,
@@ -521,7 +533,7 @@ function cachedList<T>(
     if (invalidateTimer !== undefined) return
     invalidateTimer = setTimeout(() => {
       invalidateTimer = undefined
-      void startRefresh().catch(() => {})
+      voidPrefetch(startRefresh())
     }, INVALIDATE_REFRESH_DELAY_MS)
   }
   return {
@@ -529,7 +541,7 @@ function cachedList<T>(
       const now = Date.now()
       if (!force && cache !== undefined && refreshedAt > now - ttlMs) return Promise.resolve(cache)
       if (!force && options.staleWhileRevalidate === true && cache !== undefined) {
-        void startRefresh().catch(() => {})
+        voidPrefetch(startRefresh())
         return Promise.resolve(cache)
       }
       return startRefresh()
@@ -580,8 +592,8 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     SESSION_LIST_TTL_MS,
     { staleWhileRevalidate: true, refreshOnInvalidate: true },
   )
-  void sessionList.get().catch(() => {})
-  void registerWorkspace(ctx, defaultCwd).then(() => sessionList.invalidate()).catch(() => {})
+  voidPrefetch(sessionList.get())
+  voidPrefetch(registerWorkspace(ctx, defaultCwd).then(() => sessionList.invalidate()))
   let activeHandle: AgentHandle | undefined = await createAgent(currentCwd)
   let activeAgent = activeHandle.agent
   const commandsService = ctx.get('commands') as CommandsServiceLike | undefined
@@ -598,6 +610,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
         ...(entry.input?.hint === undefined ? {} : { hint: entry.input.hint }),
       }))
     } catch {
+      // A roster read before the agent is fully wired yields an empty list; the next poll corrects it.
       next = []
     }
     // A poll must not churn React state: only publish when the roster changed.
@@ -611,6 +624,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       try {
         on.call(ctx, 'commands/change', () => syncRegistry())
       } catch (cause) {
+        // A failed subscription only disables the push path; the poll below is the safety net.
         warn('bridge', 'commands/change subscription failed', {
           message: cause instanceof Error ? cause.message : String(cause),
         })
@@ -651,8 +665,8 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   function emitCommandFailure(line: string, message: string): void {
     const commandId = `dshtui-command-${++commandFailureCounter}`
     const name = line.replace(/^\//, '').split(/\s+/, 1)[0] ?? ''
-    emit({ type: 'command/run', data: { commandId, name } } as unknown as SessionEvent)
-    emit({ type: 'command/done', data: { commandId, kind: 'error', text: message } } as unknown as SessionEvent)
+    emit(syntheticEvent('command/run', { commandId, name }))
+    emit(syntheticEvent('command/done', { commandId, kind: 'error', text: message }))
   }
 
   const offSessionEvents = ctx.on('session/event', (session, event) => {
@@ -718,6 +732,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
       }
       return (info.reasoning?.efforts ?? []).map(effort => ({ id: effort.id, name: effort.name }))
     } catch {
+      // An unknown model has no effort ladder; the dialog shows the raw ids instead.
       return []
     }
   }
@@ -934,6 +949,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     try {
       await ctx.agentDefaultModel.saveSelection(resolved)
     } catch (cause) {
+      // The live selection is already applied; persisting the default is best-effort.
       warn('model', 'failed to persist the default model selection', {
         message: cause instanceof Error ? cause.message : String(cause),
       })
@@ -969,6 +985,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     try {
       await ctx.agentDefaultModel.saveSelection(resolved)
     } catch (cause) {
+      // The live selection is already applied; persisting the default is best-effort.
       warn('model', 'failed to persist the default effort selection', {
         message: cause instanceof Error ? cause.message : String(cause),
       })
@@ -1012,7 +1029,7 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
   }
 
   void refreshEffortNames()
-  void modelsList.get().catch(() => {})
+  voidPrefetch(modelsList.get())
 
   return {
     modelName: () => currentSelection()?.model ?? '',
@@ -1074,9 +1091,11 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     fetchProviderModels: async (provider, apiKey) => {
       try {
         return await fetchProviderModels(llm, provider.settingsNs, provider.provider, apiKey)
-      } catch (error) {
-        if ((error as { code?: string }).code === 'NO_DISCOVERY') return undefined
-        throw error
+      } catch (cause) {
+        // NO_DISCOVERY means "this provider has no model directory"; the dialog
+        // treats undefined as "type the model ids by hand" instead of an error.
+        if ((cause as { code?: string }).code === 'NO_DISCOVERY') return undefined
+        throw cause
       }
     },
     saveProviderKey: async (provider, apiKey) => {
@@ -1125,8 +1144,10 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
         const index = names.indexOf(current)
         const next = names[(index + 1) % names.length]
         service.set(activeAgent.session, next)
-      } catch (error) {
-        console.error(`dshtui: permission mode switch rejected: ${error instanceof Error ? error.message : String(error)}`)
+      } catch (cause) {
+        // The host rejects the switch outside a turn; the status bar keeps
+        // showing the previous mode, so surface the refusal to the user.
+        error('bridge', `permission mode switch rejected: ${cause instanceof Error ? cause.message : String(cause)}`)
       }
     },
     listPermissionPresets: async () => {
@@ -1185,5 +1206,4 @@ async function registerWorkspace(ctx: Context, path: string): Promise<WorkspaceR
       message: cause instanceof Error ? cause.message : String(cause),
     })
     return undefined
-  }
-}
+  }}

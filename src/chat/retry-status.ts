@@ -1,4 +1,6 @@
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { hostData } from './host-events.ts'
+import type { RetryData } from './host-events.ts'
 
 export interface RetryStatus {
   attempt: number
@@ -7,19 +9,12 @@ export interface RetryStatus {
   code: string
 }
 
-interface RetryEventData {
-  retry: number
-  maxRetries?: number
-  delayMs?: number
-  failure?: { code?: string }
-}
-
 export function nextRetryStatus(current: RetryStatus | undefined, event: SessionEvent): RetryStatus | undefined {
   // `llm/retry*` are plugin-merged event types; the local build's session
   // typings do not include them, so the discriminant is compared as a string.
   const type = event.type as string
   if (type === 'llm/retry') {
-    const data = event.data as unknown as RetryEventData
+    const data = hostData<RetryData>(event)
     return {
       attempt: data.retry,
       maxRetries: data.maxRetries ?? data.retry,

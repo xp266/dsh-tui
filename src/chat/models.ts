@@ -309,6 +309,7 @@ export async function deleteProviderProfile(
   const apiKeyEnv = typeof profile?.apiKeyEnv === 'string' ? profile.apiKeyEnv : undefined
   if (apiKeyEnv === managedRef) {
     const info = await store.describe(managedRef).catch(() => undefined)
+    // An unavailable describe only skips the key removal; the profile unset below proceeds.
     if (info?.configured === true && info.writable) await store.unset(managedRef)
   }
   await settings.mutate(provider.settingsNs, [{ op: 'unset', path: [...provider.settingsPath] }])

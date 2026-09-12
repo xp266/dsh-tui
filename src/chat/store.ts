@@ -7,6 +7,8 @@ import type { CollapsibleMessage } from '../model/message.ts'
 import { glyphs } from '../terminal/glyphs.ts'
 import { diffsFromResultMeta, diffLineGroups } from './tool-view.ts'
 import { applyChatNodes } from './chat-nodes.ts'
+import { hostData } from './host-events.ts'
+import type { CommandDoneData, CommandRunData, CompactionEndData, CompactionStartData, CompactionSummaryData, PtcDispatchData, RetryStartedData } from './host-events.ts'
 
 export type AgentPhase = 'awaiting-request' | 'thinking' | 'working'
 
@@ -370,12 +372,12 @@ export function reduceChatEvent(
         return reducePtcDispatch(messages, turn, event, true, presenter)
       }
       if ((event.type as string) === 'command/run') {
-        const data = (event.data as unknown as { commandId: string; name: string })
+        const data = hostData<CommandRunData>(event)
         turn.commandNames.set(data.commandId, data.name)
         return { messages, turn, changed: false }
       }
       if ((event.type as string) === 'command/done') {
-        const data = (event.data as unknown as { commandId: string; kind: "success" | "error"; text?: string })
+        const data = hostData<CommandDoneData>(event)
         const name = turn.commandNames.get(data.commandId) ?? ''
         turn.commandNames.delete(data.commandId)
         if (name === 'compact' && data.kind !== 'error') return { messages, turn, changed: false }
@@ -392,12 +394,12 @@ export function reduceChatEvent(
         return { messages, turn, changed: true }
       }
       if ((event.type as string) === 'llm/retry-started') {
-        const changed = dropStepMessages(messages, turn, (event.data as { step: number }).step)
+        const changed = dropStepMessages(messages, turn, hostData<RetryStartedData>(event).step)
         markRunning(turn, true)
         return { messages, turn, changed }
       }
       if ((event.type as string) === 'compaction/start') {
-        const data = (event.data as unknown as { compactionId: string })
+        const data = hostData<CompactionStartData>(event)
         const id = nextId('cmp')
         turn.compactions.set(data.compactionId, id)
         turn.compacting = true
@@ -405,10 +407,7 @@ export function reduceChatEvent(
         return { messages, turn, changed: true }
       }
       if ((event.type as string) === 'compaction/summary') {
-        const data = (event.data as unknown as {
-          compactionId: string
-          summary: Array<{ type: string; text?: string }>
-        })
+        const data = hostData<CompactionSummaryData>(event)
         const id = turn.compactions.get(data.compactionId)
         if (id === undefined) return { messages, turn, changed: false }
         updateById(messages, id, message => message.kind === 'compaction'
@@ -417,7 +416,7 @@ export function reduceChatEvent(
         return { messages, turn, changed: true }
       }
       if ((event.type as string) === 'compaction/end') {
-        const data = (event.data as unknown as { compactionId: string; error?: string })
+        const data = hostData<CompactionEndData>(event)
         const id = turn.compactions.get(data.compactionId)
         if (id === undefined) return { messages, turn, changed: false }
         turn.compactions.delete(data.compactionId)
@@ -612,16 +611,6 @@ function clearStreamingById(messages: Message[], id: string): void {
   }
 }
 
-interface PtcDispatchData {
-  rootCallId: string
-  parentCallId: string
-  subCallId: string
-  name: string
-  arguments: unknown
-  isError?: boolean
-  content?: Array<{ type: string; text?: string }>
-}
-
 /**
  * PTC sub-dispatches render as child cards under the root `run_code`
  * bubble: the start event commits a running placeholder, the settle event
@@ -635,7 +624,7 @@ function reducePtcDispatch(
   settled: boolean,
   presenter?: ChatToolPresenter,
 ): { messages: Message[]; turn: TurnState; changed: boolean } {
-  const data = (event.data as unknown as PtcDispatchData)
+  const data = hostData<PtcDispatchData>(event)
   const rootId = turn.toolIds.get(String(data.rootCallId))
   const argsText = stringifyDispatchArgs(data.arguments)
   if (!settled) {
