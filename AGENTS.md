@@ -5,7 +5,7 @@
 - Erasable TypeScript syntax only (no enum, namespace, or parameter properties); imports always carry the `.ts` extension.
 - Exported functions declare explicit return types; internal functions rely on inference.
 - No import aliases, no star imports; import the module itself and access members with dot notation for namespace semantics.
-- Prefer `const`; use ternaries or early returns instead of reassignment; never write `else`.
+- Prefer `const`; use ternaries or early returns instead of reassignment; never write `else` after a branch that ends in `return`, `continue`, or `throw` (early-return discipline; mapping chains built with `else if` are acceptable).
 - Avoid unnecessary destructuring; dot notation preserves context.
 - Inline values used only once; inline single-line helpers with a single call site; place helpers directly below the main function.
 - No `any`; prefer map/filter/flatMap over loops; use type guards in filter to preserve downstream inference.
