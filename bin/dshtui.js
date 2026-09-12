@@ -33,7 +33,18 @@ function fail(message) {
   process.exit(1)
 }
 
-const quote = arg => /^[A-Za-z0-9_@%+=:,./-]+$/.test(arg) ? arg : `"${arg.replaceAll('"', '\\"')}"`
+// cmd.exe cannot escape a double quote inside a quoted argument (a
+// backslash before `"` ends the quoted region, opening an injection path),
+// so arguments carrying one are refused instead of half-escaped; `%` is
+// refused because cmd expands %VAR% even inside quotes. Everything else
+// rides inside a quoted string, where cmd keeps metacharacters literal.
+const UNSAFE_WINDOWS_ARG = /["%\r\n]/
+const quote = arg => {
+  if (UNSAFE_WINDOWS_ARG.test(arg)) {
+    fail(`argument "${arg}" cannot be passed safely through cmd.exe; run the dsh command directly`)
+  }
+  return /^[A-Za-z0-9_@+=:,./-]+$/.test(arg) ? arg : `"${arg}"`
+}
 // Windows resolves `dsh` through a .cmd shim, which only spawns with a
 // shell; the command line is one quoted string there because passing an
 // args array alongside shell:true is deprecated (DEP0190).
@@ -69,10 +80,25 @@ function installedVersion(profileDir) {
   return readJson(join(profileDir, 'node_modules', packageName, 'package.json'))?.version
 }
 
+// Release ordering includes the prerelease channel: comparing cores only
+// left a beta/rc install equal to the matching stable and permanently
+// stuck on it (0.1.30-beta.1 never upgraded to 0.1.30).
+const CHANNEL_RANK = { alpha: 0, beta: 1, rc: 2, stable: 3 }
+
+function versionKey(version) {
+  const [core, tag] = version.split('-')
+  const match = /^(alpha|beta|rc)\.(\d+)$/.exec(tag ?? '')
+  return [
+    ...core.split('.').map(Number),
+    match === null ? CHANNEL_RANK.stable : CHANNEL_RANK[match[1]],
+    match === null ? 0 : Number(match[2]),
+  ]
+}
+
 function versionLessThan(installed, wanted) {
-  const core = version => version.split('-')[0].split('.').map(Number)
-  const [a, b] = [core(installed), core(wanted)]
-  for (let index = 0; index < 3; index++) {
+  const a = versionKey(installed)
+  const b = versionKey(wanted)
+  for (let index = 0; index < 5; index++) {
     if ((a[index] ?? 0) !== (b[index] ?? 0)) return (a[index] ?? 0) < (b[index] ?? 0)
   }
   return false
