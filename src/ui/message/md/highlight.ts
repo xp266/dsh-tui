@@ -4,6 +4,7 @@ import Prism from 'prismjs'
 import { COLORS } from '../../../theme.ts'
 import type { MarkStyle, Segment } from '../../../core/segments.ts'
 import { pluginGrammarOf } from './extensions.ts'
+import { registerSurfaceCacheClear } from '../../../kernel/surface.ts'
 
 type CodeRole =
   | 'comment'
@@ -475,7 +476,12 @@ interface HighlightCacheEntry {
   bytes: number
 }
 
-const highlightCache = new Map<string, HighlightCacheEntry>()
+// Two-level layout: the outer key is the small (thinking/lang/streamId)
+// prefix, the inner key is the text itself. A Map key holds a reference, so a
+// cache hit allocates nothing — a flat key would rebuild a block-sized
+// string on every lookup, including hits.
+const highlightCache = new Map<string, Map<string, HighlightCacheEntry>>()
+let highlightCacheEntries = 0
 let highlightCacheBytes = 0
 
 // Streaming states retain the full source plus one segment per token, so a
@@ -496,10 +502,13 @@ let streamStateBytes = 0
 
 export function clearHighlightCache(): void {
   highlightCache.clear()
+  highlightCacheEntries = 0
   highlightCacheBytes = 0
   streamStates.clear()
   streamStateBytes = 0
 }
+
+registerSurfaceCacheClear(clearHighlightCache)
 
 function trackStreamState(stateKey: string, state: StreamState): void {
   const existing = streamStates.get(stateKey)
@@ -525,8 +534,9 @@ function resolveGrammar(lang: string): Prism.Grammar | undefined {
 
 export function highlightCodeBlock(text: string, lang: string, thinking = false, streamId = ''): Segment[] | null {
   if (text === '') return []
-  const key = `${thinking ? 'd' : 'l'}\x00${lang}\x00${streamId}\x00${text}`
-  const cached = highlightCache.get(key)
+  const partitionKey = `${thinking ? 'd' : 'l'}\x00${lang}\x00${streamId}`
+  let partition = highlightCache.get(partitionKey)
+  const cached = partition?.get(text)
   if (cached !== undefined) return cached.segments
   let grammar = resolveGrammar(lang)
   if (grammar === undefined && lang !== '') {
@@ -563,26 +573,43 @@ export function highlightCodeBlock(text: string, lang: string, thinking = false,
         result = segments
       }
     } catch {
+      // Prism rejects a malformed program; the block renders as plain text
+      // (result = null) and the stale stream state is dropped.
       const existing = streamStates.get(stateKey)
       if (existing !== undefined) streamStateBytes -= existing.bytes
       streamStates.delete(stateKey)
       result = null
     }
   }
-  const bytes = key.length + segmentsHeapBytes(result)
+  const bytes = text.length + segmentsHeapBytes(result)
   evictHighlightCacheIfNeeded()
-  highlightCache.set(key, { segments: result, bytes })
+  if (partition === undefined) {
+    partition = new Map()
+    highlightCache.set(partitionKey, partition)
+  }
+  partition.set(text, { segments: result, bytes })
+  highlightCacheEntries += 1
   highlightCacheBytes += bytes
   return result
 }
 
 function evictHighlightCacheIfNeeded(): void {
-  while (highlightCache.size > 0 && (highlightCache.size >= HIGHLIGHT_CACHE_MAX || highlightCacheBytes >= HIGHLIGHT_CACHE_MAX_BYTES)) {
-    const oldest = highlightCache.keys().next()
-    if (oldest.done) return
-    const entry = highlightCache.get(oldest.value)
-    if (entry !== undefined) highlightCacheBytes -= entry.bytes
-    highlightCache.delete(oldest.value)
+  // Eviction walks partitions in creation order and drops each partition's
+  // oldest entry first: an approximation of global LRU that never allocates.
+  while (highlightCacheEntries > 0 && (highlightCacheEntries >= HIGHLIGHT_CACHE_MAX || highlightCacheBytes >= HIGHLIGHT_CACHE_MAX_BYTES)) {
+    let evicted = false
+    for (const partition of highlightCache.values()) {
+      if (partition.size === 0) continue
+      const oldest = partition.keys().next()
+      if (oldest.done) continue
+      const entry = partition.get(oldest.value)
+      if (entry !== undefined) highlightCacheBytes -= entry.bytes
+      partition.delete(oldest.value)
+      highlightCacheEntries -= 1
+      evicted = true
+      break
+    }
+    if (!evicted) break
   }
 }
 

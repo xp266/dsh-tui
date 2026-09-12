@@ -126,6 +126,10 @@ export function createBuiltinPointerHandler(deps: PointerBuiltinDeps) {
   return {
     order: POINTER_BUILTIN_ORDER,
     id: 'builtin.pointer',
+    /** Stop every active timer; the dispatcher's unmount cleanup calls this. */
+    stop(): void {
+      stopStripAutoScroll()
+    },
     beginDown(): void {
       clearCandidates()
       hintGesture.current = null

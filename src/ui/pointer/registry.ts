@@ -21,5 +21,9 @@ export function pointerHandlerEntries(): Array<{ key: string; order: number; val
   return pointerHandlers.entries()
 }
 
+export function subscribePointerHandlers(listener: () => void): () => void {
+  return pointerHandlers.subscribe(listener)
+}
+
 /** Builtin layer order constant; see pointer/builtins.ts. */
 export const POINTER_BUILTIN_ORDER = 100

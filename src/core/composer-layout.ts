@@ -12,20 +12,55 @@ export interface InputLayout {
   visibleStart: number
 }
 
+interface LayoutCacheEntry {
+  lines: string[]
+  segmentStarts: number[]
+  bytes: number
+}
+
+// Busy ticks re-render the composer with an unchanged buffer; the cached wrap
+// keeps those frames at the cost of a map lookup.
+const LAYOUT_CACHE_MAX_BYTES = 1024 * 1024
+
+const layoutCache = new Map<string, LayoutCacheEntry>()
+let layoutCacheBytes = 0
+
+function evictLayoutCacheIfNeeded(): void {
+  while (layoutCache.size > 0 && layoutCacheBytes >= LAYOUT_CACHE_MAX_BYTES) {
+    const oldest = layoutCache.keys().next()
+    if (oldest.done) return
+    const entry = layoutCache.get(oldest.value)
+    if (entry !== undefined) layoutCacheBytes -= entry.bytes
+    layoutCache.delete(oldest.value)
+  }
+}
+
 export function inputLayout(value: string, cursor: number, width: number): InputLayout {
   const contentWidth = width - INPUT_WIDTH_OFFSET
-  const lines: string[] = []
-  const segmentStarts: number[] = []
-  let charOffset = 0
-  for (const raw of value.split('\n')) {
-    const wrapped = wrapLines(raw, contentWidth)
-    let offset = 0
-    for (const segment of wrapped) {
-      lines.push(segment)
-      segmentStarts.push(charOffset + offset)
-      offset += segment.length
+  const cacheKey = `${contentWidth}\u0000${value}`
+  const hit = layoutCache.get(cacheKey)
+  let lines: string[]
+  let segmentStarts: number[]
+  if (hit !== undefined) {
+    lines = hit.lines
+    segmentStarts = hit.segmentStarts
+  } else {
+    lines = []
+    segmentStarts = []
+    let charOffset = 0
+    for (const raw of value.split('\n')) {
+      const wrapped = wrapLines(raw, contentWidth)
+      let offset = 0
+      for (const segment of wrapped) {
+        lines.push(segment)
+        segmentStarts.push(charOffset + offset)
+        offset += segment.length
+      }
+      charOffset += raw.length + 1
     }
-    charOffset += raw.length + 1
+    evictLayoutCacheIfNeeded()
+    layoutCache.set(cacheKey, { lines, segmentStarts, bytes: value.length })
+    layoutCacheBytes += value.length
   }
   const clamped = Math.max(0, Math.min(cursor, value.length))
   let cursorRow = lines.length - 1

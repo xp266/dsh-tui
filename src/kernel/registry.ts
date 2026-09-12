@@ -20,6 +20,7 @@ export interface KeyedEntry<T> {
 
 export interface KeyedRegistry<T> {
   register(key: string, value: T, options?: KeyedOptions): () => void
+  /** Cached and shared between mutations; treat the returned arrays as read-only. */
   entries(): KeyedEntry<T>[]
   values(): T[]
   get(key: string): T | undefined
@@ -40,8 +41,14 @@ export interface KeyedRegistry<T> {
 export function keyedRegistry<T>(compareKeys: (a: string, b: string) => number = (a, b) => (a < b ? -1 : a > b ? 1 : 0)): KeyedRegistry<T> {
   const map = new Map<string, Layer<T>>()
   const listeners = new Set<Listener>()
+  // Dispatch loops read entries() once per pointer event or keystroke, so the
+  // sorted snapshot is cached and rebuilt only after a register or dispose.
+  let entriesCache: KeyedEntry<T>[] | undefined
+  let valuesCache: T[] | undefined
 
   function notify(): void {
+    entriesCache = undefined
+    valuesCache = undefined
     for (const listener of [...listeners]) {
       try {
         listener()
@@ -79,12 +86,16 @@ export function keyedRegistry<T>(compareKeys: (a: string, b: string) => number =
       }
     },
     entries() {
-      return [...map.values()]
+      if (entriesCache !== undefined) return entriesCache
+      entriesCache = [...map.values()]
         .map(layer => ({ key: layer.key, order: layer.order, value: layer.value }))
         .sort((a, b) => a.order - b.order || compareKeys(a.key, b.key))
+      return entriesCache
     },
     values() {
-      return this.entries().map(entry => entry.value)
+      if (valuesCache !== undefined) return valuesCache
+      valuesCache = this.entries().map(entry => entry.value)
+      return valuesCache
     },
     get(key) {
       return winningLayer(key)?.value

@@ -14,19 +14,44 @@ interface Span {
   end: number
 }
 
-function spanAtOrBefore(value: string, cursor: number): Span | undefined {
-  for (const segment of segmentGraphemes(value)) {
-    const end = segment.index + segment.segment.length
-    if (end >= cursor) return { start: segment.index, end }
+// Cursor movement repeats the same scan for a value the user is only moving
+// through; the cache keeps grapheme segmentation from running per keypress.
+const SPANS_CACHE_MAX_BYTES = 512 * 1024
+const SPANS_CACHE_VALUE_MAX = 64 * 1024
+
+const spansCache = new Map<string, Span[]>()
+let spansCacheBytes = 0
+
+function evictSpansCacheIfNeeded(): void {
+  while (spansCache.size > 0 && spansCacheBytes >= SPANS_CACHE_MAX_BYTES) {
+    const oldest = spansCache.keys().next()
+    if (oldest.done) return
+    spansCacheBytes -= oldest.value.length
+    spansCache.delete(oldest.value)
   }
-  return undefined
+}
+
+function graphemeSpans(value: string): Span[] {
+  const hit = spansCache.get(value)
+  if (hit !== undefined) return hit
+  const spans: Span[] = []
+  for (const { segment, index } of segmentGraphemes(value)) {
+    spans.push({ start: index, end: index + segment.length })
+  }
+  if (value.length <= SPANS_CACHE_VALUE_MAX) {
+    evictSpansCacheIfNeeded()
+    spansCache.set(value, spans)
+    spansCacheBytes += value.length
+  }
+  return spans
+}
+
+function spanAtOrBefore(value: string, cursor: number): Span | undefined {
+  return graphemeSpans(value).find(span => span.end >= cursor)
 }
 
 function spanAtOrAfter(value: string, cursor: number): Span | undefined {
-  for (const segment of segmentGraphemes(value)) {
-    if (segment.index >= cursor) return { start: segment.index, end: segment.index + segment.segment.length }
-  }
-  return undefined
+  return graphemeSpans(value).find(span => span.start >= cursor)
 }
 
 export function editInsert(state: EditState, text: string): EditState {

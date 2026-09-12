@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { pointerHandlerEntries, type PointerSession } from '../pointer/registry.ts'
+import { pointerHandlerEntries, subscribePointerHandlers, type PointerSession } from '../pointer/registry.ts'
 import type { PointerHandlerContribution, WindowHandle } from '../../contract/index.ts'
 import { createBuiltinPointerHandler, type BuiltinPointerHandler } from '../pointer/builtins.ts'
 import type { RefObject } from 'react'
@@ -291,16 +291,21 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
       dialogStripScroll: (dir: -1 | 1) => dialogHandleRef.current?.current?.stripScroll?.(dir) ?? null,
     }
     const builtinHandler: BuiltinPointerHandler = createBuiltinPointerHandler(builtinDeps)
+    // The dispatch chain is rebuilt only when the handler registry changes:
+    // per-event rebuilds paid two array allocations and a sort on every
+    // pointer event, including plain hover motion.
+    const builtinEntry = { key: builtinHandler.id, order: POINTER_BUILTIN_ORDER, value: builtinHandler as PointerHandlerContribution }
+    const buildDispatchEntries = () => [builtinEntry, ...pointerHandlerEntries()].sort((a, b) => a.order - b.order)
+    let entries = buildDispatchEntries()
+    const offRegistryChanged = subscribePointerHandlers(() => {
+      entries = buildDispatchEntries()
+    })
     let ownerId: string | null = null
     const throttled = createHoverThrottler(rawEvent => {
       const frame = { event: rawEvent, session, ui: uiContext() }
       lastPointerRef.current = { x: rawEvent.x, y: rawEvent.y }
       // The builtin composite participates in the same dispatch chain as
       // plugin handlers, sorted by order (builtin at 100, plugin default 300).
-      const entries = [
-        { key: builtinHandler.id, order: POINTER_BUILTIN_ORDER, value: builtinHandler as PointerHandlerContribution },
-        ...pointerHandlerEntries(),
-      ].sort((a, b) => a.order - b.order)
       const entryFor = (id: string | null) => entries.find(entry => entry.key === id)
       switch (rawEvent.type) {
         case 'down': {
@@ -358,6 +363,8 @@ export function useMouseSelection(options: MouseSelectionOptions): MouseSelectio
     const controller = createMouseController(throttled)
     controller.enable()
     return () => {
+      offRegistryChanged()
+      builtinHandler.stop()
       controller.disable()
       stopDragScroll()
     }
