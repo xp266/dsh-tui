@@ -162,6 +162,7 @@ function readVersionAt(base: string, packageName: string): string | undefined {
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as { version?: string }
     return typeof parsed.version === 'string' ? parsed.version : undefined
   } catch {
+    // A package absent from the host tree counts as a missing version.
     return undefined
   }
 }
@@ -335,6 +336,7 @@ export function probeHostContract(ctx: unknown): ProbeFailure | undefined {
     try {
       contract.probe(ctx)
     } catch (cause) {
+      // Any probe throw IS the contract verdict: it converts to a ProbeFailure.
       if (cause instanceof ProbeFailure) return cause
       return new ProbeFailure(cause instanceof Error ? cause.message : String(cause))
     }

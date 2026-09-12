@@ -56,6 +56,8 @@ function writePersisted(language: LanguageId): void {
     writeFileSync(temporary, JSON.stringify({ version: SCHEMA_VERSION, language }), { mode: 0o600 })
     renameSync(temporary, STORE_FILE)
   } catch {
+    // The in-memory language is already switched; an unwritable store just
+    // costs persistence for this run.
     try {
       rmSync(temporary, { force: true })
     } catch {

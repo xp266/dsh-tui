@@ -97,6 +97,7 @@ export function SessionsDialog({ api, onClose, onBeforeSessionSelected, onSessio
         clearError()
       })
       .catch(cause => {
+        // The archive failure is surfaced: the row returns to the list and the error shows.
         pendingArchives.current.delete(id)
         void run(async () => {
           throw cause instanceof Error ? cause : new Error(String(cause))

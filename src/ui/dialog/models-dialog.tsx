@@ -84,7 +84,9 @@ export function ModelsDialog({ api, onClose, onModelSelected, onAddProvider, win
         contextWindow: current.contextWindow === '' && info.contextWindow !== undefined ? String(info.contextWindow) : current.contextWindow,
         image: current.image === '' ? String(info.image) : current.image,
       }))
-    }).catch(() => {})
+    }).catch(() => {
+      // A failed describe leaves the config draft blank; the user fills the fields by hand.
+    })
   }
   const submitConfigure = async () => {
     if (configTarget === null) return

@@ -90,6 +90,7 @@ async function readClipboardImageBuiltin(): Promise<ClipboardImage | undefined> 
       // No image on the clipboard (or osascript missing); report undefined.
       return undefined
     } finally {
+      // A leftover scratch file in tmpdir is harmless; removal is best-effort.
       await rm(file, { force: true }).catch(() => {})
     }
   }

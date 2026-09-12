@@ -17,6 +17,7 @@ export function useAsyncAction(): AsyncActionState {
     try {
       return { ok: true, value: await action() }
     } catch (cause) {
+      // The failure is surfaced, not swallowed: the caller renders setError text.
       setError(errorText(cause))
       return { ok: false }
     }

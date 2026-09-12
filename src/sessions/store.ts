@@ -104,6 +104,8 @@ export function writeIndex(index: SessionIndex): void {
     writeFileSync(temporary, JSON.stringify({ version: SCHEMA_VERSION, entries }), { mode: 0o600 })
     renameSync(temporary, INDEX_FILE)
   } catch {
+    // The in-memory index is already updated; an unwritable store just
+    // costs persistence for this run.
     try {
       rmSync(temporary, { force: true })
     } catch {

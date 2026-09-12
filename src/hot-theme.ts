@@ -5,6 +5,7 @@ import { replacePalettes } from './theme.ts'
 import type { Theme, ThemeMode } from './theme.ts'
 import { env } from './env.ts'
 import { bumpSurface } from './kernel/surface.ts'
+import { warn } from './log.ts'
 
 const REFRESH_MS = 300
 
@@ -22,10 +23,11 @@ export function startHotTheme(onChange: () => void): HotThemeHandle | undefined 
   try {
     lastSource = readFileSync(themeUrl, 'utf8')
   } catch {
-    console.error('dshtui: DSH_TUI_HOT_THEME is set but the theme file is missing; hot theme disabled')
+    // A missing theme file disables the feature instead of crashing the boot.
+    warn('theme', 'DSH_TUI_HOT_THEME is set but the theme file is missing; hot theme disabled')
     return undefined
   }
-  console.error('dshtui: hot theme enabled; saving the theme file applies colors live')
+  warn('theme', 'hot theme enabled; saving the theme file applies colors live')
   const timer = setInterval(async () => {
     let source: string
     try {

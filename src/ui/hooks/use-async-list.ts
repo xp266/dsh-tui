@@ -46,6 +46,7 @@ export function useAsyncList<T>(load: () => Promise<T[]>): AsyncListState<T> {
         setError(null)
       })
       .catch(cause => {
+        // The failure is surfaced, not swallowed: the dialog shows it and offers reload.
         if (cancelled.current) return
         setError(errorText(cause))
       })

@@ -137,6 +137,7 @@ export function decodeFrame(buffer: Buffer, frame: FrameRange): string | undefin
   try {
     return zstdDecompressSync(buffer.subarray(frame.start, frame.end), { maxOutputLength: MAX_DECODED_FRAME_BYTES }).toString('utf8')
   } catch {
+    // A torn or oversized frame yields no text; callers skip it and keep scanning.
     return undefined
   }
 }
@@ -146,6 +147,7 @@ export function fileFacts(path: string): FileFacts | undefined {
   try {
     handle = openSync(path, 'r')
   } catch {
+    // A vanished or unreadable file simply has no facts; the caller drops the row.
     return undefined
   }
   try {
@@ -156,6 +158,7 @@ export function fileFacts(path: string): FileFacts | undefined {
       identity: `${stats.dev}:${stats.ino}`,
     }
   } catch {
+    // An fd that opened but cannot be stat'd counts as unreadable.
     return undefined
   } finally {
     closeSync(handle)
@@ -178,11 +181,13 @@ export function readWindow(path: string, bytes: number, end = false): { buffer: 
   try {
     handle = openSync(path, 'r')
   } catch {
+    // The file can vanish between fileFacts and this open; the row is skipped.
     return undefined
   }
   try {
     read = readSync(handle, buffer, 0, length, end === true ? facts.bytes - length : 0)
   } catch {
+    // A failed read leaves `read` at 0; the caller sees a torn window.
     return undefined
   } finally {
     closeSync(handle)

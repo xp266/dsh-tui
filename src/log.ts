@@ -107,6 +107,8 @@ function rotateIfNeededAsync(logFile: string, gate: RotationGate): Promise<void>
   return stat(logFile)
     .then(stats => {
       if (stats.size < state.maxFileBytes) return undefined
+      // Every rotation step is individually best-effort: losing the old
+      // generation costs history, never the current log.
       return unlink(`${logFile}.1`).catch(() => {})
         .then(() => rename(logFile, `${logFile}.1`).catch(() => {}))
         .then(() => chmod(logFile, 0o600).catch(() => {}))
@@ -124,6 +126,7 @@ function fileSinkFor(logFile: string): LogSink {
     line(entry) {
       if (!state.fileEnabled) return
       const line = formatLine(entry)
+      // The append races rotation benignly: a lost line costs a log entry, never the caller.
       void rotateIfNeededAsync(logFile, rotation)
         .then(() => appendFile(logFile, line, { mode: 0o600 }))
         .catch(() => {})
@@ -166,16 +169,17 @@ export function configureLogs(options: LogConfig = {}): void {
   if (options.maxFileBytes !== undefined) state.maxFileBytes = Math.max(1, options.maxFileBytes)
   state.fileEnabled = options.file ?? state.fileEnabled
   removeFileSink()
-  if (state.fileEnabled) {
-    const logFile = resolveLogFile(options.dir)
-    try {
-      mkdirSync(dirname(logFile), { recursive: true, mode: 0o700 })
-      fileSink = fileSinkFor(logFile)
-      sinks.add(fileSink)
-    } catch {
-      state.fileEnabled = false
+    if (state.fileEnabled) {
+      const logFile = resolveLogFile(options.dir)
+      try {
+        mkdirSync(dirname(logFile), { recursive: true, mode: 0o700 })
+        fileSink = fileSinkFor(logFile)
+        sinks.add(fileSink)
+      } catch {
+        // An uncreatable log directory disables file logging for this run.
+        state.fileEnabled = false
+      }
     }
-  }
 }
 
 function dispatch(entry: LogLine): void {

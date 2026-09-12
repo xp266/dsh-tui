@@ -48,6 +48,8 @@ function writePersisted(mode: DeliveryMode): void {
     writeFileSync(temporary, JSON.stringify({ version: SCHEMA_VERSION, busyEnter: mode }), { mode: 0o600 })
     renameSync(temporary, STORE_FILE)
   } catch {
+    // The in-memory mode is already switched; an unwritable store just
+    // costs persistence for this run.
     try {
       rmSync(temporary, { force: true })
     } catch {
