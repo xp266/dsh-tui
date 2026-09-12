@@ -116,6 +116,10 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
       pendingItemsRef.current.push({ kind: 'event', event })
     })
     const offStream = bridge.subscribeStream(frame => {
+      // While a dialog freezes the pump, stream frames are dropped: they are
+      // transient, and the durable `assistant/message` re-renders the content
+      // when the pump resumes — without this the queue grows per streamed char.
+      if (dialogOpenRef.current) return
       pendingItemsRef.current.push({ kind: 'stream', frame })
     })
     return () => {

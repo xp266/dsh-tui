@@ -120,6 +120,7 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
       },
       onNewSession: startNewSession,
     })
+    // A failed prewarm only delays the roster; onSessionListChanged repaints it when ready.
     void bridge.listSessions().catch(() => {})
     return () => {
       offWindows()
@@ -254,7 +255,9 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
     applyScroll(Infinity)
     void Promise.resolve(bridge.newSession())
       .then(() => setSessionTick(tick => tick + 1))
-      .catch(() => {})
+      .catch(() => {
+        // The session list stays on the old agent; the next newSession attempt retries.
+      })
   }
   const runCommand = (def: CommandDef) => {
     if (def.run !== undefined) {
@@ -298,7 +301,11 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
     : 1
   const hintAnchor = hintDir === 1 ? Math.floor(maxVisible / 2) : Math.floor((maxVisible - 1) / 2)
   const hintVisibleStart = Math.max(0, Math.min(commandIndex - hintAnchor, Math.max(0, commands.length - maxVisible)))
-  hintPrevIndexRef.current = commandIndex
+  // The previous index is read during render but written after commit: a
+  // render-phase ref write is unsafe under concurrent re-renders.
+  useEffect(() => {
+    hintPrevIndexRef.current = commandIndex
+  }, [commandIndex])
   const hintState = showHint
     ? {
         commands: commands.slice(hintVisibleStart, hintVisibleStart + maxVisible),

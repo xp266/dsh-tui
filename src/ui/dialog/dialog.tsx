@@ -22,8 +22,8 @@ import { widgetOf } from '../widgets/registry.ts'
 import type { ClickActions, ClickHit } from '../widgets/types.ts'
 import type { WindowHandle } from '../../contract/index.ts'
 
-export * from './items.ts'
-export * from './geometry.ts'
+export type { DialogRow, DialogItem, DialogFocus, TextItem } from './items.ts'
+export type { DialogFooterLine } from './geometry.ts'
 
 export interface DialogProps {
   width: number
@@ -191,6 +191,10 @@ export function Dialog({
     }
   }, [current?.type, safeFocus.row, safeFocus.col, displayRows.length])
   const editingFormInput = current !== undefined && current.type !== 'search' && asTextItem(current) !== null
+  // setCursorPosition MUST run during render: ink propagates the position to
+  // the frame writer in useInsertionEffect (before layout effects run), so a
+  // layout-effect call reaches the frame one commit late and the caret lands
+  // on the previous dialog layout.
   if (search && !editingFormInput) {
     const caret = Math.min(Math.max(0, cursor), searchValue.length)
     const start = caretScrollStart(searchValue, caret, contentWidth)

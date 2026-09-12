@@ -87,6 +87,10 @@ export function InputBar({
   const hintCount = hint?.commands.length ?? 0
   const firstRealY = inputFrameTop(rows, realRows)
   const caretVisibleRow = cursorRow - visibleStart
+  // setCursorPosition MUST run during render: ink propagates the position to
+  // the frame writer in useInsertionEffect (before layout effects run), so a
+  // layout-effect call reaches the frame one commit late and the hardware
+  // caret lags behind the buffer, jumping as the frame content moves.
   if (interactive) {
     setCursorPosition({
       x: CHROME_TEXT_X + cursorCol,
@@ -95,6 +99,8 @@ export function InputBar({
   } else {
     setCursorPosition(undefined)
   }
+  // No dependency array: the handle closes over this render's layout values,
+  // so rebuilding it each render is what keeps pointer routing fresh.
   useImperativeHandle(ref, () => ({
     clickAt(y, x) {
       const rowInContent = y - firstRealY
