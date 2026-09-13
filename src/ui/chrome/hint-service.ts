@@ -1,4 +1,5 @@
 import { keyedRegistry } from '../../kernel/registry.ts'
+import { isSubsequence } from '../../core/match.ts'
 
 export interface HintMatchContext {
   /** The raw composer value; always starts with '/' without whitespace. */
@@ -66,15 +67,6 @@ export function tieredMatch(entries: readonly HintEntry[], query: string): HintE
     else if (entry.description.toLowerCase().includes(query)) tiers[2]!.push(entry)
   }
   return [...tiers[0]!, ...tiers[1]!, ...tiers[2]!]
-}
-
-function isSubsequence(query: string, name: string): boolean {
-  let at = 0
-  for (const ch of name) {
-    if (ch === query[at]) at += 1
-    if (at === query.length) return true
-  }
-  return query.length === 0
 }
 
 /** First provider (by order) that returns a non-null list wins. */

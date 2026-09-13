@@ -320,6 +320,7 @@ export function ProvidersDialog({ api, onClose, onModelSelected, windowTitle = '
       errors={providerErrors}
       onClose={onClose}
       search
+      searchRight
       centerScroll
       onCtrlD={handleCtrlD}
       onActivity={disarm}

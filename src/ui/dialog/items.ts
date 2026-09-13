@@ -1,4 +1,5 @@
 import { widgetOf } from '../widgets/registry.ts'
+import { isSubsequence } from '../../core/match.ts'
 import type { DialogItemKinds } from '../../contract/index.ts'
 
 export interface DialogRow {
@@ -96,10 +97,14 @@ export function asTextItem(item: DialogItem): TextItem | null {
 export function filterRowsWithHeaders(rows: DialogRow[], query: string, searchRight: boolean): DialogRow[] {
   const q = query.trim().toLowerCase()
   if (q === '') return rows
+  // Compound search: an item's fields are joined into one haystack, so a query
+  // may span them in order (provider + source, model + provider). Matching is
+  // the same ordered subsequence the command hints use, which also subsumes
+  // plain substring hits.
   const matches = (item: DialogItem): boolean => {
     const texts = widgetOf(item.type).searchTexts?.(item, searchRight)
     if (texts === undefined) return false
-    return texts.some(text => text.toLowerCase().includes(q))
+    return isSubsequence(q, texts.join(' ').toLowerCase())
   }
   const out: DialogRow[] = []
   let pendingHeader: DialogRow | undefined
