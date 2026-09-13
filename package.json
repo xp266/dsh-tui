@@ -66,6 +66,8 @@
     "src",
     "cordis.patch.yml",
     "docs/main_logo.jpg",
+    "docs/environment.md",
+    "docs/environment.zh.md",
     "docs/plugin-author-guide.md",
     "docs/plugin-author-guide.zh.md"
   ],

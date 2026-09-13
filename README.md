@@ -22,7 +22,7 @@ npm install -g @xp266/dshtui@latest
 dshtui
 ```
 
-`dshtui` first resolves the profile to boot (`DSH_TUI_PROFILE` overrides; otherwise the `dshtui` profile, an existing profile that already mounts this package, or a freshly created one), installs or upgrades the plugin inside it, then launches `dsh --profile <name>`.
+`dshtui` first resolves the profile to boot (the `dshtui` profile, or an existing profile that already mounts this package), installs or upgrades the plugin inside it, then launches `dsh --profile <name>`.
 
 The launcher is optional; install the plugin into any profile by hand:
 
@@ -30,29 +30,6 @@ The launcher is optional; install the plugin into any profile by hand:
 dsh plugin --profile <name> add @xp266/dshtui@latest
 dsh --profile <name>
 ```
-
-## Configuration
-
-The plugin reads its config from the matching profile row:
-
-```yaml
-- id: tui
-  name: '@xp266/dshtui'
-  config:
-    colors: {}            # palette overrides (color name -> hex)
-    maxFps: 240
-    bootListTimeout: 10000
-    alternateScreen: true
-    collapse:             # tool-card fold policy
-      maxLines: 16        # fold bodies over this many rendered rows
-      previewLines: 8     # rows kept visible while folded
-      folded: []          # tool names that always fold
-      expanded: []        # tool names that never fold
-```
-
-Environment variables: `DSH_TUI_PROFILE`, `DSH_TUI_COLOR`, `DSH_TUI_ASCII`, `DSH_TUI_WIDTH`, `DSH_TUI_BG`, `DSH_TUI_LANG`, `DSH_TUI_HOT_THEME`, `DSH_TUI_THEME_PATH`, `DSH_TUI_DEBUG`, and the `DSH_TUI_LOG_*` family.
-
-On Windows, when the launcher would run inside the legacy console host (conhost) and Windows Terminal is installed, it reopens itself in a new Windows Terminal tab instead; set `DSH_TUI_NO_WT=1` to stay in the original window.
 
 ## Plugin development
 
@@ -64,9 +41,9 @@ Every visible surface of the interface is a keyed contribution registry behind t
 git clone https://github.com/xp266/dsh-tui.git
 cd dsh-tui
 pnpm install
-pnpm typecheck
 pnpm build
-pnpm verify
+npm install -g .
+dshtui
 ```
 
 ## License

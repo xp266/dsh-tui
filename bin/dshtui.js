@@ -4,7 +4,7 @@
  * carries this TUI, equivalent to `dsh --profile <profile> [args...]`.
  *
  * The dsh CLI's subcommands are hardcoded upstream, so the command lives in
- * this package's bin. Profile resolution: DSH_TUI_PROFILE overrides; else the
+ * this package's bin. Profile resolution: the
  * `dshtui` profile when it exists; else the one profile that already mounts
  * this package (an existing profile carries the user's session history —
  * bootstrapping a fresh one would hide it); else the `dshtui` profile is
@@ -124,15 +124,13 @@ function ensureReleaseAgeExclude(profileDir) {
 }
 
 function resolveProfile() {
-  const override = process.env.DSH_TUI_PROFILE
-  if (override !== undefined) return override
   if (profileMountsPackage(join(profilesDir, 'dshtui'))) return 'dshtui'
   const candidates = existsSync(profilesDir)
     ? readdirSync(profilesDir).filter(name => name !== 'node_modules' && profileMountsPackage(join(profilesDir, name)))
     : []
   if (candidates.length === 1) return candidates[0]
   if (candidates.length > 1) {
-    fail(`multiple profiles mount ${packageName} (${candidates.join(', ')}); pick one with DSH_TUI_PROFILE=<name>`)
+    fail(`multiple profiles mount ${packageName} (${candidates.join(', ')}); remove it from all but one with: dsh plugin --profile <name> remove ${packageName}`)
   }
   return 'dshtui'
 }
@@ -193,7 +191,6 @@ function wtInstalled() {
 
 function shouldRelaunchToWt() {
   if (!windows) return false
-  if (process.env.DSH_TUI_NO_WT === '1') return false
   if (!process.stdin.isTTY) return false
   if (process.env.WT_SESSION !== undefined || process.env.TERM_PROGRAM !== undefined) return false
   return wtInstalled()
@@ -201,7 +198,6 @@ function shouldRelaunchToWt() {
 
 function relaunchToWt(profileName, args) {
   console.error('dshtui: the legacy console host renders this TUI poorly; reopening in Windows Terminal')
-  console.error('dshtui: to stay in this window instead, first run: set DSH_TUI_NO_WT=1')
   // Every token here is re-parsed by cmd inside the new tab, so the same
   // fail-closed charset rule as the direct spawn applies.
   for (const token of [profileName, ...args]) {

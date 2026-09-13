@@ -63,12 +63,17 @@ export function setColorLevel(level: ColorLevel): void {
 
 /**
  * Merge probe answers over the heuristic baseline. Probes may only raise the
- * level — a missing DCS reply means "unproven", never "absent" — while the
- * explicit user contract (env.color / NO_COLOR / FORCE_COLOR / dumb) wins
- * over everything and skips probing entirely upstream.
+ * level — a missing DCS reply means "unproven", never "absent" — and never at
+ * all when an explicit user contract (env.color / NO_COLOR / FORCE_COLOR /
+ * dumb) already fixed the level.
  */
 export function applyProbeReport(report: ProbeReport): void {
-  if (report.colorLevel !== undefined && report.colorLevel > colorLevel) setColorLevel(report.colorLevel)
+  // An explicit color contract (env.color / NO_COLOR / FORCE_COLOR / dumb)
+  // fixes the level for the whole session: a probe reply must not raise a
+  // user-forced 0 back to color, which would defeat the override it was set
+  // to enforce. Without a contract, probes may still only raise the level —
+  // a missing DCS reply means "unproven", never "absent".
+  if (report.colorLevel !== undefined && report.colorLevel > colorLevel && !hasColorContract()) setColorLevel(report.colorLevel)
   if (report.terminal !== undefined) terminalName = report.terminal
   if (report.kittyKeyboard !== undefined) kittyKeyboard = report.kittyKeyboard
 }

@@ -2,7 +2,6 @@ import { useSyncExternalStore } from 'react'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveDshHome } from '../harness-home.ts'
-import { env } from '../env.ts'
 
 export type LanguageId = string
 export type LanguageText = Readonly<Partial<Record<LanguageId, string>>>
@@ -30,9 +29,7 @@ function normalize(value: unknown): LanguageId | undefined {
   return isLanguageId(value) ? value : undefined
 }
 
-function languageFromEnv(): LanguageId | undefined {
-  const explicit = normalize(env.language)
-  if (explicit !== undefined) return explicit
+function languageFromLocale(): LanguageId | undefined {
   // Locale strings arrive as `en_US.UTF-8`; only the leading language subtag is considered.
   return normalize(process.env.LANG?.toLowerCase().replace(/[_-].*$/u, ''))
 }
@@ -66,7 +63,7 @@ function writePersisted(language: LanguageId): void {
   }
 }
 
-let current: LanguageId = languageFromEnv() ?? readPersisted() ?? 'en'
+let current: LanguageId = languageFromLocale() ?? readPersisted() ?? 'en'
 const listeners = new Set<() => void>()
 
 export function currentLanguage(): LanguageId {

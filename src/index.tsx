@@ -76,7 +76,7 @@ export const inject = ['agentLoop', 'agents', 'sessions', 'llm', 'settings', 'cr
  */
 function failBoot(cause: unknown): never {
   const fatal = fatalFromCause(cause)
-  const text = formatBootFatal(fatal, logFilePath(env.logDir))
+  const text = formatBootFatal(fatal, logFilePath())
   error('boot', text.trim())
   // Stderr keeps the report visible even when stdout is captured; the dsh
   // CLI inherits stdio, so both reach the user's terminal.
@@ -87,9 +87,9 @@ function failBoot(cause: unknown): never {
 
 export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
   ctx.effect(() => {
-    configureLogs({ stderr: env.debug, file: env.logFile, dir: env.logDir, level: env.logLevel, maxFileBytes: env.logMaxBytes })
+    configureLogs({ stderr: env.debug, file: env.logFile })
     const restorePerformance = startPerformanceGuard()
-    const disposeCrashHandlers = installCrashHandlers({ exit: env.crashExit })
+    const disposeCrashHandlers = installCrashHandlers()
     // ---- Gate 1: harness version drift (numbers) — pure text, no UI ----
     const drift = upstreamDriftSummary()
     if (drift !== undefined && drift.kind !== 'newer') {
