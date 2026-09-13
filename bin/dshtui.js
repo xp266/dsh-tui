@@ -163,6 +163,64 @@ if (!existsSync(profileDir)) {
 }
 
 const argv = process.argv.slice(2)
+
+// The legacy conhost renders this TUI noticeably worse than Windows Terminal
+// (slower frame delivery, writes lost at exit). When we would boot inside
+// conhost and Windows Terminal is installed, hand the session over: the
+// notice lands in the original window, the TUI opens in a new WT tab, and
+// this window returns to its prompt. Detection is deliberately conservative
+// — every modern-host marker must be absent. A handoff-hosted console that
+// fails to inject WT_SESSION would relaunch once; the new tab runs dsh
+// directly, so the relaunch cannot loop.
+const wtExe = process.env.LOCALAPPDATA === undefined
+  ? ''
+  : join(process.env.LOCALAPPDATA, 'Microsoft', 'WindowsApps', 'wt.exe')
+
+function wtInstalled() {
+  // App execution aliases are reparse points Node cannot stat (existsSync on
+  // wt.exe answers false), so Windows Terminal presence is detected through
+  // its package state directory, with the alias as a secondary signal.
+  if (wtExe !== '' && existsSync(wtExe)) return true
+  const packagesDir = process.env.LOCALAPPDATA === undefined ? '' : join(process.env.LOCALAPPDATA, 'Packages')
+  if (packagesDir === '' || !existsSync(packagesDir)) return false
+  try {
+    return readdirSync(packagesDir).some(name => name.startsWith('Microsoft.WindowsTerminal_'))
+  } catch {
+    // An unreadable Packages directory counts as not installed.
+    return false
+  }
+}
+
+function shouldRelaunchToWt() {
+  if (!windows) return false
+  if (process.env.DSH_TUI_NO_WT === '1') return false
+  if (!process.stdin.isTTY) return false
+  if (process.env.WT_SESSION !== undefined || process.env.TERM_PROGRAM !== undefined) return false
+  return wtInstalled()
+}
+
+function relaunchToWt(profileName, args) {
+  console.error('dshtui: the legacy console host renders this TUI poorly; reopening in Windows Terminal')
+  console.error('dshtui: to stay in this window instead, first run: set DSH_TUI_NO_WT=1')
+  // Every token here is re-parsed by cmd inside the new tab, so the same
+  // fail-closed charset rule as the direct spawn applies.
+  for (const token of [profileName, ...args]) {
+    if (UNSAFE_WINDOWS_ARG.test(token)) {
+      fail(`argument "${token}" cannot be passed safely through cmd.exe; run the dsh command directly`)
+    }
+  }
+  // `cmd /k` keeps the new window open after dsh exits, matching the shell
+  // the user would have returned to anyway.
+  const result = spawnSync(wtExe, ['new-tab', '-d', process.cwd(), 'cmd', '/k', 'dsh', '--profile', profileName, ...args], {
+    stdio: 'ignore',
+    timeout: 15000,
+  })
+  if (result.error === undefined && result.status === 0) process.exit(0)
+  console.error('dshtui: could not open Windows Terminal; continuing here')
+}
+
+if (shouldRelaunchToWt()) relaunchToWt(profile, argv)
+
 const command = ['dsh', '--profile', profile, ...argv].map(quote).join(' ')
 const child = spawn(windows ? command : 'dsh', windows ? [] : ['--profile', profile, ...argv], {
   stdio: 'inherit',

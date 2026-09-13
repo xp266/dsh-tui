@@ -52,6 +52,8 @@ dsh --profile <name>
 
 环境变量：`DSH_TUI_PROFILE`、`DSH_TUI_COLOR`、`DSH_TUI_ASCII`、`DSH_TUI_WIDTH`、`DSH_TUI_BG`、`DSH_TUI_LANG`、`DSH_TUI_HOT_THEME`、`DSH_TUI_THEME_PATH`、`DSH_TUI_DEBUG`，以及 `DSH_TUI_LOG_*` 系列。
 
+在 Windows 上，当启动器检测到传统控制台宿主（conhost）且已安装 Windows Terminal 时，会在新的 Windows Terminal 标签页中重新打开自己；设置 `DSH_TUI_NO_WT=1` 可停留在原窗口。
+
 ## 插件开发
 
 界面的每一个可见表面都是 `tui` 服务背后的键控贡献注册表。完整的贡献点清单见[扩展点指南](docs/plugin-author-guide.zh.md)。

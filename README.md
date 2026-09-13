@@ -52,6 +52,8 @@ The plugin reads its config from the matching profile row:
 
 Environment variables: `DSH_TUI_PROFILE`, `DSH_TUI_COLOR`, `DSH_TUI_ASCII`, `DSH_TUI_WIDTH`, `DSH_TUI_BG`, `DSH_TUI_LANG`, `DSH_TUI_HOT_THEME`, `DSH_TUI_THEME_PATH`, `DSH_TUI_DEBUG`, and the `DSH_TUI_LOG_*` family.
 
+On Windows, when the launcher would run inside the legacy console host (conhost) and Windows Terminal is installed, it reopens itself in a new Windows Terminal tab instead; set `DSH_TUI_NO_WT=1` to stay in the original window.
+
 ## Plugin development
 
 Every visible surface of the interface is a keyed contribution registry behind the `tui` service. The full contribution map lives in the [extension point guide](docs/plugin-author-guide.md).
