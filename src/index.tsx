@@ -22,6 +22,7 @@ import { clearLayoutCache } from './ui/message/layout.ts'
 import { warmRenderPipeline } from './ui/message/warmup.ts'
 import { createTuiExtensionPoint, exposeRuntimeFaces } from './ui/extension-point.ts'
 import { registerBuiltinToolViews } from './chat/builtin-tool-views.ts'
+import { registerBuiltinFieldKinds } from './core/fields.ts'
 import { bootReady, bootWarning, emitBootLine, openBootLog } from './boot-log.ts'
 import { configureLogs, error, installCrashHandlers, warn } from './log.ts'
 import { env } from './env.ts'
@@ -125,6 +126,7 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
     // ctx.get('tui') here would run before provide() and stay undefined forever.
     const { extension: extensionPoint, dispose: disposeExtensionPoint } = createTuiExtensionPoint(ctx, { onContributionsChanged: rerender })
     const disposeBuiltinToolViews = registerBuiltinToolViews()
+    const disposeBuiltinFields = registerBuiltinFieldKinds()
     warmLanguages()
     onLanguagesWarm(() => {
       clearHighlightCache()
@@ -222,6 +224,7 @@ export function apply(ctx: Context, config: Config = Config(DEFAULT_CONFIG)) {
       restorePerformance()
       exposeFaces?.()
       disposeBuiltinToolViews()
+      disposeBuiltinFields()
       disposeExtensionPoint()
       stopSizePoll?.()
       hotTheme?.stop()

@@ -384,9 +384,19 @@ tui.fields.register({
 - `style()` is re-read on every render (theme-aware).
 - `expand(data)` maps a field instance to the text that is injected into the
   sent message. Without `expand`, the label is sent as-is.
-- Builtins: `image` (orange `[n images]`, becomes real image attachments) and
-  `paste` (orange `[n lines]` / `[n characters]`, expands to the full pasted
-  text). Both are composed with the same machinery.
+- Builtins: `image` (blue `[n images]`, becomes real image attachments) and
+  `paste` (purple `[n lines]` / `[n characters]`, expands to the full pasted
+  text). The busy-Enter delivery chips reuse the same registry: `interrupt`
+  (orange accent) and `queue` (green). All are composed with the same
+  machinery, and an inserted chip is followed by one space so the caret never
+  sits flush against the block. Unregistered kinds fall back to the amber
+  `specialFieldStyle`.
+- A `queue` chip is a **delimiter**, not a single flag: the composer may hold
+  several. Each one closes the text before it into its own queued turn, so
+  `a`␣Queue␣`b`␣Queue␣`c` sends `a`, then `b`, then `c` as three ordered turns.
+  Input before the head chip flushes when the agent goes idle; text after it
+  (and later chips) stays in the buffer. Typing never removes a chip — only
+  deleting the chip char (or `interrupt`) does.
 
 ### tui.fields.factory + tui.composer.insert (field instances)
 

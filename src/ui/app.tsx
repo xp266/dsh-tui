@@ -2,7 +2,7 @@ import { Box, Text, useInput } from 'ink'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { RefObject } from 'react'
-import { permissionModeInfo, setDialogDimmed, COLORS } from '../theme.ts'
+import { permissionModeInfo, setDialogDimmed } from '../theme.ts'
 import { setHoveredMessage } from './message/hover.ts'
 import { EARLIER_MESSAGE_ID } from '../chat/store.ts'
 import { writeClipboardText } from '../terminal/clipboard.ts'
@@ -33,8 +33,6 @@ import { localizeText, useLanguage } from '../core/language.ts'
 import { MESSAGE_INPUT_GAP_ROWS } from '../core/metrics.ts'
 import { useComposer } from './input/use-composer.ts'
 import type { ComposerSubmission } from './input/composer-fields.ts'
-import { DELIVERY_MODE_KINDS } from './input/composer-fields.ts'
-import { registerFieldKind } from '../core/fields.ts'
 import { useDeliveryMode } from '../core/delivery.ts'
 import { Region } from './region.tsx'
 import { MessageList } from './message/message-list.tsx'
@@ -56,18 +54,6 @@ import { StatusBar } from './chrome/status-bar.tsx'
 
 const FORCE_EXIT_DELAY_MS = 6000
 const INTERRUPT_ARM_MS = 3000
-
-/**
- * Style the busy-Enter delivery chips. `fieldStyleOf` reads the live palette,
- * so the chip follows a theme switch without re-registering.
- */
-function registerDeliveryFieldKinds(): () => void {
-  const style = () => ({ color: COLORS.deliveryChipText, background: COLORS.deliveryChipBackground, bold: true })
-  const dispose = [registerFieldKind({ kind: DELIVERY_MODE_KINDS.interrupt, style }), registerFieldKind({ kind: DELIVERY_MODE_KINDS.queue, style })]
-  return () => {
-    for (const off of dispose) off()
-  }
-}
 
 const noopSubscribe = () => () => {}
 const nullSnapshot = () => null
@@ -97,7 +83,7 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
     if (dialogOpen) setHoveredMessage('')
   }, [dialogOpen])
   const [, setSessionTick] = useState(0)
-  const { messages, archiveCount, loadEarlier, modelName, setModelName, updateMessages, resetChat, activity, stepBoundary, todos, retryStatus, streamedChars, registryCommands } = useChatEvents(bridge, dialog !== null, columns)
+  const { messages, archiveCount, loadEarlier, modelName, setModelName, updateMessages, resetChat, activity, turnBoundary, todos, retryStatus, streamedChars, registryCommands } = useChatEvents(bridge, dialog !== null, columns)
   const boot = useBootState()
   const windows = useAvailableWindows()
   useEffect(() => {
@@ -131,7 +117,6 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
   useEffect(() => {
     return registerTodosService(todos)
   }, [todos])
-  useEffect(() => registerDeliveryFieldKinds(), [])
   const todoActive = isTodoActive(todos)
   const todoBadge = todoProgress(todos)
   const running = activity.running
@@ -212,7 +197,7 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
     return list
   }, [bridge])
   const deliveryMode = useDeliveryMode()
-  const { value, cursor, hintOpen, commandIndex, api, pendingMode } = useComposer(
+  const { value, cursor, hintOpen, commandIndex, api, queued } = useComposer(
     submission => sendRef.current(submission),
     composerInteractive,
     contentWidth,
@@ -221,20 +206,23 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
     listCommandArgs,
     () => (busy ? deliveryMode : null),
   )
-  // A pending delivery releases when the running turn (queue) or the current
-  // step (interrupt) finishes. The boundary is captured when the chip is armed
-  // so an interrupt fires on the next step end, not on every later render.
-  const armedStepRef = useRef(0)
-  const hadPendingRef = useRef(false)
+  // Release one queued segment per completed turn. A segment is armed while the
+  // agent works, so it becomes free at that turn's end: each flush sends only
+  // the text before the head chip and leaves the rest, so later segments stay
+  // editable until their own turn. Two signals cover it — the durable
+  // `turn/end` count (cannot miss a fast turn) and the busy falling edge (covers
+  // a chip armed during a brief idle gap) — but one effect run flushes at most
+  // one head, so a multi-chip queue still sends strictly front-first.
+  const prevTurnRef = useRef(turnBoundary)
+  const wasBusyRef = useRef(false)
   useEffect(() => {
-    if (pendingMode !== null && !hadPendingRef.current) armedStepRef.current = stepBoundary
-    hadPendingRef.current = pendingMode !== null
-  }, [pendingMode, stepBoundary])
-  useEffect(() => {
-    if (pendingMode === null) return
-    const released = pendingMode === 'queue' ? !busy : !busy || stepBoundary > armedStepRef.current
-    if (released) api.commit()
-  }, [pendingMode, busy, stepBoundary, api])
+    const wasBusy = wasBusyRef.current
+    wasBusyRef.current = busy
+    const turnEnded = turnBoundary !== prevTurnRef.current
+    prevTurnRef.current = turnBoundary
+    if (busy || queued === 0) return
+    if (turnEnded || wasBusy) api.flushQueued()
+  }, [turnBoundary, busy, queued, api])
   const commands = useMemo(() => filterHintEntries(commandEntries, value), [commandEntries, value])
   // The parameter strip owns the slot once a parameterized command is typed
   // out; the command menu has already closed by then, so only one is ever set.

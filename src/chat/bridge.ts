@@ -86,18 +86,18 @@ export interface ImageAttachmentInput {
 }
 interface AgentLike {
   followup(message: unknown): void
-  steer(message: unknown): void
 }
 
 const EMPTY_TEXT = { type: 'text' as const, text: '' }
 
 /**
- * How a message reaches a busy agent: `followup` queues its own next turn
- * (waits for the running turn), `steer` inserts it at the nearest step boundary.
+ * Hand a prepared message to the agent as its own next turn. The caller has
+ * already force-stopped any running work for an `interrupt` delivery, so this
+ * only parks the message: an idle driver runs it at once, a busy one finishes
+ * the turn it is still closing (the abort convergence) and then runs it.
  */
-function deliver(agent: AgentLike, mode: DeliveryMode | undefined, message: unknown): void {
-  if (mode === 'interrupt') agent.steer(message)
-  else agent.followup(message)
+function deliver(agent: AgentLike, message: unknown): void {
+  agent.followup(message)
 }
 
 async function sendContent(
@@ -106,16 +106,15 @@ async function sendContent(
   hasText: boolean,
   groups: ReadonlyArray<readonly PendingImage[]>,
   ctx: Context,
-  mode?: DeliveryMode,
 ): Promise<void> {
   if (groups.length === 0) {
-    deliver(agent, mode, createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
+    deliver(agent, createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
     return
   }
   const attachments = attachmentsService(ctx)
   if (attachments === undefined) {
     const note = 'image attachments require the attachment service, which is not mounted'
-    deliver(agent, mode, createUserMessage({
+    deliver(agent, createUserMessage({
       content: [{ type: 'text', text: hasText ? `${text}\n\n${note}` : note }],
       source: { kind: 'user' },
     }))
@@ -141,10 +140,10 @@ async function sendContent(
   const hasImage = content.some(block => block.type === 'image')
   if (!hasImage) {
     const joined = content.map(block => block.type === 'text' ? block.text : '').join('').trim()
-    deliver(agent, mode, createUserMessage({ content: [{ type: 'text', text: joined }], source: { kind: 'user' } }))
+    deliver(agent, createUserMessage({ content: [{ type: 'text', text: joined }], source: { kind: 'user' } }))
     return
   }
-  deliver(agent, mode, createUserMessage({ content, source: { kind: 'user' } }))
+  deliver(agent, createUserMessage({ content, source: { kind: 'user' } }))
 }
 
 interface PresetSessionLike {
@@ -420,7 +419,9 @@ export interface ChatBridge {
   modelName(): string
   /**
    * Send a prompt. `mode` selects how a busy agent receives it; omit it while
-   * idle, when both modes are equivalent (`followup` starts the turn).
+   * idle, when it is equivalent (`followup` starts the turn). `interrupt`
+   * force-stops the running work before delivering the message as the next
+   * turn; `queue` parks the message behind the running turn.
    */
   send(text: string, images?: ReadonlyArray<readonly PendingImage[]>, mode?: DeliveryMode): void
   interrupt(): void
@@ -1035,7 +1036,12 @@ export async function createChatBridge(ctx: Context): Promise<ChatBridge> {
     modelName: () => currentSelection()?.model ?? '',
     send(text: string, images?: ReadonlyArray<readonly PendingImage[]>, mode?: DeliveryMode) {
       const hasText = text !== ''
-      sendContent(activeAgent, text, hasText, images ?? [], ctx, mode)
+      // Force interrupt: abort the running work synchronously before any
+      // attachment upload touches the disk/network, so the user sees the stop
+      // the instant they send. The follow-up below then parks the message and
+      // it runs the moment the aborted activity converges to idle.
+      if (mode === 'interrupt') activeAgent.cancel({ kind: 'user' })
+      sendContent(activeAgent, text, hasText, images ?? [], ctx)
     },
     interrupt() {
       activeAgent.cancel({ kind: 'user' })

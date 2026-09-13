@@ -8,11 +8,12 @@ import { resolveDshHome } from '../harness-home.ts'
  *
  * - `queue` waits for the running turn to finish; the message becomes its own
  *   follow-up turn.
- * - `interrupt` steers the message into the nearest step boundary of the turn
- *   already running.
+ * - `interrupt` force-stops the running work the moment the message is armed
+ *   (`agent.cancel`), then delivers the message as its own turn the instant the
+ *   agent goes idle.
  *
- * The host implements both (`followup` vs `steer`); this store only carries the
- * user's default choice, selected in the defaults window.
+ * The host implements both (cancel+`followup` vs plain `followup`); this store
+ * only carries the user's default choice, selected in the defaults window.
  */
 export type DeliveryMode = 'interrupt' | 'queue'
 

@@ -1,5 +1,5 @@
 import stringWidth from 'string-width'
-import { COLORS } from '../theme.ts'
+import { COLORS, paletteColor } from '../theme.ts'
 import type { DeliveryMode } from './delivery.ts'
 
 const FIELD_CHAR_BASE = 0xe000
@@ -200,6 +200,30 @@ export function releaseMissingChars(owner: FieldOwner, present: readonly string[
 export function releaseFields(owner: FieldOwner): void {
   for (const [index, slot] of slots) {
     if (slot.owner === owner && slot.pins === 0) slots.delete(index)
+  }
+}
+
+/**
+ * Register the builtin chip kinds (`image`, `paste`) and the busy-Enter
+ * delivery kinds with their palette colors. `fieldStyleOf` reads the live
+ * palette per render, so a theme switch never needs re-registration. `paste`
+ * is registered with no `expand` so its per-instance text still wins in
+ * `expandComposerValue`, which special-cases paste before consulting the kind.
+ */
+export function registerBuiltinFieldKinds(): () => void {
+  const chip = (textKey: string, backgroundKey: string): FieldStyle => ({
+    color: paletteColor(textKey),
+    background: paletteColor(backgroundKey),
+    bold: true,
+  })
+  const off = [
+    registerFieldKind({ kind: 'image', style: () => chip('chipImageText', 'chipImageBackground') }),
+    registerFieldKind({ kind: 'paste', style: () => chip('chipPasteText', 'chipPasteBackground') }),
+    registerFieldKind({ kind: 'interrupt', style: () => chip('chipInterruptText', 'chipInterruptBackground') }),
+    registerFieldKind({ kind: 'queue', style: () => chip('chipQueueText', 'chipQueueBackground') }),
+  ]
+  return () => {
+    for (const dispose of off) dispose()
   }
 }
 

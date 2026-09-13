@@ -373,7 +373,8 @@ tui.fields.register({
 
 - `style()` 每次渲染重新读取（跟随主题）。
 - `expand(data)` 把字段实例映射为发送消息中注入的文本；缺省发送 label。
-- 内置：`image`（橙色 `[n images]`，发送真实图片附件）与 `paste`（橙色 `[n lines]` / `[n characters]`，发送完整原文）。二者由同一套机制构成。
+- 内置：`image`（蓝色 `[n images]`，发送真实图片附件）与 `paste`（紫色 `[n lines]` / `[n characters]`，发送完整原文）。忙碌时回车的投递 chip 复用同一注册表：`interrupt`（橙色，强制中断）与 `queue`（绿色，等待回合）。全部由同一套机制构成；插入 chip 时会在其后补一个空格，光标不会紧贴色块。未注册的 kind 回落到琥珀色 `specialFieldStyle`。
+- `queue` chip 是**分隔符**而非单一标记：输入框内可以有多个。每个 chip 把它前面的文字封成一段排队回合，因此 `a`␣Queue␣`b`␣Queue␣`c` 会按 `a`、`b`、`c` 的顺序发送三次。agent 空闲时发送队首 chip 之前的内容，其后的文字（及更后面的 chip）留在输入框。输入不会移除 chip——只有删除 chip 字符（或用 `interrupt`）才会。
 
 ### tui.fields.factory + tui.composer.insert（字段实例）
 

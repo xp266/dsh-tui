@@ -55,10 +55,10 @@ export interface ChatEvents {
   resetChat(): void
   activity: AgentActivity
   /**
-   * Monotonic count of finished model steps for the active agent. A pending
-   * interrupt delivery releases at the next boundary after it was armed.
+   * Monotonic count of finished turns (`turn/end`) for the active agent. A
+   * queued delivery releases one segment at each turn boundary.
    */
-  stepBoundary: number
+  turnBoundary: number
   todos: TodoItemLike[]
   retryStatus?: RetryStatus
   streamedChars: number
@@ -73,7 +73,7 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
   const [todos, setTodos] = useState<TodoItemLike[]>(NO_TODOS)
   const [retryStatus, setRetryStatus] = useState<RetryStatus | undefined>(undefined)
   const [streamedChars, setStreamedChars] = useState(0)
-  const [stepBoundary, setStepBoundary] = useState(0)
+  const [turnBoundary, setTurnBoundary] = useState(0)
   const [registryCommands, setRegistryCommands] = useState<readonly RegistryCommand[]>([])
   const streamedCharsRef = useRef(0)
   const columnsRef = useRef(columns)
@@ -139,7 +139,7 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
       let latestTodos: TodoItemLike[] | undefined
       let retry: RetryStatus | undefined = retryStatusRef.current
       let retryDirty = false
-      let stepEnded = 0
+      let turnsEnded = 0
       for (const item of items) {
         if (item.kind === 'stream') {
           const next = reduceStreamFrame(state.messages, item.frame, state.turn)
@@ -155,7 +155,7 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
         if (event.type === 'assistant/message' || event.type === 'turn/end') {
           streamedCharsRef.current = 0
         }
-        if (event.type === 'step/end') stepEnded += 1
+        if (event.type === 'turn/end') turnsEnded += 1
         if (event.type === 'todo/write') {
           latestTodos = normalizeTodos((event.data as { todos?: unknown }).todos)
         }
@@ -183,7 +183,7 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
       }
       retryStatusRef.current = retry
       setStreamedChars(previous => previous === streamedCharsRef.current ? previous : streamedCharsRef.current)
-      if (stepEnded > 0) setStepBoundary(previous => previous + stepEnded)
+      if (turnsEnded > 0) setTurnBoundary(previous => previous + turnsEnded)
       if (archiveDirty) setArchiveCount(state.archive.length)
       if (dirty || archiveDirty) publish(state.messages, state.archive.length)
       if (retryDirty) setRetryStatus(retry)
@@ -239,7 +239,7 @@ export function useChatEvents(bridge: ChatBridge | undefined, dialogOpen: boolea
       setTodos(NO_TODOS)
     },
     activity,
-    stepBoundary,
+    turnBoundary,
     todos,
     retryStatus,
     streamedChars,

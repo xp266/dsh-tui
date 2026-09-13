@@ -6,7 +6,7 @@ import { colToCharIndex } from '../../core/text.ts'
 import { moveCaretLine } from '../../core/composer-layout.ts'
 import { editBackspace, editCursorLeft, editCursorRight, editCursorWordLeft, editCursorWordRight, editDelete, editDeleteWordLeft, editDeleteWordRight, editInsert } from '../../core/edit.ts'
 import type { EditState } from '../../core/edit.ts'
-import { buildPasteFields, deliveryFieldOf, expandComposerValue, insertClipboardImage, insertDeliveryModeField, insertFieldSpec, reconcileComposerFields, removeDeliveryModeField } from './composer-fields.ts'
+import { buildPasteFields, countDeliveryFields, createDeliveryModeChip, expandComposerValue, insertClipboardImage, insertFieldSpec, reconcileComposerFields, segmentAfterLastDelivery, splitAtFirstDelivery } from './composer-fields.ts'
 import type { ComposerFieldMap, ComposerSubmission, DeliveryMode } from './composer-fields.ts'
 import { sanitizePastedText } from '../../core/paste.ts'
 import { readClipboardImage, readClipboardImageUris, readClipboardText } from '../../terminal/clipboard.ts'
@@ -22,8 +22,11 @@ export interface ComposerState {
   hintOpen: boolean
   commandIndex: number
   api: ComposerApi
-  /** Delivery mode of the chip currently in the buffer, or null when there is none. */
-  pendingMode: DeliveryMode | null
+  /**
+   * Number of delivery chips in the buffer: one queued turn waits per chip.
+   * Non-zero means the queue has pending segments to flush.
+   */
+  queued: number
 }
 
 export interface ComposerApi {
@@ -35,12 +38,12 @@ export interface ComposerApi {
   hintClickAt(absoluteIndex: number): void
   hintPick(absoluteIndex: number): void
   /**
-   * Submit the current buffer through the same path as Enter and clear it.
-   * Returns false when there is nothing to send.
+   * Release the head of the queue: send the text before the first delivery
+   * chip as its own turn and leave the remainder (later segments and chips)
+   * in the buffer. Returns false when no chip is present (or the head segment
+   * is empty).
    */
-  commit(): boolean
-  /** Drop a pending delivery chip and its buffer without sending anything. */
-  dismissPending(): void
+  flushQueued(): boolean
 }
 
 function opensHint(text: string): boolean {
@@ -73,9 +76,9 @@ export function useComposer(
   const interactiveRef = useRef(interactive)
   const fieldsRef = useRef<ComposerFieldMap>(new Map())
   const busyModeRef = useRef(busyMode)
-  /** Delivery mode carried by the chip in the buffer, or null when there is none. */
-  const [pendingMode, setPendingMode] = useState<DeliveryMode | null>(null)
-  const pendingModeRef = useRef<DeliveryMode | null>(null)
+  /** Number of delivery chips in the buffer; one queued turn per chip. */
+  const [queuedCount, setQueuedCount] = useState(0)
+  const queuedCountRef = useRef(0)
   widthRef.current = contentWidth
   entriesRef.current = entries
   listCommandArgsRef.current = listCommandArgs
@@ -85,7 +88,7 @@ export function useComposer(
   cursorRef.current = cursor
   hintOpenRef.current = hintOpen
   commandIndexRef.current = commandIndex
-  pendingModeRef.current = pendingMode
+  queuedCountRef.current = queuedCount
   const visibleFor = (text: string) => filterHintEntries(entriesRef.current ?? [], text)
   const undoStackRef = useRef<EditState[]>([])
   const redoStackRef = useRef<EditState[]>([])
@@ -96,16 +99,15 @@ export function useComposer(
     redoStackRef.current.length = 0
   }
   /**
-   * Re-derive the pending mode from the buffer, which is the single source of
-   * truth. Any edit that drops the chip char (backspace, delete, cut, undo) ends
-   * the waiting/interrupt event with it; the chip is not re-added while the
-   * agent stays busy, so the toggle-off sticks.
+   * Re-derive the queued count from the buffer, which is the single source of
+   * truth. Adding text never drops a chip; only a backspace/delete/cut that
+   * removes a chip char (or an explicit flush) lowers the count.
    */
-  const syncPendingFromBuffer = (): void => {
-    if (pendingModeRef.current === null) return
-    if (deliveryFieldOf(valueRef.current, fieldsRef.current) === undefined) {
-      pendingModeRef.current = null
-      setPendingMode(null)
+  const syncQueuedFromBuffer = (): void => {
+    const next = countDeliveryFields(valueRef.current, fieldsRef.current)
+    if (next !== queuedCountRef.current) {
+      queuedCountRef.current = next
+      setQueuedCount(next)
     }
   }
   const applySnapshot = (next: EditState): void => {
@@ -114,7 +116,7 @@ export function useComposer(
     setValue(next.value)
     setCursor(next.cursor)
     reconcileComposerFields(next.value, fieldsRef.current)
-    syncPendingFromBuffer()
+    syncQueuedFromBuffer()
   }
   const applyEdit = (next: EditState | null): void => {
     if (next === null) return
@@ -127,52 +129,77 @@ export function useComposer(
     cursorRef.current = 0
     setValue('')
     setCursor(0)
-    setPendingMode(null)
-    pendingModeRef.current = null
+    queuedCountRef.current = 0
+    setQueuedCount(0)
     undoStackRef.current.length = 0
     redoStackRef.current.length = 0
     closeHint()
   }
-  /** Send the current buffer and clear it. Returns false when there is nothing to send. */
-  const commit = (): boolean => {
+  /**
+   * Send the current buffer and clear it. Returns false when there is nothing
+   * to send. `forcedMode` overrides the chip-derived mode, which is how the
+   * force interrupt sends immediately without parking a chip first.
+   */
+  const commit = (forcedMode?: DeliveryMode): boolean => {
     const submission = expandComposerValue(valueRef.current, fieldsRef.current)
     const hasContent = submission.text !== '' || submission.images.length > 0
     if (hasContent) recordHistoryEntry(submission.text)
     clearComposer()
-    if (hasContent) onSend(submission)
+    if (hasContent) onSend(forcedMode === undefined ? submission : { ...submission, mode: forcedMode })
     return hasContent
   }
   /**
-   * Enter the busy delivery mode: append the chip once. An existing chip is
-   * replaced in place when the mode changes, and nothing happens when the
-   * buffer already carries this mode or a previous edit removed it.
+   * Release the queue head: send everything before the first delivery chip as
+   * its own turn, then keep the remainder in the buffer. Later chips shift up,
+   * so the next flush sends the next segment. Empty heads (a chip whose text
+   * was deleted) are dropped without sending. Returns whether a turn was sent.
+   */
+  const flushQueued = (): boolean => {
+    let next = valueRef.current
+    let consumed = 0
+    let sent = false
+    for (;;) {
+      const split = splitAtFirstDelivery(next, fieldsRef.current)
+      if (split === undefined) break
+      next = split.rest
+      consumed += split.consumed
+      const submission = expandComposerValue(split.head, fieldsRef.current)
+      if (submission.text !== '' || submission.images.length > 0) {
+        recordHistoryEntry(submission.text)
+        writeBuffer(next, consumed)
+        onSend({ ...submission, mode: split.mode })
+        sent = true
+        break
+      }
+    }
+    if (consumed > 0 && !sent) writeBuffer(next, consumed)
+    return sent
+  }
+  /** Replace the buffer refs/state, shifting the caret past the flushed prefix. */
+  const writeBuffer = (next: string, consumed = 0): void => {
+    valueRef.current = next
+    cursorRef.current = Math.max(0, Math.min(cursorRef.current - consumed, next.length))
+    setValue(next)
+    setCursor(cursorRef.current)
+    reconcileComposerFields(next, fieldsRef.current)
+    syncQueuedFromBuffer()
+  }
+  /**
+   * Append one queue chip at the end of the buffer, closing the text after the
+   * previous chip into a new queued segment. An empty tail (two Enters in a
+   * row) is ignored so no chip closes nothing.
    */
   const applyPendingMode = (mode: DeliveryMode | null): void => {
-    if (mode === null || mode === pendingModeRef.current) return
-    const next = insertDeliveryModeField(valueRef.current, fieldsRef.current, mode)
-    if (next === undefined) return
-    pendingModeRef.current = mode
-    setPendingMode(mode)
+    if (mode === null) return
+    if (segmentAfterLastDelivery(valueRef.current, fieldsRef.current).trim() === '') return
+    const chip = createDeliveryModeChip(fieldsRef.current, mode)
+    if (chip === undefined) return
+    const next = `${valueRef.current}${chip}`
     valueRef.current = next
     cursorRef.current = next.length
     setValue(next)
     setCursor(next.length)
-  }
-  /** Remove the chip char from the buffer and clear the mode, without setState. */
-  const dismissPendingSync = (): string => {
-    const next = removeDeliveryModeField(valueRef.current, fieldsRef.current)
-    pendingModeRef.current = null
-    setPendingMode(null)
-    valueRef.current = next
-    return next
-  }
-  /** Drop the chip and its event, keeping the rest of the buffer. */
-  const dismissPending = (): void => {
-    if (pendingModeRef.current === null) return
-    const next = dismissPendingSync()
-    cursorRef.current = Math.min(cursorRef.current, next.length)
-    setValue(next)
-    setCursor(cursorRef.current)
+    syncQueuedFromBuffer()
   }
   const undoEdit = (): void => {
     const snapshot = undoStackRef.current.pop()
@@ -307,8 +334,7 @@ export function useComposer(
       apiRef.current.selectHint(absoluteIndex)
       apiRef.current.confirmHint()
     },
-    commit,
-    dismissPending,
+    flushQueued,
   })
   const insertPaste = (normalized: string): void => {
     const sanitized = sanitizePastedText(normalized)
@@ -424,9 +450,6 @@ export function useComposer(
     }
     const v = valueRef.current
     const c = cursorRef.current
-    // Typing while a chip is pending replaces the buffer with what was typed:
-    // the chip's waiting/interrupt event exists only while the chip is there.
-    const pendingChip = pendingModeRef.current !== null
     const commands = visibleFor(v)
     const showHint = hintOpenRef.current && commands.length > 0
     if (key.return && !key.shift && showHint) {
@@ -478,14 +501,25 @@ export function useComposer(
     if (key.return && !key.shift) {
       const submission = expandComposerValue(v, fieldsRef.current)
       const hasContent = submission.text !== '' || submission.images.length > 0
-      // While the agent is busy, a plain message arms the delivery chip instead
-      // of sending: the text stays in the buffer until the host flushes it.
-      // Commands still dispatch immediately, as they never reach the model.
+      // While the agent is busy, a plain message picks a delivery mode. Queue
+      // appends a delimiter chip so the text becomes one queued turn; further
+      // chips may be appended, and each flush sends the segment before the
+      // head chip. Interrupt force-stops the running work and sends right away,
+      // so it never arms a chip. Commands still dispatch immediately: they
+      // never reach the model.
       const busyMode = hasContent && !submission.text.startsWith('/') ? busyModeRef.current?.() ?? null : null
+      if (busyMode === 'interrupt') {
+        commit('interrupt')
+        return
+      }
       if (busyMode !== null) {
         applyPendingMode(busyMode)
         return
       }
+      // Idle with chips still pending (a fast turn re-armed the agent before
+      // `busy` caught up): keep draining front-first instead of sending the
+      // whole buffer out of order.
+      if (queuedCountRef.current > 0 && apiRef.current.flushQueued()) return
       commit()
       return
     }
@@ -574,16 +608,9 @@ export function useComposer(
     }
     if (input && !key.ctrl && !key.meta && !isMouseResidue(input)) {
       if (/[\u0000-\u001f\u007f]/.test(input)) return
-      // Typing while a chip is pending first drops the chip: any edit ends the
-      // waiting/interrupt event, and the typed text inserts at the cursor.
-      if (pendingChip) {
-        const stripped = dismissPendingSync()
-        applyEditAndRefreshHint(editInsert({ value: stripped, cursor: Math.min(c, stripped.length) }, input))
-        return
-      }
       applyEditAndRefreshHint(editInsert({ value: v, cursor: c }, input))
       return
     }
   })
-  return { value, cursor, hintOpen, commandIndex, api: apiRef.current, pendingMode }
+  return { value, cursor, hintOpen, commandIndex, api: apiRef.current, queued: queuedCount }
 }

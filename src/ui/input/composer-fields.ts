@@ -36,6 +36,14 @@ export interface ComposerField {
 
 export type ComposerFieldMap = Map<string, ComposerField>
 
+/**
+ * A chip is inserted with one trailing space so the caret never sits flush
+ * against the colored block while the user keeps typing.
+ */
+function chipWithSpace(char: string): string {
+  return `${char} `
+}
+
 export function buildPasteFields(normalized: string, fields: ComposerFieldMap): string {
   const segments = classifyPaste(normalized)
   let value = ''
@@ -56,7 +64,7 @@ export function buildPasteFields(normalized: string, fields: ComposerFieldMap): 
       continue
     }
     fields.set(char, { kind: 'paste', label, text: segment.text })
-    value += char
+    value += chipWithSpace(char)
   }
   return value
 }
@@ -67,7 +75,7 @@ export function insertImageField(images: PendingImage[], fields: ComposerFieldMa
   const char = allocateField('image', label, 'composer')
   if (char === null) return images.length === 1 && images[0]!.kind === 'path' ? images[0]!.path : label
   fields.set(char, { kind: 'image', label, images })
-  return char
+  return chipWithSpace(char)
 }
 
 export function insertClipboardImage(image: ClipboardImage, fields: ComposerFieldMap): string {
@@ -94,7 +102,7 @@ export function insertFieldSpec(
     field = { kind: spec.kind, label: spec.label, data: spec.data }
   }
   fields.set(char, field)
-  return char
+  return chipWithSpace(char)
 }
 
 export function reconcileComposerFields(value: string, fields: ComposerFieldMap): void {
@@ -104,43 +112,80 @@ export function reconcileComposerFields(value: string, fields: ComposerFieldMap)
   releaseUnreferenced('composer', value)
 }
 
-/** The delivery chip currently held in `value`, whichever mode it carries. */
-export function deliveryFieldOf(value: string, fields: ComposerFieldMap): { char: string; mode: DeliveryMode } | undefined {
-  for (const char of value) {
+/**
+ * The first delivery chip in `value` (scan order) with its char index. A queue
+ * chip is a delimiter: it closes every character before it into one queued
+ * segment, so the first chip is the head of the pending pipeline.
+ */
+export function firstDeliveryField(
+  value: string,
+  fields: ComposerFieldMap,
+): { char: string; mode: DeliveryMode; at: number } | undefined {
+  for (let at = 0; at < value.length; at++) {
+    const char = value[at]!
     const field = isFieldChar(char) ? fields.get(char) : undefined
     if (field === undefined || !isDeliveryKind(field.kind)) continue
-    return { char, mode: field.kind }
+    return { char, mode: field.kind, at }
   }
   return undefined
 }
 
+/** Number of delivery chips held in `value`; one queued turn per chip. */
+export function countDeliveryFields(value: string, fields: ComposerFieldMap): number {
+  let count = 0
+  for (const char of value) {
+    const field = isFieldChar(char) ? fields.get(char) : undefined
+    if (field !== undefined && isDeliveryKind(field.kind)) count += 1
+  }
+  return count
+}
+
 /**
- * Append or replace the delivery chip at the end of the composer. At most one
- * chip exists at a time. A mode change must allocate a new chip because the
- * field kind carries the label and style, so the old chip is released first.
+ * The text after the last delivery chip (past its trailing space). This is the
+ * segment the next appended chip would close; empty means there is nothing new
+ * to queue.
  */
-export function insertDeliveryModeField(
-  value: string,
-  fields: ComposerFieldMap,
-  mode: DeliveryMode,
-): string | undefined {
-  const existing = deliveryFieldOf(value, fields)
-  if (existing !== undefined && existing.mode === mode) return value
-  const without = existing === undefined ? value : removeDeliveryModeField(value, fields)
+export function segmentAfterLastDelivery(value: string, fields: ComposerFieldMap): string {
+  let end = 0
+  for (let at = 0; at < value.length; at++) {
+    const char = value[at]!
+    const field = isFieldChar(char) ? fields.get(char) : undefined
+    if (field === undefined || !isDeliveryKind(field.kind)) continue
+    end = at + (value[at + 1] === ' ' ? 2 : 1)
+  }
+  return value.slice(end)
+}
+
+/**
+ * Allocate one delivery chip and return its char plus the trailing space, ready
+ * to splice into the buffer. Every call mints a new sentinel, so the buffer can
+ * hold a FIFO pipeline of queued segments.
+ */
+export function createDeliveryModeChip(fields: ComposerFieldMap, mode: DeliveryMode): string | undefined {
   const label = deliveryChipLabel(mode)
   const char = allocateField(DELIVERY_MODE_KINDS[mode], label, 'composer')
   if (char === null) return undefined
   fields.set(char, { kind: DELIVERY_MODE_KINDS[mode], label })
-  return `${without}${char}`
+  return chipWithSpace(char)
 }
 
-/** Drop the delivery chip from `value`, releasing its field char. */
-export function removeDeliveryModeField(value: string, fields: ComposerFieldMap): string {
-  const existing = deliveryFieldOf(value, fields)
-  if (existing === undefined) return value
-  fields.delete(existing.char)
-  releaseOwnedField(existing.char, 'composer')
-  return value.replace(existing.char, '')
+/**
+ * Split `value` at its first delivery chip: `head` is the queued segment the
+ * chip closes, `rest` is everything after the chip and its trailing space, with
+ * the chip's field released. `mode` is the chip's delivery mode and `consumed`
+ * is the number of chars removed from the front (so a caller can shift the
+ * caret). Returns undefined when no chip is present.
+ */
+export function splitAtFirstDelivery(
+  value: string,
+  fields: ComposerFieldMap,
+): { head: string; rest: string; mode: DeliveryMode; consumed: number } | undefined {
+  const first = firstDeliveryField(value, fields)
+  if (first === undefined) return undefined
+  fields.delete(first.char)
+  releaseOwnedField(first.char, 'composer')
+  const skip = value[first.at + 1] === ' ' ? 2 : 1
+  return { head: value.slice(0, first.at), rest: value.slice(first.at + skip), mode: first.mode, consumed: first.at + skip }
 }
 
 export interface ComposerSubmission {
