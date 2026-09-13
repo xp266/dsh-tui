@@ -28,7 +28,7 @@ export function subscribePalettes(listener: () => void): () => void {
  * added, removed) owns exactly one color.
  */
 interface GrayLadder {
-  /** Page background (dialog backdrop). */
+  /** Page background: the shell root and the dialog backdrop behind panels. */
   base: string
   /** Content-card surface: tool cards, compaction, system bubbles. */
   card: string
@@ -48,11 +48,11 @@ interface GrayLadder {
   ink: string
 }
 
-// In dark, card and sunken share the 10% step; the light theme keeps them
-// apart (card on surface, sunken lighter), so they stay separate rungs.
+// Dark runs darkest to lightest: page backdrop, then the tool/assistant card,
+// then the sunken chrome, then the interactive control (input, user bubble).
 const DARK_LADDER: GrayLadder = {
-  base: '#0d0d0d',
-  card: '#1a1a1a',
+  base: '#080808',
+  card: '#121212',
   control: '#1e1e1e',
   sunken: '#1a1a1a',
   surface: '#262626',
@@ -165,6 +165,8 @@ function buildPalette(ladder: GrayLadder, hues: SemanticHues, code: CodeHues, mo
   return {
     ink: ladder.ink,
 
+    /** The page itself; painted on the shell root so the terminal default never shows. */
+    pageBackground: ladder.base,
     userBubbleBackground: ladder.control,
     aiBubbleBackground: ladder.card,
 
@@ -179,7 +181,7 @@ function buildPalette(ladder: GrayLadder, hues: SemanticHues, code: CodeHues, mo
     carouselCurrentBg: ladder.raised,
     carouselButtonBg: ladder.sunken,
     carouselButtonPressedBg: ladder.surface,
-    carouselSelectedText: hues.accent,
+    carouselSelectedText: hues.info,
 
     /** Hovered collapsible tool card; interaction state, not content. */
     hoverBackground: mode === 'dark' ? '#262626' : ladder.raised,

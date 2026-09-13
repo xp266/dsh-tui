@@ -2,7 +2,7 @@ import { Box, Text, useInput } from 'ink'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { RefObject } from 'react'
-import { permissionModeInfo, setDialogDimmed } from '../theme.ts'
+import { COLORS, permissionModeInfo, setDialogDimmed } from '../theme.ts'
 import { setHoveredMessage } from './message/hover.ts'
 import { EARLIER_MESSAGE_ID } from '../chat/store.ts'
 import { writeClipboardText } from '../terminal/clipboard.ts'
@@ -425,7 +425,7 @@ export function App({ bridge, screen, themeTick = 0, onForceExit }: AppProps) {
   return (
     <SpinnerTickProvider tick={busy ? uiTick : 0}>
       <SelectionContext.Provider value={messageAreaSelection}>
-        <Box flexDirection="column" width={columns} height={rows}>
+        <Box flexDirection="column" width={columns} height={rows} backgroundColor={COLORS.pageBackground}>
           <KeymapGate />
           {boot.warnings.length > 0 && <BootWarningStrip />}
           <MessageList
