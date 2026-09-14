@@ -12,11 +12,16 @@
  * minimumReleaseAgeExclude gains this package's name so pnpm's
  * supply-chain age policy never rejects freshly published releases.
  *
+ * What gets installed depends on where this launcher runs from: a development
+ * checkout (`.git` plus `src/`) links the profile at that tree, so a rebuilt
+ * `lib/` takes effect on the next boot; any other install pins the published
+ * version and upgrades when the version comparison says so.
+ *
  * This file must stay free of lib/ imports so it works from a global
  * install, a profile copy, and a dev checkout alike.
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -27,6 +32,88 @@ const packageName = manifest.name
 const windows = process.platform === 'win32'
 const dshHome = process.env.DSH_HOME ?? join(homedir(), '.dsh')
 const profilesDir = join(dshHome, 'profiles')
+
+// Resolve the tree this launcher actually lives in. A global shim may hand us
+// a junction to a checkout, and the profile spec must name the real directory
+// so a link written from either invocation compares equal on the next run.
+// Windows resolves the same path with either separator and either case, so
+// the comparison normalizes both instead of demanding a byte match.
+function realRoot(dir) {
+  let resolved = dir
+  try {
+    resolved = realpathSync(dir)
+  } catch {
+    // An unresolvable root falls back to the path as invoked.
+  }
+  const normalized = resolved.replace(/\\/g, '/').replace(/\/+$/, '')
+  return windows ? normalized.toLowerCase() : normalized
+}
+
+const checkoutRoot = realRoot(packageRoot)
+
+// A tree carrying `.git` and `src/` is a development checkout, not a registry
+// install. The profile must load that tree: a rebuilt lib/ at an unchanged
+// version is invisible to the version comparison below, which is how a
+// freshly pulled checkout kept booting the last published copy. Linking the
+// profile at the checkout's real path makes every later build live at once.
+function isDevCheckout(dir) {
+  return existsSync(join(dir, '.git')) && existsSync(join(dir, 'src'))
+}
+
+const devSpec = isDevCheckout(checkoutRoot) ? `link:${checkoutRoot.replace(/\\/g, '/')}` : undefined
+
+// The published package ships a prebuilt lib/, but lib/ is gitignored, so a
+// fresh checkout has none and a rebuilt src/ leaves the previous bundle in
+// place. Either way the profile would load stale code at an unchanged
+// version — the exact failure the link spec exists to prevent — so the
+// launcher rebuilds before boot when src/ is newer than the bundle.
+function newestMtime(dir) {
+  let newest = 0
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name)
+    try {
+      newest = Math.max(newest, entry.isDirectory() ? newestMtime(path) : statSync(path).mtimeMs)
+    } catch {
+      // A path that vanished mid-walk cannot be the newest source.
+    }
+  }
+  return newest
+}
+
+function buildIsStale(root) {
+  let built = 0
+  try {
+    built = statSync(join(root, 'lib', 'index.mjs')).mtimeMs
+  } catch {
+    return true // no bundle at all
+  }
+  try {
+    return newestMtime(join(root, 'src')) > built
+  } catch {
+    // An unreadable src/ leaves the existing bundle in place.
+    return false
+  }
+}
+
+function ensureBuild(root) {
+  if (process.env.DSH_TUI_NO_BUILD === '1') return
+  if (!buildIsStale(root)) return
+  if (!existsSync(join(root, 'node_modules'))) {
+    fail(`the checkout at ${root} has no node_modules; run "pnpm install" there first`)
+  }
+  console.error(`dshtui: building ${root} (src/ is newer than lib/)`)
+  // Same spawn shape as runDsh: pnpm resolves through a .cmd shim on Windows,
+  // and passing an args array alongside shell:true is deprecated (DEP0190).
+  const build = windows
+    ? spawnSync(['pnpm', 'build'].map(quote).join(' '), { cwd: root, stdio: 'inherit', shell: true })
+    : spawnSync('pnpm', ['build'], { cwd: root, stdio: 'inherit' })
+  if (build.error !== undefined && build.error.code === 'ENOENT') {
+    fail(`pnpm was not found on PATH; run "pnpm build" in ${root}, or set DSH_TUI_NO_BUILD=1 to boot the existing bundle`)
+  }
+  if (build.status !== 0) {
+    fail(`the build failed in ${root}; run "pnpm build" there to see the full output`)
+  }
+}
 
 function fail(message) {
   console.error(`dshtui: ${message}`)
@@ -78,6 +165,44 @@ function profileMountsPackage(profileDir) {
 
 function installedVersion(profileDir) {
   return readJson(join(profileDir, 'node_modules', packageName, 'package.json'))?.version
+}
+
+// The dependency spec the profile carries for this package. A `link:` entry
+// names the checkout the profile currently loads; absent means the profile
+// predates the spec check and must be reinstalled once.
+function installedSpec(profileDir) {
+  return readJson(join(profileDir, 'package.json'))?.dependencies?.[packageName]
+}
+
+// Whether the dependency spec points at this checkout. pnpm writes the link
+// spec verbatim, but a hand-edited one may be relative or carry a trailing
+// slash, so the comparison normalizes those instead of demanding a byte match.
+function specTargets(spec, target, profileDir) {
+  if (typeof spec !== 'string') return false
+  const match = /^link:(.+)$/.exec(spec)
+  if (match === null) return false
+  const raw = match[1].replace(/[\\/]+$/, '')
+  const anchored = /^([A-Za-z]:[\\/]|[\\/])/.test(raw) ? raw : join(profileDir, raw)
+  return realRoot(anchored) === target
+}
+
+// The spec to install. A dev checkout links the tree this launcher runs from
+// (so a rebuild is picked up without a version bump); anything else installs
+// the published version.
+function desiredSpec() {
+  return devSpec ?? `${packageName}@${manifest.version}`
+}
+
+// Reinstall when the profile does not load what this launcher ships: a
+// checkout whose link is missing or points elsewhere, a registry install
+// behind the published version, or a published launcher reclaiming a profile
+// a checkout had linked.
+function needsInstall(profileDir) {
+  const spec = installedSpec(profileDir)
+  if (devSpec !== undefined) return !specTargets(spec, checkoutRoot, profileDir)
+  if (typeof spec === 'string' && spec.startsWith('link:')) return true
+  const installed = installedVersion(profileDir)
+  return installed !== undefined && versionLessThan(installed, manifest.version)
 }
 
 // Release ordering includes the prerelease channel: comparing cores only
@@ -142,23 +267,29 @@ if (dshProbe.error !== undefined || dshProbe.status !== 0) {
   fail('the dsh CLI was not found on PATH; install it with: npm install -g @deepseek-ai/dsh')
 }
 
+const spec = desiredSpec()
 if (!existsSync(profileDir)) {
-  console.error(`dshtui: profile "${profile}" not found under ${profilesDir}; installing ${packageName}@${manifest.version} into it`)
-  const bootstrap = runDsh(['plugin', '--profile', profile, 'add', `${packageName}@${manifest.version}`])
+  console.error(`dshtui: profile "${profile}" not found under ${profilesDir}; installing ${spec} into it`)
+  const bootstrap = runDsh(['plugin', '--profile', profile, 'add', spec])
   if (bootstrap.status !== 0) {
-    fail(`bootstrapping the profile failed; run manually: dsh plugin --profile ${profile} add ${packageName}`)
+    fail(`bootstrapping the profile failed; run manually: dsh plugin --profile ${profile} add ${spec}`)
   }
-} else {
-  const installed = installedVersion(profileDir)
-  if (installed !== undefined && versionLessThan(installed, manifest.version)) {
-    ensureReleaseAgeExclude(profileDir)
-    console.error(`dshtui: upgrading profile "${profile}": ${packageName} ${installed} -> ${manifest.version}`)
-    const upgrade = runDsh(['plugin', '--profile', profile, 'add', `${packageName}@${manifest.version}`])
-    if (upgrade.status !== 0) {
-      fail(`the upgrade failed; run manually: dsh plugin --profile ${profile} add ${packageName}@${manifest.version}`)
-    }
+} else if (needsInstall(profileDir)) {
+  // The release-age exclude only guards registry installs; a checkout link
+  // never consults the registry. Writing it there would also mutate a file
+  // the developer may have edited by hand for no benefit.
+  if (devSpec === undefined) ensureReleaseAgeExclude(profileDir)
+  const installed = installedVersion(profileDir) ?? 'none'
+  console.error(`dshtui: ${devSpec === undefined ? 'upgrading' : 'linking'} profile "${profile}": ${packageName} ${installed} -> ${spec}`)
+  const install = runDsh(['plugin', '--profile', profile, 'add', spec])
+  if (install.status !== 0) {
+    fail(`the install failed; run manually: dsh plugin --profile ${profile} add ${spec}`)
   }
 }
+
+// A linked checkout is served in place, so its bundle must match its source
+// before the host loads it.
+if (devSpec !== undefined) ensureBuild(checkoutRoot)
 
 const argv = process.argv.slice(2)
 
