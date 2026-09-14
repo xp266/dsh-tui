@@ -1,0 +1,5 @@
+# Normalize line endings on commit; check out LF everywhere. Without this,
+# core.autocrlf (Git for Windows defaults it to true) rewrites the working
+# tree to CRLF while the index keeps LF, so `git status` reports every file
+# as modified.
+* text=auto eol=lf
